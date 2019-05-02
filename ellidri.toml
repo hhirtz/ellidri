@@ -1,0 +1,36 @@
+# Example configuration file.
+# All commented values are optional.
+# Follow the TOML format: https://github.com/toml-lang/toml#toml
+
+# REQUIRED VALUES
+
+# The IRC server domain.
+# Type: String
+# It must be a valid domain name.
+domain = "ellidri.localdomain"
+
+# OPTIONAL VALUES
+
+# The IP and TCP port to which to bind.
+# Type: String
+#bind_to_address = "0.0.0.0:6667"
+
+# The log filter.
+# Type: String
+# Valid values are:
+# - "trace": report incoming and outgoing messages.
+# - "debug": report clients actions (default for dev builds).
+# - "info": report new/closed connections (default for releases).
+# - "warn": report warnings.
+# - "error": report critical errors/bugs in the program.
+#log_level = "debug"
+
+# The message of the day.
+# Type: String
+# If not set, the server will send an error to new clients and when they issue
+# an "MOTD" command.
+#motd = """
+#It can span on multiple lines.
+#
+#Empty lines are not ignored.
+#"""

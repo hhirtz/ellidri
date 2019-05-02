@@ -1,0 +1,21 @@
+[package]
+name = "ellidri"
+version = "0.1.0"
+authors = ["Taiite <hubert.hirtz@laposte.net>"]
+edition = "2018"
+
+[dependencies]
+# Runtime
+futures = "0.1"
+tokio = "0.1"
+
+# Logging
+env_logger = { version = "0.6", default-features = false }
+log = "0.4"
+
+# Config
+serde = { version = "1", features = ["derive"] }
+toml = "0.5"
+
+# Time
+chrono = "0.4"

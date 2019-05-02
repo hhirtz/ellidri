@@ -1,0 +1,496 @@
+//! Shared state and API to handle incoming commands.
+
+use std::collections::HashMap;
+use std::net::SocketAddr;
+use std::sync::{Arc, RwLock};
+
+use chrono::{DateTime, Utc};
+use log::{trace, debug, warn};
+
+use crate::channel::Channel;
+use crate::client::Client;
+use crate::message::{Command, Message, Reply, rpl};
+use crate::net::MessageQueue;
+
+/// Shared state of the IRC server.
+///
+/// It's a pointer to the actual data, so it's cheap to clone.
+#[derive(Clone)]
+pub struct State(Arc<RwLock<StateInner>>);
+
+impl State {
+    /// Initialize a new state with the given `prefix` and `motd`.
+    ///
+    /// `prefix` is the domain of the server. It's used as prefix for most
+    /// replies.  `motd` is the message of the day.
+    ///
+    /// # Todos
+    ///
+    /// Make it accept a "config" struct, or use a builder pattern.
+    pub fn new(prefix: String, motd: String) -> State {
+        let inner = StateInner::new(prefix, motd);
+        State(Arc::new(RwLock::new(inner)))
+    }
+
+    /// Adds a new client into the state.
+    ///
+    /// Called when a connection is accepted.
+    pub fn insert(&self, addr: SocketAddr, queue: MessageQueue) {
+        self.0.write().unwrap().clients.insert(addr, Client::new(queue));
+    }
+
+    /// Removes a client from the state.
+    ///
+    /// Called when a connection drops, or the client issued a "QUIT" message.
+    pub fn remove(&self, addr: SocketAddr) {
+        self.0.write().unwrap().remove(addr);
+    }
+
+    /// Creates a message with the given `cmd` and `params`, and send it to
+    /// the given client.
+    pub fn send_command(&self, addr: SocketAddr, cmd: Command, params: &[&str]) {
+        self.0.read().unwrap().send_command(addr, cmd, params);
+    }
+
+    /// Creates a message with the given `reply` and `params`, and send it to
+    /// the given client.
+    ///
+    /// It also adds the client's nickname as the first argument.
+    pub fn send_reply(&self, addr: SocketAddr, reply: Reply, params: &[&str]) {
+        self.0.read().unwrap().send_reply(addr, reply, params);
+    }
+
+    /// Returns true when the given client can issue the given command.
+    ///
+    /// This depends of the "state" the connection is in. For example, if a
+    /// client has not sent a "NICK" and an "USER" message, it cannot send a
+    /// "JOIN" message.
+    pub fn can_issue_command(&self, addr: SocketAddr, cmd: Command) -> bool {
+        self.0.read().unwrap()
+            .clients.get(&addr).unwrap()
+            .can_issue_command(cmd)
+    }
+
+    /// Handles a "JOIN" message.
+    pub fn cmd_join(&self, addr: SocketAddr, targets: &str, keys: Option<&str>) {
+        if self.0.read().unwrap().check_cmd_join(addr, targets, keys) {
+            self.0.write().unwrap().apply_cmd_join(addr, targets, keys);
+        }
+    }
+
+    /// Handles a "MODE" message.
+    pub fn cmd_mode(&self, addr: SocketAddr, target: &str, modes: Option<&str>) {
+        if let Some(modes) = modes {
+            if self.0.read().unwrap().check_cmd_set_modes(addr, target, modes) {
+                self.0.write().unwrap().apply_cmd_set_modes(addr, target, modes);
+            }
+        } else {
+            self.0.read().unwrap().apply_cmd_get_modes(addr, target);
+        }
+    }
+
+    /// Handles a "MOTD" message.
+    pub fn cmd_motd(&self, addr: SocketAddr) {
+        self.0.read().unwrap().apply_cmd_motd(addr);
+    }
+
+    /// Handles a "NICK" message.
+    pub fn cmd_nick(&self, addr: SocketAddr, nick: &str) {
+        if self.0.read().unwrap().check_cmd_nick(addr, nick) {
+            self.0.write().unwrap().apply_cmd_nick(addr, nick);
+        }
+    }
+
+    /// Handles a "PART" message.
+    pub fn cmd_part(&self, addr: SocketAddr, targets: &str, reason: Option<&str>) {
+        for target in targets.split(',') {
+            if self.0.read().unwrap().check_cmd_part(addr, target, reason) {
+                self.0.write().unwrap().apply_cmd_part(addr, target, reason);
+            }
+        }
+    }
+
+    /// Handles a "PRIVMSG" message.
+    pub fn cmd_privmsg(&self, addr: SocketAddr, targets: &str, content: &str) {
+        if self.0.read().unwrap().check_cmd_privmsg(addr, targets, content) {
+            self.0.read().unwrap().apply_cmd_privmsg(addr, targets, content);
+        }
+    }
+
+    /// Handles a "QUIT" message.
+    pub fn cmd_quit(&self, addr: SocketAddr, reason: Option<&str>) {
+        self.0.write().unwrap().apply_cmd_quit(addr, reason);
+    }
+
+    /// Handles a "TOPIC" message.
+    pub fn cmd_topic(&self, addr: SocketAddr, target: &str, topic: Option<&str>) {
+        if let Some(topic) = topic {
+            if self.0.read().unwrap().check_cmd_set_topic(addr, target, topic) {
+                self.0.write().unwrap().apply_cmd_set_topic(addr, target, topic);
+            }
+        } else {
+            self.0.read().unwrap().apply_cmd_get_topic(addr, target);
+        }
+    }
+
+    /// Handles a "USER" message.
+    pub fn cmd_user(&self, addr: SocketAddr, user: &str, real: &str) {
+        self.0.write().unwrap().apply_cmd_user(addr, user, real);
+    }
+}
+
+/// The actual shared data (state) of the IRC server.
+///
+/// It is hidden behind the `State` pointer. Most of its methods are wrapped
+/// by `State`'s methods (that just lock reads or writes to the data).
+///
+/// Most command handling methods are split in two: one that checks whether the
+/// given client can issue the command (depending on the given parameters), and
+/// the other that actually executes the command.
+///
+/// The first set of methods have names like `check_cmd_$command`, the other
+/// have names like `apply_cmd_$command`.
+struct StateInner {
+    /// The domain of the server. This string is used as a prefix for most
+    /// replies and commands sent to clients.
+    prefix: String,
+
+    /// The set of clients, identified by their socket address.
+    clients: HashMap<SocketAddr, Client>,
+
+    /// The set of channels, identified by their name.
+    channels: HashMap<String, Channel>,
+
+    /// The UTC local time when the `StateInner` instance is created. It is sent
+    /// to the client when they register (in a "003 RPL_CREATED" reply, as per
+    /// the RFC).
+    created_at: DateTime<Utc>,
+
+    /// The message of the day.
+    motd: String,
+}
+
+impl StateInner {
+    /// Creates a new shared state. See `State::new`.
+    pub fn new(prefix: String, motd: String) -> StateInner {
+        StateInner {
+            prefix,
+            clients: HashMap::new(),
+            channels: HashMap::new(),
+            created_at: Utc::now(),
+            motd,
+        }
+    }
+
+    /// Removes a client from the state. See `State::remove`.
+    pub fn remove(&mut self, addr: SocketAddr) {
+        let client = self.clients.remove(&addr).unwrap();
+        let msg = Message::new(client.nick(), Command::Quit, &[&client.quit_message()]);
+
+        for (_, chan) in self.channels.iter() {
+            if chan.members.contains_key(&addr) {
+                for (member, _) in chan.members.iter() {
+                    self.send(*member, msg.clone());
+                }
+            }
+        }
+
+        self.channels.iter_mut()
+            .filter(|(_, chan)| chan.members.contains_key(&addr))
+            .for_each(|(_, chan)| chan.remove_member(addr));
+    }
+
+    /// Whether or not a "JOIN" message with the given parameters can be
+    /// issued by the given client.
+    pub fn check_cmd_join(&self, addr: SocketAddr, targets: &str, keys: Option<&str>) -> bool {
+        if !targets.starts_with('#') {
+            debug!("{}: Can't join {}: Invalid channel name", addr, targets);
+            self.send_reply(addr, rpl::ERR_NOSUCHCHANNEL,
+                            &[targets, "Do you see this shit, motherfucker? Try and say that one more time."]);
+            false
+        } else {
+            true
+        }
+    }
+
+    /// Applies a "JOIN" command issued by the given client with the given
+    /// parameters.
+    pub fn apply_cmd_join(&mut self, addr: SocketAddr, targets: &str, keys: Option<&str>) {
+        debug!("{}: Join {} (keys={:?})", addr, targets, keys);
+        let chan = self.channels.entry(targets.into()).or_default();
+        chan.add_member(addr);
+        let nick = self.clients.get(&addr).unwrap().nick();
+        self.broadcast(targets, Message::new(&nick, Command::Join, &[targets]));
+        self.send_command(addr, Command::Mode, &[targets, "ns"]);
+        self.send_topic(addr, targets);
+        self.send_names(addr, targets);
+    }
+
+    /// Applies a "MOTD" command issued by the given client.
+    pub fn apply_cmd_motd(&self, addr: SocketAddr) {
+        debug!("{}: Sending motd", addr);
+        let m = format!("- {} Senpai's message of the day -", self.prefix);
+        self.send_reply(addr, rpl::MOTDSTART, &[&m]);
+        for line in self.motd.lines() {
+            let m = format!("- {}", line);
+            self.send_reply(addr, rpl::MOTD, &[&m]);
+        }
+        self.send_reply(addr, rpl::ENDOFMOTD,
+                        &["Creep, don't get cocky just because senpai told me to say it!"]);
+    }
+
+    /// Whether or not a "NICK" message with the given parameters can be
+    /// issued by the given client.
+    pub fn check_cmd_nick(&self, addr: SocketAddr, nick: &str) -> bool {
+        if self.clients.iter().any(|(_, c)| c.nick() == nick) {
+            debug!("{}: Can't change nick to {}: Already in use", addr, nick);
+            self.send_reply(addr, rpl::ERR_NICKNAMEINUSE,
+                            &[nick, "Serves you right, shithead, one of you already has that shitty name!"]);
+            false
+        } else {
+            true
+        }
+    }
+
+    /// Applies a "NICK" command issued by the given client with the given
+    /// parameter.
+    pub fn apply_cmd_nick(&mut self, addr: SocketAddr, nick: &str) {
+        debug!("{}: Changing nick to {}", addr, nick);
+        let client = self.clients.get_mut(&addr).unwrap();
+        client.set_nick(nick);
+        let old_state = client.state();
+        let new_state = client.apply_command(Command::Nick);
+        if new_state.is_registered() && !old_state.is_registered() {
+            self.send_welcome(addr);
+        }
+    }
+
+    /// Whether or not a "PART" message with the given parameters can be
+    /// issued by the given client.
+    pub fn check_cmd_part(&self, addr: SocketAddr, target: &str, _reason: Option<&str>) -> bool {
+        let is_on_chan = self.channels.get(target)
+            .map_or(false, |chan| chan.members.contains_key(&addr));
+        if !is_on_chan {
+            self.send_reply(addr, rpl::ERR_NOTONCHANNEL,
+                            &[target, "You lost, dumbass? Try QUIT."]);
+            false
+        } else {
+            true
+        }
+    }
+
+    /// Applies a "PART" command issued by the given client with the given
+    /// parameters.
+    pub fn apply_cmd_part(&mut self, addr: SocketAddr, target: &str, reason: Option<&str>) {
+        let nick = self.clients.get(&addr).unwrap().nick();
+        let msg = if let Some(reason) = reason {
+            Message::new(nick, Command::Part, &[target, reason])
+        } else {
+            Message::new(nick, Command::Part, &[target])
+        };
+        self.broadcast(target, msg);
+        let chan = self.channels.get_mut(target).unwrap();
+        chan.members.remove(&addr);
+    }
+
+    /// Whether or not a "PRIVMSG" message with the given parameters can be
+    /// issued by the given client.
+    pub fn check_cmd_privmsg(&self, addr: SocketAddr, targets: &str, _content: &str) -> bool {
+        let chan = self.channels.get(targets);
+        if chan.is_none() {
+            debug!("{}: Can't send privmsg to {}: No such channel", addr, targets);
+            self.send_err_nosuchchannel(addr, targets);
+            false
+        } else if !chan.unwrap().members.contains_key(&addr) {
+            debug!("{}: Can't send privmsg to {}: Not in channel", addr, targets);
+            self.send_reply(addr, rpl::ERR_CANNOTSENDTOCHAN,
+                            &[targets, "The fuck you're trying to do, motherfucker? Do you fucking mind knocking at the door?"]);
+            false
+        } else {
+            true
+        }
+    }
+
+    /// Applies a "PRIVMSG" command issued by the given client with the given
+    /// parameters.
+    pub fn apply_cmd_privmsg(&self, addr: SocketAddr, targets: &str, content: &str) {
+        debug!("{}: Privmsg to {}", addr, targets);
+        let client = self.clients.get(&addr).unwrap();
+        let msg = Message::new(client.nick(), Command::PrivMsg, &[targets, content]);
+        let chan = self.channels.get(targets).unwrap();
+        let chan_targets = chan.members.iter().filter(|(&a, _)| a != addr);
+        for (&member, _) in chan_targets {
+            self.send(member, msg.clone());
+        }
+    }
+
+    /// Applies a "QUIT" command issued by the given client with the given
+    /// parameters.
+    pub fn apply_cmd_quit(&mut self, addr: SocketAddr, reason: Option<&str>) {
+        self.clients.get_mut(&addr).unwrap().set_quit_message(reason);
+    }
+
+    /// Whether or not a "MODE" message with the two given parameters can be
+    /// issued by the given client.
+    ///
+    /// "MODE" and "TOPIC" have been split in two handlers, one to get the
+    /// mode/topic, the other to set it.
+    pub fn check_cmd_set_modes(&self, addr: SocketAddr, target: &str, modes: &str) -> bool {
+        warn!("cmd_set_modes: unimplemented");
+        false
+    }
+
+    /// Apply a "MODE" command issued by the given client with the given
+    /// parameters.
+    ///
+    /// "MODE" and "TOPIC" have been split in two handlers, one to get the
+    /// mode/topic, the other to set it.
+    pub fn apply_cmd_set_modes(&mut self, addr: SocketAddr, target: &str, modes: &str) {
+        warn!("cmd_set_modes: unimplemented");
+    }
+
+    /// Applies a "MODE" command issued by the given client with the given
+    /// parameter.
+    ///
+    /// "MODE" and "TOPIC" have been split in two handlers, one to get the
+    /// mode/topic, the other to set it.
+    pub fn apply_cmd_get_modes(&self, addr: SocketAddr, target: &str) {
+        if target.starts_with('#') {
+            self.send_reply(addr, rpl::CHANNELMODEIS, &[target, "ns"]);
+        } else {
+            self.send_err_nosuchchannel(addr, target);
+        }
+    }
+
+    /// Whether or not a "TOPIC" message with the two given parameters can be
+    /// issued by the given client.
+    ///
+    /// "MODE" and "TOPIC" have been split in two handlers, one to get the
+    /// mode/topic, the other to set it.
+    pub fn check_cmd_set_topic(&self, addr: SocketAddr, target: &str, topic: &str) -> bool {
+        warn!("cmd_set_topic: unimplemented");
+        false
+    }
+
+    /// Apply a "TOPIC" command issued by the given client with the given
+    /// parameters.
+    ///
+    /// "MODE" and "TOPIC" have been split in two handlers, one to get the
+    /// mode/topic, the other to set it.
+    pub fn apply_cmd_set_topic(&mut self, addr: SocketAddr, target: &str, modes: &str) {
+        warn!("cmd_set_topic: unimplemented");
+    }
+
+    /// Applies a "TOPIC" command issued by the given client with the given
+    /// parameter.
+    ///
+    /// "MODE" and "TOPIC" have been split in two handlers, one to get the
+    /// mode/topic, the other to set it.
+    pub fn apply_cmd_get_topic(&self, addr: SocketAddr, target: &str) {
+        if let Some(chan) = self.channels.get(target) {
+            if chan.members.contains_key(&addr) {
+                self.send_topic(addr, target);
+                return;
+            }
+        }
+        self.send_reply(addr, rpl::ERR_NOTONCHANNEL, &[target, "Topic might be: Go fuck yourself you fucking retard."]);
+    }
+
+    /// Applies a "USER" command issued by the given client with the given
+    /// parameters.
+    pub fn apply_cmd_user(&mut self, addr: SocketAddr, user: &str, real: &str) {
+        debug!("{}: Register as {}, '{}'", addr, user, real);
+        let client = self.clients.get_mut(&addr).unwrap();
+        client.set_user_real(user, real);
+        let old_state = client.state();
+        let new_state = client.apply_command(Command::User);
+        if new_state.is_registered() && !old_state.is_registered() {
+            self.send_welcome(addr);
+        }
+    }
+
+    /// Sends the given message to all users in the given channel.
+    pub fn broadcast(&self, target: &str, msg: Message) {
+        let chan = self.channels.get(target).unwrap();
+        for (&member, _) in chan.members.iter() {
+            self.send(member, msg.clone());
+        }
+    }
+
+    /// Sends the given message to the given client.
+    pub fn send(&self, addr: SocketAddr, msg: Message) {
+        if let Some(client) = self.clients.get(&addr) {
+            trace!("us -> {}: {}", addr, msg);
+            client.send(msg);
+        }
+    }
+
+    /// Creates a message from the given command and parameters, and sends it
+    /// to the given client.
+    pub fn send_command(&self, addr: SocketAddr, cmd: Command, params: &[&str]) {
+        let msg = Message::new(&self.prefix, cmd, params);
+        self.send(addr, msg);
+    }
+
+    /// Sends an ERR_NOSUCHCHANNEL to the given client, for the given channel
+    /// that doesn't exist.
+    pub fn send_err_nosuchchannel(&self, addr: SocketAddr, target: &str) {
+        self.send_reply(addr, rpl::ERR_NOSUCHCHANNEL,
+                        &[target, "You better pay more attention to what you are doing, because if you don't I'm gonna find you and dump you into a river."]);
+    }
+
+    /// Creates a message from the given reply and parameters, and sends it
+    /// to the given client.
+    ///
+    /// It also adds the client's nick as the first parameter, as it is needed
+    /// for server replies.
+    pub fn send_reply(&self, addr: SocketAddr, reply: Reply, params: &[&str]) {
+        let nick = self.clients.get(&addr).unwrap().nick();
+        let reply = format!("{} {}", reply, nick);
+        let msg = Message::new(&self.prefix, reply, params);
+        self.send(addr, msg);
+    }
+
+    /// Sends the list of nicknames in the channel `chan_name` to the given
+    /// client.
+    fn send_names(&self, addr: SocketAddr, chan_name: &str) {
+        let chan = self.channels.get(chan_name).unwrap();
+        if !chan.members.is_empty() {
+            let mut names = String::with_capacity(512);
+            for (&member, _) in chan.members.iter() {
+                let nick = self.clients.get(&member).unwrap().nick();
+                names.push(' ');
+                names.push_str(nick);
+            }
+            self.send_reply(addr, rpl::NAMREPLY, &["@", chan_name, &names]);
+        }
+        self.send_reply(addr, rpl::ENDOFNAMES,
+                        &[chan_name, "Found your fucking friends yet, dickhead?"]);
+    }
+
+    /// Sends the topic of the channel `chan_name` to the given client.
+    fn send_topic(&self, addr: SocketAddr, chan_name: &str) {
+        let chan = self.channels.get(chan_name).unwrap();
+        if chan.has_topic() {
+            self.send_reply(addr, rpl::TOPIC, &[chan_name, &chan.topic]);
+        } else {
+            self.send_reply(addr, rpl::NOTOPIC,
+                            &[chan_name, "Dumbass, this chan doesn't have a topic!"]);
+        }
+    }
+
+    /// Sends welcome messages. Called when a client has completed its
+    /// registration.
+    fn send_welcome(&self, addr: SocketAddr) {
+        self.send_reply(addr, rpl::WELCOME,
+                        &["Hmph. It's not like I wanted to welcome you."]);
+        self.send_reply(addr, rpl::YOURHOST,
+                        &["I did it for senpai! Ooh senpai~ you're the best!"]);
+        let m = format!("We've been together since {}",
+                        self.created_at.to_rfc2822());
+        self.send_reply(addr, rpl::CREATED, &[&m]);
+        self.send_reply(addr, rpl::MYINFO,
+                        &[&self.prefix, env!("CARGO_PKG_VERSION"), "i", "i"]);
+        self.apply_cmd_motd(addr);
+    }
+}
