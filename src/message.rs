@@ -90,8 +90,7 @@ macro_rules! commands {
                 }
             }
 
-            /// Returns true if `n` is equal or above the number of required
-            /// arguments for the command.
+            /// Returns the number of required arguments for the command.
             ///
             /// # Example
             ///
@@ -99,16 +98,15 @@ macro_rules! commands {
             /// use ellidri::message::Command;
             ///
             /// let privmsg = Command::parse("Privmsg").unwrap();
+            /// let join = Command::parse("JOIN").unwrap();
             ///
-            /// assert_eq!(privmsg.has_enough_params(3), true);
-            /// assert_eq!(privmsg.has_enough_params(2), true);
-            /// assert_eq!(privmsg.has_enough_params(1), false);
+            /// assert_eq!(privmsg.required_params(), 2);
+            /// assert_eq!(join.required_params(), 1);
             /// ```
-            #[allow(unused_comparisons)]
-            pub fn has_enough_params(&self, n: usize) -> bool {
+            pub fn required_params(&self) -> usize {
                 match self {
                 $(
-                    Command::$cmd => n >= $n,
+                    Command::$cmd => $n,
                 )*
                 }
             }
@@ -460,7 +458,7 @@ impl Message {
     /// ```
     pub fn has_enough_params(&self) -> bool {
         match self.command {
-            Ok(cmd) => cmd.has_enough_params(self.num_params()),
+            Ok(cmd) => cmd.required_params() <= self.num_params(),
             Err(_) => false,
         }
     }
