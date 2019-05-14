@@ -50,7 +50,7 @@ pub struct Config {
 /// - can't open and read the file (does not exist, missing permissions, ...).
 /// - can't decode its contents (missing value, invalid format).
 ///
-/// # Todos
+/// # TODO
 ///
 /// - validate the `domain` and the `log_level`.
 pub fn from_file<P>(path: P) -> Config

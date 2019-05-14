@@ -8,8 +8,8 @@ use std::net::SocketAddr;
 /// Channel data.
 #[derive(Default)]
 pub struct Channel {
-    /// Set of channel members, identified by their socket address, and
-    /// associated with their channel mode.
+    /// Set of channel members, identified by their socket address, and associated with their
+    /// channel mode.
     pub members: HashMap<SocketAddr, Modes>,
     //modes: Modes,
 

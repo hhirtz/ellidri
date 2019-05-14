@@ -1,21 +1,20 @@
 //! Client management and connection state.
 
 use crate::message::{Command, Message, Reply, rpl};
-use crate::net::MessageQueue;
+use crate::state::MessageQueue;
 
 /// Client data.
 pub struct Client {
     /// The queue of messages to be sent to the client.
     ///
-    /// This is the write end of a mpsc channel of messages (similar to go
-    /// channels). It is currently unbounded, meaning sending messages to this
-    /// channel do not block.
+    /// This is the write end of a mpsc channel of messages (similar to go channels). It is
+    /// currently unbounded, meaning sending messages to this channel do not block.
     queue: MessageQueue,
 
     /// The state of the connection with the client.
     ///
-    /// This keeps track of whether the client has registered or not, if it's
-    /// currently querying capabilities, etc.
+    /// This keeps track of whether the client has registered or not, if it's currently querying
+    /// capabilities, etc.
     state: ConnectionState,
 
     /// The nickname.
@@ -36,8 +35,8 @@ pub struct Client {
 impl Client {
     /// Initialize the data for a new client, given its message queue.
     ///
-    /// The nickname is set to "*", as it seems it's what freenode server does.
-    /// The username and the realname are set to empty strings.
+    /// The nickname is set to "*", as it seems it's what freenode server does.  The username and
+    /// the realname are set to empty strings.
     pub fn new(queue: MessageQueue) -> Client {
         Client {
             queue,
@@ -49,13 +48,12 @@ impl Client {
         }
     }
 
-    /// Change the connection state of the client given the command it just
-    /// sent.
+    /// Change the connection state of the client given the command it just sent.
     ///
     /// # Panics
     ///
-    /// This function panics if the command cannot be issued in the client
-    /// current state. `Client::can_issue_command` should be called before.
+    /// This function panics if the command cannot be issued in the client current state.
+    /// `Client::can_issue_command` should be called before.
     pub fn apply_command(&mut self, cmd: Command) -> ConnectionState {
         self.state = self.state.apply(cmd).unwrap();
         self.state
@@ -111,15 +109,14 @@ impl Client {
     }
 }
 
-/// A state machine that represent the connection with a client. It keeps track
-/// of what message the client can send.
+/// A state machine that represent the connection with a client. It keeps track of what message the
+/// client can send.
 ///
-/// For example, a client that has sent a "NICK" message only cannot send a
-/// "JOIN" message.
+/// For example, a client that has sent a "NICK" message only cannot send a "JOIN" message.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum ConnectionState {
-    /// The client just connected to the server, and must register. Its
-    /// registration is kept track of by `RegistrationState`.
+    /// The client just connected to the server, and must register. Its registration is kept track
+    /// of by `RegistrationState`.
     ConnectionEstablished(RegistrationState),
 
     //CapabilityNegociation(RegistrationState),
@@ -134,9 +131,8 @@ impl ConnectionState {
         ConnectionState::ConnectionEstablished(RegistrationState::Stranger)
     }
 
-    /// Given a connection state and a command, returns the next connection
-    /// state after a client has sent the command, or a reply code to send the
-    /// client if this command cannot be issued.
+    /// Given a connection state and a command, returns the next connection state after a client
+    /// has sent the command, or a reply code to send the client if this command cannot be issued.
     ///
     /// # Example
     ///
@@ -176,8 +172,7 @@ impl ConnectionState {
     }
 }
 
-/// A state machine that represents a registration (process of sending "NICK"
-/// and "USER").
+/// A state machine that represents a registration (process of sending "NICK" and "USER").
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum RegistrationState {
     /// The client hasn't began the registration.
@@ -189,15 +184,13 @@ pub enum RegistrationState {
     /// The client has sent a "USER", but has not sent any "NICK".
     UserGiven,
 
-    /// The client has sent a "USER" and a "NICK", and completed
-    /// its registration.
+    /// The client has sent a "USER" and a "NICK", and completed its registration.
     Registered,
 }
 
 impl RegistrationState {
-    /// Given a registration state and a command, returns the next registration
-    /// state after the client has sent the command, or a reply code if the
-    /// command cannot be sent.
+    /// Given a registration state and a command, returns the next registration state after the
+    /// client has sent the command, or a reply code if the command cannot be sent.
     pub fn apply(self, cmd: Command) -> Result<Self, Reply> {
         match cmd {
             Command::Nick => self.apply_nick(),

@@ -3,23 +3,18 @@ use std::io::BufReader;
 use std::net::SocketAddr;
 
 use futures::sync::mpsc;
-use log::{trace, debug, info};
 use tokio::io;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::prelude::*;
 
 use crate::message::{Command, Message, rpl};
-use crate::state::State;
+use crate::state::{MessageQueue, State};
 
-pub type MessageQueue = mpsc::UnboundedSender<Message>;
-
-pub fn listen(addr: SocketAddr, shared: State)
-              -> impl Future<Item=(), Error=()>
-{
+pub fn listen(addr: SocketAddr, shared: State) -> impl Future<Item=(), Error=()> {
     TcpListener::bind(&addr).expect("Failed to bind to address")
         .incoming()
         .map_err(|err| {
-            info!("I'm seeing thing senpai, someone just {}. Or is it that I'm getting too old?? No way!", err);
+            log::info!("I'm seeing thing senpai, someone just {}. Or is it that I'm getting too old?? No way!", err);
         })
         .for_each(move |conn| {
             let peer_addr = conn.peer_addr().map_err(|_| ())?;
@@ -61,7 +56,11 @@ fn handle(conn: TcpStream, peer_addr: SocketAddr, shared: State)
                             .map(move |_| reader)
                     },
                     Ok(None) => Ok(reader),
-                    Err(_) => Err(io::Error::new(io::ErrorKind::InvalidData, "it was just a typo...")),
+                    Err(_) => {
+                        let err = io::Error::new(io::ErrorKind::InvalidData,
+                                                 "it was just a typo...");
+                        Err(err)
+                    },
                 })
                 .map_err(move |err| match err.kind() {
                     io::ErrorKind::BrokenPipe => broken_pipe(err, peer_addr),
@@ -87,12 +86,12 @@ fn handle(conn: TcpStream, peer_addr: SocketAddr, shared: State)
 fn handle_message(msg: Message, peer_addr: SocketAddr, shared: State)
                   -> Result<(), io::Error>
 {
-    trace!("us -> {}: {}", peer_addr, msg);
+    log::trace!("us -> {}: {}", peer_addr, msg);
 
     let command = match msg.command() {
         Ok(cmd) => cmd,
         Err(unknown) => {
-            debug!("{}: Unknown command {}", peer_addr, unknown);
+            log::debug!("{}: Unknown command {}", peer_addr, unknown);
             shared.send_reply(peer_addr, rpl::ERR_UNKNOWNCOMMAND,
                               &[unknown, "rfc2812 motherfucker, do you speak it?"]);
             return Ok(());
@@ -100,7 +99,7 @@ fn handle_message(msg: Message, peer_addr: SocketAddr, shared: State)
     };
 
     if !shared.can_issue_command(peer_addr, command) {
-        debug!("{}: Unexpected command {}", peer_addr, command);
+        log::debug!("{}: Unexpected command {}", peer_addr, command);
         if command == Command::User {
             shared.send_reply(peer_addr, rpl::ERR_ALREADYREGISTRED,
                               &["Fucking creep, stop spamming."]);
@@ -109,13 +108,13 @@ fn handle_message(msg: Message, peer_addr: SocketAddr, shared: State)
     }
 
     if !msg.has_enough_params() {
-        debug!("{}: Incomplete message {}", peer_addr, msg);
+        log::debug!("{}: Incomplete message {}", peer_addr, msg);
         if command == Command::Nick {
             shared.send_reply(peer_addr, rpl::ERR_NONICKNAMEGIVEN,
                               &["So what do I call you? \"piece of shit\" seems appropriate, no?"]);
         } else {
-            shared.send_reply(peer_addr, rpl::ERR_NEEDMOREPARAMS,
-                              &[command.as_str(), "What did you expect, motherfucker? Don't bother me if you have nothing to say."]);
+            shared.send_reply(peer_addr, rpl::ERR_NEEDMOREPARAMS, &[command.as_str(),
+                              "What did you expect, motherfucker? Don't bother me if you have nothing to say."]);
         }
         return Ok(());
     }
@@ -140,11 +139,11 @@ fn handle_message(msg: Message, peer_addr: SocketAddr, shared: State)
 }
 
 fn broken_pipe(err: io::Error, peer_addr: SocketAddr) {
-    info!("{} left!! I'm so sad... *sob* They said {}, meanie...", peer_addr, err);
+    log::info!("{} left!! I'm so sad... *sob* They said {}, meanie...", peer_addr, err);
 }
 
 fn invalid_data(err: io::Error, peer_addr: SocketAddr) {
-    info!("Some people came, I didn't understand what they were saying...
+    log::info!("Some people came, I didn't understand what they were saying...
 But they're gone now, we're alone together senpai!! :3
             *grabs knife*          (*0w0)
 (You hear someone whisper) {}
