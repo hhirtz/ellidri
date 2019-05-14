@@ -15,11 +15,12 @@
 //! ellidri ellidri.toml
 //! ```
 
+#![warn(clippy::all)]
+
 use std::{env, process};
 
 use crate::state::State;
 
-pub mod channel;
 pub mod client;
 pub mod config;
 pub mod message;

@@ -30,6 +30,14 @@ pub struct Client {
     ///
     /// Set when it issues a "QUIT" message.
     quit_message: Option<String>,
+
+    // Modes: https://tools.ietf.org/html/rfc2812.html#section-3.1.5
+    away: bool,
+    invisible: bool,
+    wallops: bool,
+    restricted: bool,
+    operator: bool,
+    server_notices: bool,
 }
 
 impl Client {
@@ -40,11 +48,17 @@ impl Client {
     pub fn new(queue: MessageQueue) -> Client {
         Client {
             queue,
-            state: ConnectionState::new(),
+            state: ConnectionState::default(),
             nick: String::from("*"),
             user: String::new(),
             real: String::new(),
             quit_message: None,
+            away: false,
+            invisible: false,
+            wallops: false,
+            restricted: false,
+            operator: false,
+            server_notices: false,
         }
     }
 
@@ -83,7 +97,7 @@ impl Client {
         self.queue.unbounded_send(msg).unwrap();
     }
 
-    /// The nickname of the client.
+    /// The nickname of the client
     pub fn nick(&self) -> &str {
         &self.nick
     }
@@ -125,12 +139,14 @@ pub enum ConnectionState {
     Registered,
 }
 
-impl ConnectionState {
+impl Default for ConnectionState {
     /// The connection state of a client that has just connected to the server.
-    pub fn new() -> ConnectionState {
+    fn default() -> ConnectionState {
         ConnectionState::ConnectionEstablished(RegistrationState::Stranger)
     }
+}
 
+impl ConnectionState {
     /// Given a connection state and a command, returns the next connection state after a client
     /// has sent the command, or a reply code to send the client if this command cannot be issued.
     ///
@@ -164,7 +180,7 @@ impl ConnectionState {
     }
 
     /// True iff self == ConnectionState::Registered.
-    pub fn is_registered(&self) -> bool {
+    pub fn is_registered(self) -> bool {
         match self {
             ConnectionState::Registered => true,
             _ => false,
@@ -200,7 +216,7 @@ impl RegistrationState {
     }
 
     /// True iff self == RegistrationState::Registered.
-    pub fn is_registered(&self) -> bool {
+    pub fn is_registered(self) -> bool {
         match self {
             RegistrationState::Registered => true,
             _ => false,

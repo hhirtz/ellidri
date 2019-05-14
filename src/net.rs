@@ -8,7 +8,7 @@ use tokio::net::{TcpListener, TcpStream};
 use tokio::prelude::*;
 
 use crate::message::{Command, Message, rpl};
-use crate::state::{MessageQueue, State};
+use crate::state::State;
 
 pub fn listen(addr: SocketAddr, shared: State) -> impl Future<Item=(), Error=()> {
     TcpListener::bind(&addr).expect("Failed to bind to address")
@@ -38,7 +38,7 @@ fn handle(conn: TcpStream, peer_addr: SocketAddr, shared: State)
             let shared_clone = shared.clone();  // bite
             io::read_until(reader, b'\n', Vec::new())
                 .and_then(|(reader, buf)| {
-                    if buf.len() == 0 {
+                    if buf.is_empty() {
                         Err(io::ErrorKind::BrokenPipe.into())
                     } else {
                         Ok((reader, String::from_utf8(buf)))

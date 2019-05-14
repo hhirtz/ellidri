@@ -7,7 +7,6 @@ use std::sync::{Arc, RwLock};
 use chrono::{DateTime, Utc};
 use futures::sync::mpsc;
 
-use crate::channel::Channel;
 use crate::client::Client;
 use crate::message::{Command, Message, Reply, rpl};
 
@@ -64,9 +63,7 @@ impl State {
     /// This depends of the "state" the connection is in. For example, if a client has not sent a
     /// "NICK" and an "USER" message, it cannot send a "JOIN" message.
     pub fn can_issue_command(&self, addr: SocketAddr, cmd: Command) -> bool {
-        self.0.read().unwrap()
-            .clients.get(&addr).unwrap()
-            .can_issue_command(cmd)
+        self.0.read().unwrap().clients[&addr].can_issue_command(cmd)
     }
 
     /// Handles a "JOIN" message.
@@ -184,10 +181,10 @@ impl StateInner {
         let client = self.clients.remove(&addr).unwrap();
         let msg = Message::new(client.nick(), Command::Quit, &[&client.quit_message()]);
 
-        for (_, chan) in self.channels.iter() {
+        for chan in self.channels.values() {
             if chan.members.contains_key(&addr) {
-                for (member, _) in chan.members.iter() {
-                    self.send(*member, msg.clone());
+                for &member in chan.members.keys() {
+                    self.send(member, msg.clone());
                 }
             }
         }
@@ -215,7 +212,7 @@ impl StateInner {
         log::debug!("{}: Join {} (keys={:?})", addr, targets, keys);
         let chan = self.channels.entry(targets.into()).or_default();
         chan.add_member(addr);
-        let nick = self.clients.get(&addr).unwrap().nick();
+        let nick = self.clients[&addr].nick();
         self.broadcast(targets, Message::new(&nick, Command::Join, &[targets]));
         self.send_command(addr, Command::Mode, &[targets, "ns"]);
         self.send_topic(addr, targets);
@@ -238,7 +235,7 @@ impl StateInner {
     /// Whether or not a "NICK" message with the given parameters can be issued by the given
     /// client.
     pub fn check_cmd_nick(&self, addr: SocketAddr, nick: &str) -> bool {
-        if self.clients.iter().any(|(_, c)| c.nick() == nick) {
+        if self.clients.values().any(|c| c.nick() == nick) {
             log::debug!("{}: Can't change nick to {}: Already in use", addr, nick);
             self.send_reply(addr, rpl::ERR_NICKNAMEINUSE,
                             &[nick, "Serves you right, shithead, one of you already has that shitty name!"]);
@@ -276,7 +273,7 @@ impl StateInner {
 
     /// Applies a "PART" command issued by the given client with the given parameters.
     pub fn apply_cmd_part(&mut self, addr: SocketAddr, target: &str, reason: Option<&str>) {
-        let nick = self.clients.get(&addr).unwrap().nick();
+        let nick = self.clients[&addr].nick();
         let msg = if let Some(reason) = reason {
             Message::new(nick, Command::Part, &[target, reason])
         } else {
@@ -308,13 +305,12 @@ impl StateInner {
     /// Applies a "PRIVMSG" command issued by the given client with the given parameters.
     pub fn apply_cmd_privmsg(&self, addr: SocketAddr, targets: &str, content: &str) {
         log::debug!("{}: Privmsg to {}", addr, targets);
-        let client = self.clients.get(&addr).unwrap();
+        let client = &self.clients[&addr];
         let msg = Message::new(client.nick(), Command::PrivMsg, &[targets, content]);
-        let chan = self.channels.get(targets).unwrap();
-        let chan_targets = chan.members.iter().filter(|(&a, _)| a != addr);
-        for (&member, _) in chan_targets {
-            self.send(member, msg.clone());
-        }
+        let chan = &self.channels[targets];
+        chan.members.keys()
+            .filter(|&&a| a != addr)
+            .for_each(|&member| self.send(member, msg.clone()));
     }
 
     /// Applies a "QUIT" command issued by the given client with the given parameters.
@@ -402,8 +398,8 @@ impl StateInner {
 
     /// Sends the given message to all users in the given channel.
     pub fn broadcast(&self, target: &str, msg: Message) {
-        let chan = self.channels.get(target).unwrap();
-        for (&member, _) in chan.members.iter() {
+        let chan = &self.channels[target];
+        for &member in chan.members.keys() {
             self.send(member, msg.clone());
         }
     }
@@ -432,7 +428,7 @@ impl StateInner {
     ///
     /// It also adds the client's nick as the first parameter, as it is needed for server replies.
     pub fn send_reply(&self, addr: SocketAddr, reply: Reply, params: &[&str]) {
-        let nick = self.clients.get(&addr).unwrap().nick();
+        let nick = self.clients[&addr].nick();
         let reply = format!("{} {}", reply, nick);
         let msg = Message::new(&self.prefix, reply, params);
         self.send(addr, msg);
@@ -440,11 +436,11 @@ impl StateInner {
 
     /// Sends the list of nicknames in the channel `chan_name` to the given client.
     fn send_names(&self, addr: SocketAddr, chan_name: &str) {
-        let chan = self.channels.get(chan_name).unwrap();
+        let chan = &self.channels[chan_name];
         if !chan.members.is_empty() {
             let mut names = String::with_capacity(512);
-            for (&member, _) in chan.members.iter() {
-                let nick = self.clients.get(&member).unwrap().nick();
+            for member in chan.members.keys() {
+                let nick = self.clients[member].nick();
                 names.push(' ');
                 names.push_str(nick);
             }
@@ -456,9 +452,9 @@ impl StateInner {
 
     /// Sends the topic of the channel `chan_name` to the given client.
     fn send_topic(&self, addr: SocketAddr, chan_name: &str) {
-        let chan = self.channels.get(chan_name).unwrap();
-        if chan.has_topic() {
-            self.send_reply(addr, rpl::TOPIC, &[chan_name, &chan.topic]);
+        let chan = &self.channels[chan_name];
+        if let Some(ref topic) = chan.topic {
+            self.send_reply(addr, rpl::TOPIC, &[chan_name, topic]);
         } else {
             self.send_reply(addr, rpl::NOTOPIC,
                             &[chan_name, "Dumbass, this chan doesn't have a topic!"]);
@@ -478,4 +474,55 @@ impl StateInner {
                         &[&self.prefix, env!("CARGO_PKG_VERSION"), "i", "i"]);
         self.apply_cmd_motd(addr);
     }
+}
+
+/// Channel data.
+#[derive(Default)]
+struct Channel {
+    /// Set of channel members, identified by their socket address, and associated with their
+    /// channel mode.
+    pub members: HashMap<SocketAddr, MemberModes>,
+
+    /// The topic.
+    pub topic: Option<String>,
+
+    pub user_limit: Option<usize>,
+    pub key: Option<String>,
+
+    // https://tools.ietf.org/html/rfc2811.html#section-4.3
+    pub ban_mask: String,
+    pub invitation_mask: String,
+
+    // Modes: https://tools.ietf.org/html/rfc2811.html#section-4.2
+    pub anonymous: bool,
+    pub invite_only: bool,
+    pub moderated: bool,
+    pub no_privmsg_from_outside: bool,
+    pub quiet: bool,
+    pub private: bool,
+    pub secret: bool,
+    pub reop: bool,
+    pub topic_restricted: bool,
+}
+
+impl Channel {
+    /// Adds a member with the default mode.
+    pub fn add_member(&mut self, addr: SocketAddr) {
+        self.members.insert(addr, MemberModes::default());
+    }
+
+    /// Removes a member.
+    pub fn remove_member(&mut self, addr: SocketAddr) {
+        self.members.remove(&addr);
+    }
+}
+
+/// Modes applied to clients on a per-channel basis.
+///
+/// https://tools.ietf.org/html/rfc2811.html#section-4.1
+#[derive(Default)]
+pub struct MemberModes {
+    pub channel_creator: bool,
+    pub channel_operator: bool,
+    pub voice: bool,
 }
