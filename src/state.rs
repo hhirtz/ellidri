@@ -287,18 +287,19 @@ impl StateInner {
     /// Whether or not a "PRIVMSG" message with the given parameters can be issued by the given
     /// client.
     pub fn check_cmd_privmsg(&self, addr: SocketAddr, targets: &str, _content: &str) -> bool {
-        let chan = self.channels.get(targets);
-        if chan.is_none() {
+        if let Some(ref chan) = self.channels.get(targets) {
+            if chan.members.contains_key(&addr) {
+                true
+            } else {
+                log::debug!("{}: Can't send privmsg to {}: Not in channel", addr, targets);
+                self.send_reply(addr, rpl::ERR_CANNOTSENDTOCHAN,
+                                &[targets, "The fuck you're trying to do, motherfucker? Do you fucking mind knocking at the door?"]);
+                false
+            }
+        } else {
             log::debug!("{}: Can't send privmsg to {}: No such channel", addr, targets);
             self.send_err_nosuchchannel(addr, targets);
             false
-        } else if !chan.unwrap().members.contains_key(&addr) {
-            log::debug!("{}: Can't send privmsg to {}: Not in channel", addr, targets);
-            self.send_reply(addr, rpl::ERR_CANNOTSENDTOCHAN,
-                            &[targets, "The fuck you're trying to do, motherfucker? Do you fucking mind knocking at the door?"]);
-            false
-        } else {
-            true
         }
     }
 
