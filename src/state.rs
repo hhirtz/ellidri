@@ -10,6 +10,8 @@ use futures::sync::mpsc;
 use crate::client::Client;
 use crate::message::{Command, Message, Reply, rpl};
 
+const MAX_CHANNEL_NAME_LENGTH: usize = 50;
+
 pub type MessageQueue = mpsc::UnboundedSender<Message>;
 
 /// Shared state of the IRC server.
@@ -199,13 +201,13 @@ impl StateInner {
     /// Whether or not a "JOIN" message with the given parameters can be issued by the given
     /// client.
     pub fn check_cmd_join(&self, addr: SocketAddr, targets: &str, keys: Option<&str>) -> bool {
-        if !targets.starts_with('#') {
+        if is_valid_channel_name(targets) {
+            true
+        } else {
             log::debug!("{}: Can't join {}: Invalid channel name", addr, targets);
             self.send_reply(addr, rpl::ERR_NOSUCHCHANNEL,
                             &[targets, "Do you see this shit, motherfucker? Try and say that one more time."]);
             false
-        } else {
-            true
         }
     }
 
@@ -532,4 +534,13 @@ pub struct MemberModes {
     pub channel_creator: bool,
     pub channel_operator: bool,
     pub voice: bool,
+}
+
+fn is_valid_channel_name(s: &str) -> bool {
+    s.chars().next()
+        .map(|c| {
+            s.len() <= MAX_CHANNEL_NAME_LENGTH
+                && (c == '#' || c == '&' || c == '!' || c == '+')
+        })
+        .unwrap_or(false)
 }
