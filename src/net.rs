@@ -134,6 +134,7 @@ fn handle_message(msg: Message, peer_addr: SocketAddr, shared: State)
         },
         Command::Topic => shared.cmd_topic(peer_addr, msg.param(0), msg.param_opt(1)),
         Command::User => {
+            // https://tools.ietf.org/html/rfc2812.html#section-3.1.3
             let mode: u8 = msg.param(1).parse().unwrap_or_default();
             shared.cmd_user(peer_addr, msg.param(0), msg.param(3), mode & 8 != 0, mode & 4 != 0);
         },
