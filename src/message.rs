@@ -206,18 +206,13 @@ impl Message {
     /// - check for spaces in `prefix` and each `params[..params.len()-1]`, and return an error (or
     ///   panic? since it's an error in the program. maybe not, just print a warning).
     /// - check for ':' at the first char of each `params[..]`.
+    #[allow(clippy::range_plus_one)]
     pub fn new<C>(prefix: &str, command: C, params: &[&str]) -> Message
         where C: fmt::Display
     {
         let mut buf = format!(":{} {}", prefix, command);
-        let prefix = Range {
-            start: 1,
-            end: 1 + prefix.len(),
-        };
-        let command = Range {
-            start: prefix.end + 1,
-            end: buf.len(),
-        };
+        let prefix = 1..(prefix.len() + 1);
+        let command = (prefix.end + 1)..buf.len();
         let mut param_ranges = Vec::new();
 
         for i in 0..params.len() {
@@ -229,7 +224,7 @@ impl Message {
             let start = buf.len();
             buf.push_str(params[i]);
             let end = buf.len();
-            param_ranges.push(Range { start, end })
+            param_ranges.push(start..end)
         }
         buf.push('\r');
         buf.push('\n');
@@ -501,7 +496,7 @@ fn parse_message_command(word: &str, buf: &str) -> Result<Command, Range<usize>>
 /// ```rust,ignore
 /// let outer = "Hello world!";
 /// let inner = &outer[0..5];  // "Hello"
-/// assert_eq!(range_of(inner, outer), Range { start: 0, end: 5 });
+/// assert_eq!(range_of(inner, outer), 0..5);
 /// ```
 fn range_of(inner: &str, outer: &str) -> Range<usize> {
     let inner_len = inner.len();
@@ -509,7 +504,7 @@ fn range_of(inner: &str, outer: &str) -> Range<usize> {
     let outer = outer.as_ptr() as usize;
     let start = inner - outer;
     let end = start + inner_len;
-    Range { start, end }
+    start..end
 }
 
 /// Returns the index of the trailing parameter of `outer`, where `inner` is the first word of the
@@ -531,5 +526,5 @@ fn last_range_of(inner: &str, outer: &str) -> Range<usize> {
     let outer = outer.as_ptr() as usize;
     let start = inner - outer + 1;  // Don't count the ':'.
     let end = outer_len;
-    Range { start, end }
+    start..end
 }
