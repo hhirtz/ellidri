@@ -1,6 +1,6 @@
 //! Shared state and API to handle incoming commands.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::net::SocketAddr;
 use std::sync::{Arc, RwLock};
 
@@ -252,6 +252,15 @@ impl StateInner {
     /// Applies a "NICK" command issued by the given client with the given parameter.
     pub fn apply_cmd_nick(&mut self, addr: SocketAddr, nick: &str) {
         log::debug!("{}: Changing nick to {}", addr, nick);
+        let msg = Message::new(self.clients[&addr].nick(), Command::Nick, &[nick]);
+        let noticed = self.channels
+            .values()
+            .filter(|chan| chan.members.contains_key(&addr))
+            .flat_map(|chan| chan.members.keys())
+            .collect::<HashSet<_>>();
+        for &client in noticed.into_iter() {
+            self.send(client, msg.clone());
+        }
         let client = self.clients.get_mut(&addr).unwrap();
         client.set_nick(nick);
         let old_state = client.state();
