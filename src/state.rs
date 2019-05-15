@@ -30,7 +30,7 @@ impl State {
     /// # TODO
     ///
     /// Make it accept a "config" struct, or use a builder pattern.
-    pub fn new(prefix: String, motd: String) -> State {
+    pub fn new(prefix: String, motd: Option<String>) -> State {
         let inner = StateInner::new(prefix, motd);
         State(Arc::new(RwLock::new(inner)))
     }
@@ -166,12 +166,12 @@ struct StateInner {
     created_at: DateTime<Utc>,
 
     /// The message of the day.
-    motd: String,
+    motd: Option<String>,
 }
 
 impl StateInner {
     /// Creates a new shared state. See `State::new`.
-    pub fn new(prefix: String, motd: String) -> StateInner {
+    pub fn new(prefix: String, motd: Option<String>) -> StateInner {
         StateInner {
             prefix,
             clients: HashMap::new(),
@@ -226,15 +226,21 @@ impl StateInner {
 
     /// Applies a "MOTD" command issued by the given client.
     pub fn apply_cmd_motd(&self, addr: SocketAddr) {
-        log::debug!("{}: Sending motd", addr);
-        let m = format!("- {} Senpai's message of the day -", self.prefix);
-        self.send_reply(addr, rpl::MOTDSTART, &[&m]);
-        for line in self.motd.lines() {
-            let m = format!("- {}", line);
-            self.send_reply(addr, rpl::MOTD, &[&m]);
+        if let Some(ref motd) = self.motd {
+            log::debug!("{}: Sending motd", addr);
+            let m = format!("- {} Senpai's message of the day -", self.prefix);
+            self.send_reply(addr, rpl::MOTDSTART, &[&m]);
+            for line in motd.lines() {
+                let m = format!("- {}", line);
+                self.send_reply(addr, rpl::MOTD, &[&m]);
+            }
+            self.send_reply(addr, rpl::ENDOFMOTD,
+                            &["Creep, don't get cocky just because senpai told me to say it!"]);
+        } else {
+            log::debug!("{}: Sending no-motd error", addr);
+            self.send_reply(addr, rpl::ERR_NOMOTD,
+                            &["Senpai wouldn't bother talking to scum like you!"]);
         }
-        self.send_reply(addr, rpl::ENDOFMOTD,
-                        &["Creep, don't get cocky just because senpai told me to say it!"]);
     }
 
     /// Whether or not a "NICK" message with the given parameters can be issued by the given

@@ -40,8 +40,7 @@ pub struct Config {
     /// It can span on multiple lines by using three double-quotes (""") at the
     /// beginning and at the end. Empty lines are not ignored, but it is trimmed
     /// (it seems).
-    #[serde(default = "String::new")]
-    pub motd: String,
+    pub motd: Option<String>,
 }
 
 /// Reads the configuration file at `path`, or exit if there is an error.
