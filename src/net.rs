@@ -133,7 +133,10 @@ fn handle_message(msg: Message, peer_addr: SocketAddr, shared: State)
             return Err(io::Error::new(io::ErrorKind::Other, "but I just wanted to quit..."));
         },
         Command::Topic => shared.cmd_topic(peer_addr, msg.param(0), msg.param_opt(1)),
-        Command::User => shared.cmd_user(peer_addr, msg.param(0), msg.param(3)),
+        Command::User => {
+            let mode: u8 = msg.param(1).parse().unwrap_or_default();
+            shared.cmd_user(peer_addr, msg.param(0), msg.param(3), mode & 8 != 0, mode & 4 != 0);
+        },
     }
     Ok(())
 }

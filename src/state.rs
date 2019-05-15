@@ -129,8 +129,10 @@ impl State {
     }
 
     /// Handles a "USER" message.
-    pub fn cmd_user(&self, addr: SocketAddr, user: &str, real: &str) {
-        self.0.write().unwrap().apply_cmd_user(addr, user, real);
+    pub fn cmd_user(&self, addr: SocketAddr, user: &str, real: &str,
+                    invisible: bool, wallops: bool)
+    {
+        self.0.write().unwrap().apply_cmd_user(addr, user, real, invisible, wallops);
     }
 }
 
@@ -386,10 +388,14 @@ impl StateInner {
     }
 
     /// Applies a "USER" command issued by the given client with the given parameters.
-    pub fn apply_cmd_user(&mut self, addr: SocketAddr, user: &str, real: &str) {
+    pub fn apply_cmd_user(&mut self, addr: SocketAddr, user: &str, real: &str,
+                          invisible: bool, wallops: bool)
+    {
         log::debug!("{}: Register as {}, '{}'", addr, user, real);
         let client = self.clients.get_mut(&addr).unwrap();
         client.set_user_real(user, real);
+        client.invisible = invisible;
+        client.wallops = wallops;
         let old_state = client.state();
         let new_state = client.apply_command(Command::User);
         if new_state.is_registered() && !old_state.is_registered() {

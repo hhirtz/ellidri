@@ -32,12 +32,12 @@ pub struct Client {
     quit_message: Option<String>,
 
     // Modes: https://tools.ietf.org/html/rfc2812.html#section-3.1.5
-    away: bool,
-    invisible: bool,
-    wallops: bool,
-    restricted: bool,
-    operator: bool,
-    server_notices: bool,
+    pub away: bool,
+    pub invisible: bool,
+    pub wallops: bool,
+    pub restricted: bool,
+    pub operator: bool,
+    pub server_notices: bool,
 }
 
 impl Client {
