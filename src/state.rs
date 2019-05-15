@@ -11,6 +11,7 @@ use crate::client::Client;
 use crate::message::{Command, Message, Reply, rpl};
 
 const MAX_CHANNEL_NAME_LENGTH: usize = 50;
+const MAX_NICKNAME_LENGTH: usize = 9;
 
 pub type MessageQueue = mpsc::UnboundedSender<Message>;
 
@@ -204,7 +205,7 @@ impl StateInner {
         if is_valid_channel_name(targets) {
             true
         } else {
-            log::debug!("{}: Can't join {}: Invalid channel name", addr, targets);
+            log::debug!("{}: Can't join {:?}: Invalid channel name", addr, targets);
             self.send_reply(addr, rpl::ERR_NOSUCHCHANNEL,
                             &[targets, "Do you see this shit, motherfucker? Try and say that one more time."]);
             false
@@ -239,10 +240,13 @@ impl StateInner {
     /// Whether or not a "NICK" message with the given parameters can be issued by the given
     /// client.
     pub fn check_cmd_nick(&self, addr: SocketAddr, nick: &str) -> bool {
-        if self.clients.values().any(|c| c.nick() == nick) {
-            log::debug!("{}: Can't change nick to {}: Already in use", addr, nick);
-            self.send_reply(addr, rpl::ERR_NICKNAMEINUSE,
-                            &[nick, "Serves you right, shithead, one of you already has that shitty name!"]);
+        if !is_valid_nickname(nick) {
+            log::debug!("{}: Can't change nick to {:?}: Bad nickname", addr, nick);
+            self.send_reply(addr, rpl::ERR_ERRONEUSNICKNAME, &[nick, "That name is a joke. No, it wasn't funny. Go away."]);
+            false
+        } else if self.clients.values().any(|c| c.nick() == nick) {
+            log::debug!("{}: Can't change nick to {:?}: Already in use", addr, nick);
+            self.send_reply(addr, rpl::ERR_NICKNAMEINUSE, &[nick, "Serves you right, shithead, one of you already has that shitty name!"]);
             false
         } else {
             true
@@ -251,7 +255,7 @@ impl StateInner {
 
     /// Applies a "NICK" command issued by the given client with the given parameter.
     pub fn apply_cmd_nick(&mut self, addr: SocketAddr, nick: &str) {
-        log::debug!("{}: Changing nick to {}", addr, nick);
+        log::debug!("{}: Changing nick to {:?}", addr, nick);
         let msg = Message::new(self.clients[&addr].nick(), Command::Nick, &[nick]);
         let noticed = self.channels
             .values()
@@ -304,13 +308,13 @@ impl StateInner {
             if chan.members.contains_key(&addr) {
                 true
             } else {
-                log::debug!("{}: Can't send privmsg to {}: Not in channel", addr, targets);
+                log::debug!("{}: Can't send privmsg to {:?}: Not in channel", addr, targets);
                 self.send_reply(addr, rpl::ERR_CANNOTSENDTOCHAN,
                                 &[targets, "The fuck you're trying to do, motherfucker? Do you fucking mind knocking at the door?"]);
                 false
             }
         } else {
-            log::debug!("{}: Can't send privmsg to {}: No such channel", addr, targets);
+            log::debug!("{}: Can't send privmsg to {:?}: No such channel", addr, targets);
             self.send_err_nosuchchannel(addr, targets);
             false
         }
@@ -318,7 +322,7 @@ impl StateInner {
 
     /// Applies a "PRIVMSG" command issued by the given client with the given parameters.
     pub fn apply_cmd_privmsg(&self, addr: SocketAddr, targets: &str, content: &str) {
-        log::debug!("{}: Privmsg to {}", addr, targets);
+        log::debug!("{}: Privmsg to {:?}", addr, targets);
         let client = &self.clients[&addr];
         let msg = Message::new(client.nick(), Command::PrivMsg, &[targets, content]);
         let chan = &self.channels[targets];
@@ -552,4 +556,19 @@ fn is_valid_channel_name(s: &str) -> bool {
                 && (c == '#' || c == '&' || c == '!' || c == '+')
         })
         .unwrap_or(false)
+}
+
+fn is_valid_nickname(s: &str) -> bool {
+    let s = s.as_bytes();
+    let is_valid_nickname_char = |&c: &u8| {
+        (b'0' <= c && c <= b'9')
+            || (b'a' <= c && c <= b'z')
+            || (b'A' <= c && c <= b'Z')
+            // "[", "]", "\", "`", "_", "^", "{", "|", "}"
+            || (0x5b <= c && c <= 0x60)
+            || (0x7b <= c && c <= 0x7d)
+    };
+    s.len() <= MAX_NICKNAME_LENGTH
+        && s.iter().all(is_valid_nickname_char)
+        && s[0] != b'-' && !(b'0' <= s[0] && s[0] <= b'9')
 }
