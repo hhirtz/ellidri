@@ -34,3 +34,8 @@ domain = "ellidri.localdomain"
 #
 #Empty lines are not ignored.
 #"""
+
+# The number of threads used by ellidri.
+# Type: Number
+# It must be between 1 and 32768.
+#worker_threads = 1

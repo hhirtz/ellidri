@@ -19,6 +19,8 @@
 
 use std::{env, process};
 
+use futures::Future;
+
 use crate::state::State;
 
 pub mod client;
@@ -48,7 +50,7 @@ pub fn start() {
 
     let c = config::from_file(config_path);
 
-    if let Some(level) = c.log_level() {
+    if let Some(level) = c.log_level {
         std::env::set_var("RUST_LOG", format!("ellidri={}", level));
     }
 
@@ -67,5 +69,15 @@ pub fn start() {
     log::warn!("Let's get started senpai!");
     log::warn!("I'm listening on {}, ok?", c.bind_to_address);
 
-    tokio::run(server);
+    let mut runtime = tokio::runtime::Builder::new()
+        .core_threads(c.worker_threads)
+        // TODO panic_handler
+        .build()
+        .unwrap_or_else(|err| {
+            log::error!("Oh no, senpai! Your computer is killing me... argh..");
+            log::error!("*dies painfully because of {}*", err);
+            process::exit(1);
+        });
+    runtime.spawn(server);
+    runtime.shutdown_on_idle().wait().unwrap();
 }
