@@ -111,6 +111,10 @@ fn handle_message(msg: Message, peer_addr: SocketAddr, shared: State)
         log::debug!("{}: Incomplete message {}", peer_addr, msg);
         if command == Command::Nick {
             shared.send_reply(peer_addr, rpl::ERR_NONICKNAMEGIVEN, &[lines::NO_NICKNAME_GIVEN]);
+        } else if command == Command::PrivMsg && msg.num_params() == 0 {
+            shared.send_reply(peer_addr, rpl::ERR_NORECIPIENT, &[lines::NO_RECIPIENT]);
+        } else if command == Command::PrivMsg && msg.num_params() == 1 {
+            shared.send_reply(peer_addr, rpl::ERR_NOTEXTTOSEND, &[lines::NO_TEXT_TO_SEND]);
         } else {
             shared.send_reply(peer_addr, rpl::ERR_NEEDMOREPARAMS,
                               &[command.as_str(), lines::NEED_MORE_PARAMS]);

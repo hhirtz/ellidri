@@ -33,6 +33,8 @@ pub mod rpl {
     pub const ERR_NOSUCHNICK: Reply       = "401";
     pub const ERR_NOSUCHCHANNEL: Reply    = "403";
     pub const ERR_CANNOTSENDTOCHAN: Reply = "404";
+    pub const ERR_NORECIPIENT: Reply      = "411";
+    pub const ERR_NOTEXTTOSEND: Reply     = "412";
     pub const ERR_UNKNOWNCOMMAND: Reply   = "421";
     pub const ERR_NOMOTD: Reply           = "422";
     pub const ERR_NONICKNAMEGIVEN: Reply  = "431";

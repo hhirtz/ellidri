@@ -19,6 +19,12 @@ pub const NICKNAME_IN_USE: &str =
 pub const NO_MOTD: &str =
 "Senpai wouldn't bother talking to scum like you!";
 
+pub const NO_RECIPIENT: &str =
+"Do you understand what you're doing? Do you even understand human language? Hello?";
+
+pub const NO_TEXT_TO_SEND: &str =
+"If you have nothing to say, dumbass, you can go fuck yourself.";
+
 pub const NO_TOPIC: &str =
 "Dumbass, this chan doesn't have any topic!";
 
