@@ -87,7 +87,7 @@ fn handle(conn: TcpStream, peer_addr: SocketAddr, shared: State)
 fn handle_message(msg: Message, peer_addr: SocketAddr, shared: State)
                   -> Result<(), io::Error>
 {
-    log::trace!("us -> {}: {}", peer_addr, msg);
+    log::trace!("{} -> us: {}", peer_addr, msg);
 
     let command = match msg.command() {
         Ok(cmd) => cmd,
