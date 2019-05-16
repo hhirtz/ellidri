@@ -92,7 +92,7 @@ fn handle_message(msg: Message, peer_addr: SocketAddr, shared: State)
     let command = match msg.command() {
         Ok(cmd) => cmd,
         Err(unknown) => {
-            log::debug!("{}: Unknown command {}", peer_addr, unknown);
+            log::debug!("{}: Unknown command {:?}", peer_addr, unknown);
             shared.send_reply(peer_addr, rpl::ERR_UNKNOWNCOMMAND,
                               &[unknown, lines::UNKNOWN_COMMAND]);
             return Ok(());
@@ -100,7 +100,7 @@ fn handle_message(msg: Message, peer_addr: SocketAddr, shared: State)
     };
 
     if !shared.can_issue_command(peer_addr, command) {
-        log::debug!("{}: Unexpected command {}", peer_addr, command);
+        log::debug!("{}: Unexpected command {:?}", peer_addr, command);
         if command == Command::User {
             shared.send_reply(peer_addr, rpl::ERR_ALREADYREGISTRED, &[lines::RATELIMIT]);
         }
@@ -108,7 +108,7 @@ fn handle_message(msg: Message, peer_addr: SocketAddr, shared: State)
     }
 
     if !msg.has_enough_params() {
-        log::debug!("{}: Incomplete message {}", peer_addr, msg);
+        log::debug!("{}: Incomplete message {:?}", peer_addr, msg);
         if command == Command::Nick {
             shared.send_reply(peer_addr, rpl::ERR_NONICKNAMEGIVEN, &[lines::NO_NICKNAME_GIVEN]);
         } else if command == Command::PrivMsg && msg.num_params() == 0 {
