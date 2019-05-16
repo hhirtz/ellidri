@@ -7,6 +7,7 @@ use tokio::io;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::prelude::*;
 
+use crate::lines;
 use crate::message::{Command, Message, rpl};
 use crate::state::State;
 
@@ -93,7 +94,7 @@ fn handle_message(msg: Message, peer_addr: SocketAddr, shared: State)
         Err(unknown) => {
             log::debug!("{}: Unknown command {}", peer_addr, unknown);
             shared.send_reply(peer_addr, rpl::ERR_UNKNOWNCOMMAND,
-                              &[unknown, "rfc2812 motherfucker, do you speak it?"]);
+                              &[unknown, lines::UNKNOWN_COMMAND]);
             return Ok(());
         },
     };
@@ -101,8 +102,7 @@ fn handle_message(msg: Message, peer_addr: SocketAddr, shared: State)
     if !shared.can_issue_command(peer_addr, command) {
         log::debug!("{}: Unexpected command {}", peer_addr, command);
         if command == Command::User {
-            shared.send_reply(peer_addr, rpl::ERR_ALREADYREGISTRED,
-                              &["Fucking creep, stop spamming."]);
+            shared.send_reply(peer_addr, rpl::ERR_ALREADYREGISTRED, &[lines::RATELIMIT]);
         }
         return Ok(());
     }
@@ -110,11 +110,10 @@ fn handle_message(msg: Message, peer_addr: SocketAddr, shared: State)
     if !msg.has_enough_params() {
         log::debug!("{}: Incomplete message {}", peer_addr, msg);
         if command == Command::Nick {
-            shared.send_reply(peer_addr, rpl::ERR_NONICKNAMEGIVEN,
-                              &["So what do I call you? \"piece of shit\" seems appropriate, no?"]);
+            shared.send_reply(peer_addr, rpl::ERR_NONICKNAMEGIVEN, &[lines::NO_NICKNAME_GIVEN]);
         } else {
-            shared.send_reply(peer_addr, rpl::ERR_NEEDMOREPARAMS, &[command.as_str(),
-                              "What did you expect, motherfucker? Don't bother me if you have nothing to say."]);
+            shared.send_reply(peer_addr, rpl::ERR_NEEDMOREPARAMS,
+                              &[command.as_str(), lines::NEED_MORE_PARAMS]);
         }
         return Ok(());
     }

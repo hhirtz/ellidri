@@ -8,6 +8,7 @@ use chrono::{DateTime, Utc};
 use futures::sync::mpsc;
 
 use crate::client::Client;
+use crate::lines;
 use crate::message::{Command, Message, Reply, rpl};
 
 const MAX_CHANNEL_NAME_LENGTH: usize = 50;
@@ -206,8 +207,7 @@ impl StateInner {
             true
         } else {
             log::debug!("{}: Can't join {:?}: Invalid channel name", addr, targets);
-            self.send_reply(addr, rpl::ERR_NOSUCHCHANNEL,
-                            &[targets, "Do you see this shit, motherfucker? Try and say that one more time."]);
+            self.send_reply(addr, rpl::ERR_NOSUCHCHANNEL, &[targets, lines::NO_SUCH_CHANNEL]);
             false
         }
     }
@@ -234,12 +234,10 @@ impl StateInner {
                 let m = format!("- {}", line);
                 self.send_reply(addr, rpl::MOTD, &[&m]);
             }
-            self.send_reply(addr, rpl::ENDOFMOTD,
-                            &["Creep, don't get cocky just because senpai told me to say it!"]);
+            self.send_reply(addr, rpl::ENDOFMOTD, &[lines::END_OF_MOTD]);
         } else {
             log::debug!("{}: Sending no-motd error", addr);
-            self.send_reply(addr, rpl::ERR_NOMOTD,
-                            &["Senpai wouldn't bother talking to scum like you!"]);
+            self.send_reply(addr, rpl::ERR_NOMOTD, &[lines::NO_MOTD]);
         }
     }
 
@@ -248,11 +246,11 @@ impl StateInner {
     pub fn check_cmd_nick(&self, addr: SocketAddr, nick: &str) -> bool {
         if !is_valid_nickname(nick) {
             log::debug!("{}: Can't change nick to {:?}: Bad nickname", addr, nick);
-            self.send_reply(addr, rpl::ERR_ERRONEUSNICKNAME, &[nick, "That name is a joke. No, it wasn't funny. Go away."]);
+            self.send_reply(addr, rpl::ERR_ERRONEUSNICKNAME, &[nick, lines::ERRONEOUS_NICNAME]);
             false
         } else if self.clients.values().any(|c| c.nick() == nick) {
             log::debug!("{}: Can't change nick to {:?}: Already in use", addr, nick);
-            self.send_reply(addr, rpl::ERR_NICKNAMEINUSE, &[nick, "Serves you right, shithead, one of you already has that shitty name!"]);
+            self.send_reply(addr, rpl::ERR_NICKNAMEINUSE, &[nick, lines::NICKNAME_IN_USE]);
             false
         } else {
             true
@@ -286,8 +284,7 @@ impl StateInner {
         let is_on_chan = self.channels.get(target)
             .map_or(false, |chan| chan.members.contains_key(&addr));
         if !is_on_chan {
-            self.send_reply(addr, rpl::ERR_NOTONCHANNEL,
-                            &[target, "You lost, dumbass? Try QUIT."]);
+            self.send_reply(addr, rpl::ERR_NOTONCHANNEL, &[target, lines::NOT_ON_CHANNEL_PART]);
             false
         } else {
             true
@@ -316,12 +313,12 @@ impl StateInner {
             } else {
                 log::debug!("{}: Can't send privmsg to {:?}: Not in channel", addr, targets);
                 self.send_reply(addr, rpl::ERR_CANNOTSENDTOCHAN,
-                                &[targets, "The fuck you're trying to do, motherfucker? Do you fucking mind knocking at the door?"]);
+                                &[targets, lines::CANNOT_SEND_TO_CHAN]);
                 false
             }
         } else {
             log::debug!("{}: Can't send privmsg to {:?}: No such channel", addr, targets);
-            self.send_err_nosuchchannel(addr, targets);
+            self.send_reply(addr, rpl::ERR_NOSUCHNICK, &[targets, lines::NO_SUCH_NICK]);
             false
         }
     }
@@ -370,7 +367,7 @@ impl StateInner {
         if target.starts_with('#') {
             self.send_reply(addr, rpl::CHANNELMODEIS, &[target, "ns"]);
         } else {
-            self.send_err_nosuchchannel(addr, target);
+            //self.send_err_nosuchchannel(addr, target);
         }
     }
 
@@ -405,7 +402,7 @@ impl StateInner {
                 return;
             }
         }
-        self.send_reply(addr, rpl::ERR_NOTONCHANNEL, &[target, "Topic might be: Go fuck yourself you fucking retard."]);
+        self.send_reply(addr, rpl::ERR_NOTONCHANNEL, &[target, lines::NOT_ON_CHANNEL_TOPIC]);
     }
 
     /// Applies a "USER" command issued by the given client with the given parameters.
@@ -446,12 +443,6 @@ impl StateInner {
         self.send(addr, msg);
     }
 
-    /// Sends an ERR_NOSUCHCHANNEL to the given client, for the given channel that doesn't exist.
-    pub fn send_err_nosuchchannel(&self, addr: SocketAddr, target: &str) {
-        self.send_reply(addr, rpl::ERR_NOSUCHCHANNEL,
-                        &[target, "You better pay more attention to what you are doing, because if you don't I'm gonna find you and dump you into a river."]);
-    }
-
     /// Creates a message from the given reply and parameters, and sends it to the given client.
     ///
     /// It also adds the client's nick as the first parameter, as it is needed for server replies.
@@ -474,8 +465,7 @@ impl StateInner {
             }
             self.send_reply(addr, rpl::NAMREPLY, &["@", chan_name, &names]);
         }
-        self.send_reply(addr, rpl::ENDOFNAMES,
-                        &[chan_name, "Found your fucking friends yet, dickhead?"]);
+        self.send_reply(addr, rpl::ENDOFNAMES, &[chan_name, lines::END_OF_NAMES]);
     }
 
     /// Sends the topic of the channel `chan_name` to the given client.
@@ -484,22 +474,17 @@ impl StateInner {
         if let Some(ref topic) = chan.topic {
             self.send_reply(addr, rpl::TOPIC, &[chan_name, topic]);
         } else {
-            self.send_reply(addr, rpl::NOTOPIC,
-                            &[chan_name, "Dumbass, this chan doesn't have a topic!"]);
+            self.send_reply(addr, rpl::NOTOPIC, &[chan_name, lines::NO_TOPIC]);
         }
     }
 
     /// Sends welcome messages. Called when a client has completed its registration.
     fn send_welcome(&self, addr: SocketAddr) {
-        self.send_reply(addr, rpl::WELCOME,
-                        &["Hmph. It's not like I wanted to welcome you."]);
-        self.send_reply(addr, rpl::YOURHOST,
-                        &["I did it for senpai! Ooh senpai~ you're the best!"]);
-        let m = format!("We've been together since {}",
-                        self.created_at.to_rfc2822());
+        self.send_reply(addr, rpl::WELCOME, &[lines::WELCOME]);
+        self.send_reply(addr, rpl::YOURHOST, &[lines::YOUR_HOST]);
+        let m = format!("We've been together since {}", self.created_at.to_rfc2822());
         self.send_reply(addr, rpl::CREATED, &[&m]);
-        self.send_reply(addr, rpl::MYINFO,
-                        &[&self.prefix, env!("CARGO_PKG_VERSION"), "i", "i"]);
+        self.send_reply(addr, rpl::MYINFO, &[&self.prefix, env!("CARGO_PKG_VERSION"), "i", "i"]);
         self.apply_cmd_motd(addr);
     }
 }

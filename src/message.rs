@@ -30,6 +30,7 @@ pub mod rpl {
     pub const MOTDSTART: Reply     = "375";
     pub const ENDOFMOTD: Reply     = "376";
 
+    pub const ERR_NOSUCHNICK: Reply       = "401";
     pub const ERR_NOSUCHCHANNEL: Reply    = "403";
     pub const ERR_CANNOTSENDTOCHAN: Reply = "404";
     pub const ERR_UNKNOWNCOMMAND: Reply   = "421";
