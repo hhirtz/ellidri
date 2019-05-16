@@ -1,6 +1,9 @@
 pub const CANNOT_SEND_TO_CHAN: &str =
 "The fuck you're trying to do, motherfucker? Do you fucking mind knocking at the door?";
 
+pub const CHAN_O_PRIVS_NEEDED: &str =
+"";
+
 pub const END_OF_MOTD: &str =
 "Creep, don't get cocky just because senpai told me to say it!";
 
@@ -48,6 +51,16 @@ pub const RATELIMIT: &str =
 
 pub const UNKNOWN_COMMAND: &str =
 "rfc2812 motherfucker, do you speak it?";
+
+pub const UNKNOWN_MODE: &str =
+"Is that a threat, motherfucker? I'll let that slide for now.\
+If I see you do that again, you know what to do.";
+
+pub const USER_NOT_IN_CHANNEL: &str =
+"";
+
+pub const USERS_DONT_MATCH: &str =
+"";
 
 pub const WELCOME: &str =
 "Hmph. It's not like I wanted to welcome you.";

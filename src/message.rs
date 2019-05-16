@@ -40,11 +40,16 @@ pub mod rpl {
     pub const ERR_NONICKNAMEGIVEN: Reply  = "431";
     pub const ERR_ERRONEUSNICKNAME: Reply = "432";
     pub const ERR_NICKNAMEINUSE: Reply    = "433";
+    pub const ERR_USERNOTINCHANNEL: Reply = "441";
     pub const ERR_NOTONCHANNEL: Reply     = "442";
     pub const ERR_NOTREGISTERED: Reply    = "451";
     pub const ERR_NEEDMOREPARAMS: Reply   = "461";
     pub const ERR_ALREADYREGISTRED: Reply = "462";
     pub const ERR_YOUREBANNEDCREEP: Reply = "465";
+    pub const ERR_UNKNOWNMODE: Reply      = "472";
+    pub const ERR_CHANOPRIVSNEEDED: Reply = "482";
+
+    pub const ERR_USERSDONTMATCH: Reply = "502";
 }
 
 /// Code generation for the list of commands.

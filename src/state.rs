@@ -215,11 +215,12 @@ impl StateInner {
     /// Applies a "JOIN" command issued by the given client with the given parameters.
     pub fn apply_cmd_join(&mut self, addr: SocketAddr, targets: &str, keys: Option<&str>) {
         log::debug!("{}: Join {} (keys={:?})", addr, targets, keys);
-        let chan = self.channels.entry(targets.into()).or_default();
-        chan.add_member(addr);
+        let chan = self.channels.entry(targets.into()).or_insert_with(Channel::new);
+        let modes = chan.modes();
         let nick = self.clients[&addr].nick();
-        self.broadcast(targets, Message::new(&nick, Command::Join, &[targets]));
-        self.send_command(addr, Command::Mode, &[targets, "ns"]);
+        chan.add_member(addr);
+        self.broadcast(targets, Message::new(nick, Command::Join, &[targets]));
+        self.send_command(addr, Command::Mode, &[targets, &modes]);
         self.send_topic(addr, targets);
         self.send_names(addr, targets);
     }
@@ -345,9 +346,38 @@ impl StateInner {
     /// "MODE" and "TOPIC" have been split in two handlers, one to get the mode/topic, the other to
     /// set it.
     pub fn check_cmd_set_modes(&self, addr: SocketAddr, target: &str, modes: &str) -> bool {
-        // TODO
-        log::warn!("cmd_set_modes: unimplemented");
-        false
+        if modes.is_empty() {
+            false
+        } else if is_valid_nickname(target) {
+            if target == self.clients[&addr].nick() {
+                true
+            } else {
+                self.send_reply(addr, rpl::ERR_USERSDONTMATCH, &[target, lines::USERS_DONT_MATCH]);
+                false
+            }
+        } else if is_valid_channel_name(target) {
+            if let Some(chan) = self.channels.get(target) {
+                if let Some(member) = chan.members.get(&addr) {
+                    if member.channel_operator {
+                        true
+                    } else {
+                        self.send_reply(addr, rpl::ERR_CHANOPRIVSNEEDED,
+                                        &[target, lines::CHAN_O_PRIVS_NEEDED]);
+                        false
+                    }
+                } else {
+                    self.send_reply(addr, rpl::ERR_USERNOTINCHANNEL,
+                                    &["you", target, lines::USER_NOT_IN_CHANNEL]);
+                    false
+                }
+            } else {
+                self.send_reply(addr, rpl::ERR_NOSUCHNICK, &[target, lines::NO_SUCH_NICK]);
+                false
+            }
+        } else {
+            self.send_reply(addr, rpl::ERR_NOSUCHNICK, &[target, lines::NO_SUCH_NICK]);
+            false
+        }
     }
 
     /// Apply a "MODE" command issued by the given client with the given parameters.
@@ -355,8 +385,21 @@ impl StateInner {
     /// "MODE" and "TOPIC" have been split in two handlers, one to get the mode/topic, the other to
     /// set it.
     pub fn apply_cmd_set_modes(&mut self, addr: SocketAddr, target: &str, modes: &str) {
-        // TODO
-        log::warn!("cmd_set_modes: unimplemented");
+        log::debug!("{}: Set mode of {:?} to {:?}", addr, target, modes);
+        if is_channel_name(target) {
+            match self.channels.get_mut(target).unwrap().update_modes(modes) {
+                Ok(modes) => {
+                    let nick = self.clients[&addr].nick();
+                    let msg = Message::new(nick, Command::Mode, &[&modes]);
+                    self.broadcast(target, msg);
+                },
+                Err(flag) => self.send_reply(addr, rpl::ERR_UNKNOWNMODE,
+                                             &[flag, lines::UNKNOWN_MODE]),
+            }
+        } else {
+            // TODO
+            log::warn!("cmd_set_modes: unimplemented for users");
+        }
     }
 
     /// Applies a "MODE" command issued by the given client with the given parameter.
@@ -364,8 +407,9 @@ impl StateInner {
     /// "MODE" and "TOPIC" have been split in two handlers, one to get the mode/topic, the other to
     /// set it.
     pub fn apply_cmd_get_modes(&self, addr: SocketAddr, target: &str) {
-        if target.starts_with('#') {
-            self.send_reply(addr, rpl::CHANNELMODEIS, &[target, "ns"]);
+        if is_channel_name(target) {
+            let modes = self.channels[target].modes();
+            self.send_reply(addr, rpl::CHANNELMODEIS, &[target, &modes]);
         } else {
             //self.send_err_nosuchchannel(addr, target);
         }
@@ -458,9 +502,10 @@ impl StateInner {
         let chan = &self.channels[chan_name];
         if !chan.members.is_empty() {
             let mut names = String::with_capacity(512);
-            for member in chan.members.keys() {
+            for (member, modes) in chan.members.iter() {
                 let nick = self.clients[member].nick();
                 names.push(' ');
+                names.push(modes.symbol());
                 names.push_str(nick);
             }
             self.send_reply(addr, rpl::NAMREPLY, &["@", chan_name, &names]);
@@ -519,14 +564,93 @@ struct Channel {
 }
 
 impl Channel {
+    /// Creates a channel with the 'n' mode set.
+    pub fn new() -> Channel {
+        Channel {
+            no_privmsg_from_outside: true,
+            ..Channel::default()
+        }
+    }
+
     /// Adds a member with the default mode.
     pub fn add_member(&mut self, addr: SocketAddr) {
-        self.members.insert(addr, MemberModes::default());
+        let modes = if self.members.is_empty() {
+            MemberModes {
+                channel_creator: true,
+                channel_operator: true,
+                voice: false,
+            }
+        } else {
+            MemberModes::default()
+        };
+        self.members.insert(addr, modes);
     }
 
     /// Removes a member.
     pub fn remove_member(&mut self, addr: SocketAddr) {
         self.members.remove(&addr);
+    }
+
+    pub fn update_modes<'a>(&mut self, modes: &'a str) -> Result<String, &'a str> {
+        let bmodes = modes.as_bytes();
+        let mut value = true;
+        let mut applied_modes = String::new();
+
+        if bmodes[0] != b'+' && bmodes[0] != b'-' {
+            applied_modes.push('+');
+        }
+
+        for i in 0..bmodes.len() {
+            let mode = bmodes[i];
+            if mode == b'+' {
+                value = true;
+                applied_modes.push('+');
+            } else if mode == b'-' {
+                value = false;
+                applied_modes.push('-');
+            } else if mode == b'a' {
+                self.anonymous = value;
+                applied_modes.push('a');
+            } else if mode == b'i' {
+                self.invite_only = value;
+                applied_modes.push('i');
+            } else if mode == b'm' {
+                self.moderated = value;
+                applied_modes.push('m');
+            } else if mode == b'n' {
+                self.no_privmsg_from_outside = value;
+                applied_modes.push('n');
+            } else if mode == b'q' {
+                self.quiet = value;
+                applied_modes.push('q');
+            } else if mode == b'p' {
+                self.private = value;
+                applied_modes.push('p');
+            } else if mode == b'r' {
+                self.reop = value;
+                applied_modes.push('r');
+            } else if mode == b't' {
+                self.topic_restricted = value;
+                applied_modes.push('t');
+            } else {
+                return Err(&modes[i..=i]);
+            }
+        }
+
+        Ok(applied_modes)
+    }
+
+    fn modes(&self) -> String {
+        let mut modes = String::from("+");
+        if self.anonymous { modes.push('a'); }
+        if self.invite_only { modes.push('i'); }
+        if self.moderated { modes.push('m'); }
+        if self.no_privmsg_from_outside { modes.push('n'); }
+        if self.quiet { modes.push('q'); }
+        if self.private { modes.push('p'); }
+        if self.reop { modes.push('r'); }
+        if self.topic_restricted { modes.push('t'); }
+        modes
     }
 }
 
@@ -534,19 +658,34 @@ impl Channel {
 ///
 /// https://tools.ietf.org/html/rfc2811.html#section-4.1
 #[derive(Default)]
-pub struct MemberModes {
+struct MemberModes {
     pub channel_creator: bool,
     pub channel_operator: bool,
     pub voice: bool,
 }
 
+impl MemberModes {
+    pub fn symbol(&self) -> char {
+        if self.channel_operator {
+            '@'
+        } else if self.voice {
+            '+'
+        } else {
+            ' '
+        }
+    }
+}
+
+fn is_channel_name(s: &str) -> bool {
+    let s = s.as_bytes();
+    !s.is_empty() && s.len() <= MAX_CHANNEL_NAME_LENGTH
+        && (s[0] == b'#' || s[0] == b'&' || s[0] == b'!' || s[0] == b'+')
+}
+
 fn is_valid_channel_name(s: &str) -> bool {
-    s.chars().next()
-        .map(|c| {
-            s.len() <= MAX_CHANNEL_NAME_LENGTH
-                && (c == '#' || c == '&' || c == '!' || c == '+')
-        })
-        .unwrap_or(false)
+    // 7 == ctrl+G
+    // https://tools.ietf.org/html/rfc2811.html#section-2.1
+    is_channel_name(s) && s.as_bytes()[1..].iter().all(|&c| c != b' ' && c != b',' && c != 7)
 }
 
 fn is_valid_nickname(s: &str) -> bool {
