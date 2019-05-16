@@ -8,7 +8,7 @@
 
 use serde::Deserialize;
 use std::path::Path;
-use std::{fs, process, net};
+use std::{fmt, fs, process, net};
 
 fn bind_to_address() -> net::SocketAddr {
     net::SocketAddr::from(([0, 0, 0, 0], 6667))
@@ -56,7 +56,7 @@ pub struct Config {
 }
 
 fn invalid_config<T, E>(err: E) -> T
-    where E: std::fmt::Display
+    where E: fmt::Display
 {
     eprintln!("Oh no... senpai made a mistake in here...");
     eprintln!("Senpai, I don't know what to do with {}", err);
