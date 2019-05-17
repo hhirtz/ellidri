@@ -185,7 +185,8 @@ impl StateInner {
     /// Removes a client from the state. See `State::remove`.
     pub fn remove(&mut self, addr: SocketAddr) {
         let client = self.clients.remove(&addr).unwrap();
-        let msg = Message::new(client.nick(), Command::Quit, &[&client.quit_message()]);
+        let msg = Message::with_prefix(client.nick(), Command::Quit)
+            .trailing_param(client.quit_message());
 
         for chan in self.channels.values() {
             if chan.members.contains_key(&addr) {
@@ -216,11 +217,16 @@ impl StateInner {
     pub fn apply_cmd_join(&mut self, addr: SocketAddr, targets: &str, keys: Option<&str>) {
         log::debug!("{}: Join {} (keys={:?})", addr, targets, keys);
         let chan = self.channels.entry(targets.into()).or_insert_with(Channel::new);
-        let modes = chan.modes();
-        let nick = self.clients[&addr].nick();
         chan.add_member(addr);
-        self.broadcast(targets, Message::new(nick, Command::Join, &[targets]));
-        self.send_command(addr, Command::Mode, &[targets, &modes]);
+        let modes = chan.modes();
+        let client = &self.clients[&addr];
+        let join = Message::with_prefix(client.nick(), Command::Join).param(targets).build();
+        self.broadcast(targets, join);
+        let modes = Message::with_prefix(&self.prefix, Command::Mode)
+            .param(targets)
+            .param(modes)
+            .build();
+        client.send(modes);
         self.send_topic(addr, targets);
         self.send_names(addr, targets);
     }
@@ -261,7 +267,9 @@ impl StateInner {
     /// Applies a "NICK" command issued by the given client with the given parameter.
     pub fn apply_cmd_nick(&mut self, addr: SocketAddr, nick: &str) {
         log::debug!("{}: Changing nick to {:?}", addr, nick);
-        let msg = Message::new(self.clients[&addr].nick(), Command::Nick, &[nick]);
+        let msg = Message::with_prefix(self.clients[&addr].nick(), Command::Nick)
+            .param(nick)
+            .build();
         let noticed = self.channels
             .values()
             .filter(|chan| chan.members.contains_key(&addr))
@@ -296,9 +304,9 @@ impl StateInner {
     pub fn apply_cmd_part(&mut self, addr: SocketAddr, target: &str, reason: Option<&str>) {
         let nick = self.clients[&addr].nick();
         let msg = if let Some(reason) = reason {
-            Message::new(nick, Command::Part, &[target, reason])
+            Message::with_prefix(nick, Command::Part).param(target).trailing_param(reason)
         } else {
-            Message::new(nick, Command::Part, &[target])
+            Message::with_prefix(nick, Command::Part).param(target).build()
         };
         self.broadcast(target, msg);
         let chan = self.channels.get_mut(target).unwrap();
@@ -328,7 +336,9 @@ impl StateInner {
     pub fn apply_cmd_privmsg(&self, addr: SocketAddr, targets: &str, content: &str) {
         log::debug!("{}: Privmsg to {:?}", addr, targets);
         let client = &self.clients[&addr];
-        let msg = Message::new(client.nick(), Command::PrivMsg, &[targets, content]);
+        let msg = Message::with_prefix(client.nick(), Command::PrivMsg)
+            .param(targets)
+            .trailing_param(content);
         let chan = &self.channels[targets];
         chan.members.keys()
             .filter(|&&a| a != addr)
@@ -386,7 +396,7 @@ impl StateInner {
             match self.channels.get_mut(target).unwrap().update_modes(modes) {
                 Ok(modes) => {
                     let nick = self.clients[&addr].nick();
-                    let msg = Message::new(nick, Command::Mode, &[&modes]);
+                    let msg = Message::with_prefix(nick, Command::Mode).param(&modes).build();
                     self.broadcast(target, msg);
                 },
                 Err(flag) => self.send_reply(addr, rpl::ERR_UNKNOWNMODE,
@@ -479,18 +489,37 @@ impl StateInner {
 
     /// Creates a message from the given command and parameters, and sends it to the given client.
     pub fn send_command(&self, addr: SocketAddr, cmd: Command, params: &[&str]) {
-        let msg = Message::new(&self.prefix, cmd, params);
-        self.send(addr, msg);
+        if let Some(client) = self.clients.get(&addr) {
+            let mut msg = Message::with_prefix(&self.prefix, cmd);
+            let msg = if !params.is_empty() {
+                for p in &params[..params.len() - 1] {
+                    msg = msg.param(p);
+                }
+                msg.trailing_param(params[params.len() - 1])
+            } else {
+                msg.build()
+            };
+            client.send(msg);
+        }
     }
 
     /// Creates a message from the given reply and parameters, and sends it to the given client.
     ///
     /// It also adds the client's nick as the first parameter, as it is needed for server replies.
     pub fn send_reply(&self, addr: SocketAddr, reply: Reply, params: &[&str]) {
-        let nick = self.clients[&addr].nick();
-        let reply = format!("{} {}", reply, nick);
-        let msg = Message::new(&self.prefix, reply, params);
-        self.send(addr, msg);
+        if let Some(client) = self.clients.get(&addr) {
+            let mut msg = Message::with_prefix(&self.prefix, Command::Reply(reply))
+                .param(client.nick());
+            let msg = if !params.is_empty() {
+                for p in &params[..params.len() - 1] {
+                    msg = msg.param(p);
+                }
+                msg.trailing_param(params[params.len() - 1])
+            } else {
+                msg.build()
+            };
+            client.send(msg);
+        }
     }
 
     /// Sends the list of nicknames in the channel `chan_name` to the given client.

@@ -8,6 +8,11 @@ use std::ops::Range;
 pub use rpl::Reply;
 use std::{fmt, iter, mem};
 
+/// The maximum length of an IRC message.
+///
+/// Used by `Message` constructors.
+const MAX_MESSAGE_LENGTH: usize = 512;
+
 /// The list of IRC replies.
 ///
 /// Source: https://tools.ietf.org/html/rfc2812.html#section-5
@@ -72,7 +77,10 @@ macro_rules! commands {
         /// Unknown commands and replies are supported by `Message` directly, this enum just
         /// contains the supported commands.
         #[derive(Clone, Copy, Debug, PartialEq)]
-        pub enum Command { $( $cmd ),* }
+        pub enum Command {
+            $( $cmd, )*
+            Reply(Reply),
+        }
 
         impl Command {
             /// From a given command string, returns the corresponding command, or `None`
@@ -119,6 +127,7 @@ macro_rules! commands {
                 $(
                     Command::$cmd => $n,
                 )*
+                    Command::Reply(_) => 0,
                 }
             }
 
@@ -138,6 +147,7 @@ macro_rules! commands {
                 $(
                     Command::$cmd => stringify!($cmd),
                 )*
+                    Command::Reply(s) => s,
                 }
             }
         }
@@ -220,6 +230,10 @@ impl<'a> Iterator for Params<'a> {
 
 impl<'a> iter::FusedIterator for Params<'a> {}
 
+fn must_be_trailing(param: &str) -> bool {
+    param.is_empty() || param.as_bytes()[0] == b':' || param.chars().any(char::is_whitespace)
+}
+
 /// Represents an IRC message, with its prefix (source), command and parameters.
 ///
 /// This type is a wrapper around a string. It means that when `Message::parse` is called, the
@@ -248,69 +262,95 @@ pub struct Message<'a> {
     first_param_index: usize,
 }
 
+/// Helper to build progressively an IRC message. Use with `Message::with_prefix`.
+pub struct MessageBuilder {
+    buf: String,
+    prefix: Option<Range<usize>>,
+    command: Command,
+    first_param_index: usize,
+}
+
+impl MessageBuilder {
+    /// Returns the built message.
+    pub fn build(mut self) -> Message<'static> {
+        self.buf.push('\r');
+        self.buf.push('\n');
+        Message {
+            buf: self.buf.into(),
+            prefix: self.prefix,
+            command: Ok(self.command),
+            first_param_index: self.first_param_index,
+        }
+    }
+
+    /// Add a middle (not trailing) parameter to the message.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the parameter contains whitespace or starts with ':'.
+    pub fn param<S>(mut self, param: S) -> MessageBuilder
+        where S: AsRef<str>
+    {
+        let param = param.as_ref();
+        self.buf.push(' ');
+        if must_be_trailing(param) {
+            panic!("MessageBuilder::param with a trailing param");
+        }
+        if self.first_param_index == 0 {
+            self.first_param_index = self.buf.len();
+        }
+        self.buf.push_str(param);
+        self
+    }
+
+    /// Add a trailing parameter and build the message.
+    pub fn trailing_param<S>(mut self, trailing: S) -> Message<'static>
+        where S: AsRef<str>
+    {
+        let trailing = trailing.as_ref();
+        self.buf.push(' ');
+        self.buf.push(':');
+        if self.first_param_index == 0 {
+            self.first_param_index = self.buf.len();
+        }
+        self.buf.push_str(trailing);
+        self.build()
+    }
+}
+
 impl Message<'static> {
-    /// Creates a new message from the given `prefix`, `command` and `params`.
+    /// Starts building a new message.
     ///
     /// # Example
     ///
     /// ```rust
-    /// use ellidri::message::{Message, rpl};
+    /// use ellidri::message::{Command, Message};
     ///
-    /// let msg = Message::new("ellidri.chat",
-    ///                        rpl::WELCOME,
-    ///                        &["john", "Welcome to the IRC network!"]);
+    /// let ping = Message::with_prefix("ellidri.org", Command::Ping)
+    ///     .param("42")  // Add a parameter.
+    ///     .build();     // Returns the Message from the MessageBuilder.
     ///
-    /// assert_eq!(
-    ///     msg.as_ref(),
-    ///     &b":ellidri.chat 001 john :Welcome to the IRC network!\r\n"[..]);
+    /// assert_eq!(ping.as_ref(), &b":ellidri.org Ping 42\r\n"[..]);
+    ///
+    /// let privmsg = Message::with_prefix("admin", Command::PrivMsg)
+    ///     .param("#agora")
+    ///     .trailing_param("The server is back up!");
+    ///
+    /// assert_eq!(privmsg.as_ref(),
+    ///            &b":admin PrivMsg #agora :The server is back up!\r\n"[..]);
     /// ```
-    ///
-    /// # TODO
-    ///
-    /// To make this more usable:
-    /// - make `prefix` optional.
-    /// - make `command` either a `Command` or a `Reply`. Maybe this should be done by making a
-    ///   `Command::Reply` variant.
-    /// - make `params` an iterator instead of slice, to be more general.
-    ///
-    /// To make this lighter:
-    /// - currently this creates the whole buffer, but it shouldn't. Instead it should make
-    ///   references to the arguments. This needs more than just changing `self.buf` to a
-    ///   `Cow<'a, str>`. `cookie-rs` can be a source of inspiration.
-    ///
-    /// To make this safer:
-    /// - check for spaces in `prefix` and each `params[..params.len()-1]`, and return an error (or
-    ///   panic? since it's an error in the program. maybe not, just print a warning).
-    /// - check for ':' at the first char of each `params[..]`.
-    #[allow(clippy::range_plus_one)]
-    pub fn new<C>(prefix: &str, command: C, params: &[&str]) -> Message<'static>
-        where C: fmt::Display
-    {
-        let mut buf = format!(":{} {}", prefix, command);
-        let prefix = 1..(prefix.len() + 1);
-        let command = (prefix.end + 1)..buf.len();
-        let mut first_param_index = buf.len();
-
-        for i in 0..params.len() {
-            buf.push(' ');
-            if i + 1 == params.len() {
-                buf.push(':');
-            }
-            buf.push_str(params[i]);
-        }
-
-        if first_param_index != buf.len() {
-            first_param_index += 1;
-        }
-
-        buf.push('\r');
-        buf.push('\n');
-
-        Message {
-            buf: buf.into(),
-            prefix: Some(prefix),
-            command: Err(command),
-            first_param_index,
+    pub fn with_prefix(prefix: &str, command: Command) -> MessageBuilder {
+        let mut buf = String::with_capacity(MAX_MESSAGE_LENGTH);
+        buf.push(':');
+        buf.push_str(prefix);
+        let prefix = Some(1..buf.len());
+        buf.push(' ');
+        buf.push_str(command.as_str());
+        MessageBuilder {
+            buf,
+            prefix,
+            command,
+            first_param_index: 0,
         }
     }
 }
@@ -455,11 +495,14 @@ impl<'a> Message<'a> {
     /// # Example
     ///
     /// ```rust
-    /// use ellidri::message::{Message, rpl};
+    /// use ellidri::message::{Command, Message, rpl};
     ///
-    /// let msg = Message::new("server.org", rpl::WELCOME, &["Welcome, user"]);
+    /// let msg = Message::with_prefix("server.org", Command::Reply(rpl::WELCOME))
+    ///     .param("*")
+    ///     .trailing_param("Welcome, user");
     /// let mut params = msg.params();
     ///
+    /// assert_eq!(params.next(), Some("*"));
     /// assert_eq!(params.next(), Some("Welcome, user"));
     /// assert_eq!(params.next(), None);
     /// ```
