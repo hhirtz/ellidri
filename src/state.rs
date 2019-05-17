@@ -307,19 +307,19 @@ impl StateInner {
 
     /// Whether or not a "PRIVMSG" message with the given parameters can be issued by the given
     /// client.
-    pub fn check_cmd_privmsg(&self, addr: SocketAddr, targets: &str, _content: &str) -> bool {
-        if let Some(ref chan) = self.channels.get(targets) {
-            if chan.members.contains_key(&addr) {
+    pub fn check_cmd_privmsg(&self, addr: SocketAddr, target: &str, _content: &str) -> bool {
+        if let Some(ref chan) = self.channels.get(target) {
+            if chan.can_talk(addr) {
                 true
             } else {
-                log::debug!("{}: Can't send privmsg to {:?}: Not in channel", addr, targets);
+                log::debug!("{}: Can't send privmsg to {:?}", addr, target);
                 self.send_reply(addr, rpl::ERR_CANNOTSENDTOCHAN,
-                                &[targets, lines::CANNOT_SEND_TO_CHAN]);
+                                &[target, lines::CANNOT_SEND_TO_CHAN]);
                 false
             }
         } else {
-            log::debug!("{}: Can't send privmsg to {:?}: No such channel", addr, targets);
-            self.send_reply(addr, rpl::ERR_NOSUCHNICK, &[targets, lines::NO_SUCH_NICK]);
+            log::debug!("{}: Can't send privmsg to {:?}: No such channel", addr, target);
+            self.send_reply(addr, rpl::ERR_NOSUCHNICK, &[target, lines::NO_SUCH_NICK]);
             false
         }
     }
@@ -589,6 +589,14 @@ impl Channel {
     /// Removes a member.
     pub fn remove_member(&mut self, addr: SocketAddr) {
         self.members.remove(&addr);
+    }
+
+    pub fn can_talk(&self, addr: SocketAddr) -> bool {
+        if self.moderated {
+            self.members.get(&addr).map(|m| m.voice || m.channel_operator).unwrap_or(false)
+        } else {
+            !self.no_privmsg_from_outside || self.members.contains_key(&addr)
+        }
     }
 
     pub fn update_modes<'a>(&mut self, modes: &'a str) -> Result<String, &'a str> {
