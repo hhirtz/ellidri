@@ -355,23 +355,19 @@ impl StateInner {
                 self.send_reply(addr, rpl::ERR_USERSDONTMATCH, &[target, lines::USERS_DONT_MATCH]);
                 false
             }
-        } else if is_valid_channel_name(target) {
-            if let Some(chan) = self.channels.get(target) {
-                if let Some(member) = chan.members.get(&addr) {
-                    if member.channel_operator {
-                        true
-                    } else {
-                        self.send_reply(addr, rpl::ERR_CHANOPRIVSNEEDED,
-                                        &[target, lines::CHAN_O_PRIVS_NEEDED]);
-                        false
-                    }
+        } else if let Some(chan) = self.channels.get(target) {
+            if let Some(member) = chan.members.get(&addr) {
+                if member.channel_operator {
+                    true
                 } else {
-                    self.send_reply(addr, rpl::ERR_USERNOTINCHANNEL,
-                                    &["you", target, lines::USER_NOT_IN_CHANNEL]);
+                    self.send_reply(addr, rpl::ERR_CHANOPRIVSNEEDED,
+                                    &[target, lines::CHAN_O_PRIVS_NEEDED]);
                     false
                 }
             } else {
-                self.send_reply(addr, rpl::ERR_NOSUCHNICK, &[target, lines::NO_SUCH_NICK]);
+                let nick = self.clients[&addr].nick();
+                self.send_reply(addr, rpl::ERR_USERNOTINCHANNEL,
+                                &[nick, target, lines::USER_NOT_IN_CHANNEL]);
                 false
             }
         } else {
