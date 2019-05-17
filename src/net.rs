@@ -109,11 +109,12 @@ fn handle_message(msg: Message, peer_addr: SocketAddr, shared: State)
 
     if !msg.has_enough_params() {
         log::debug!("{}: Incomplete message {:?}", peer_addr, msg);
+        let num_params = msg.params().count();
         if command == Command::Nick {
             shared.send_reply(peer_addr, rpl::ERR_NONICKNAMEGIVEN, &[lines::NO_NICKNAME_GIVEN]);
-        } else if command == Command::PrivMsg && msg.num_params() == 0 {
+        } else if command == Command::PrivMsg && num_params == 0 {
             shared.send_reply(peer_addr, rpl::ERR_NORECIPIENT, &[lines::NO_RECIPIENT]);
-        } else if command == Command::PrivMsg && msg.num_params() == 1 {
+        } else if command == Command::PrivMsg && num_params == 1 {
             shared.send_reply(peer_addr, rpl::ERR_NOTEXTTOSEND, &[lines::NO_TEXT_TO_SEND]);
         } else {
             shared.send_reply(peer_addr, rpl::ERR_NEEDMOREPARAMS,
@@ -122,24 +123,28 @@ fn handle_message(msg: Message, peer_addr: SocketAddr, shared: State)
         return Ok(());
     }
 
+    let mut ps = msg.params();
     match command {
-        Command::Join => shared.cmd_join(peer_addr, msg.param(0), msg.param_opt(1)),
-        Command::Mode => shared.cmd_mode(peer_addr, msg.param(0), msg.param_opt(1)),
+        Command::Join => shared.cmd_join(peer_addr, ps.next().unwrap(), ps.next()),
+        Command::Mode => shared.cmd_mode(peer_addr, ps.next().unwrap(), ps.next()),
         Command::Motd => shared.cmd_motd(peer_addr),
-        Command::Nick => shared.cmd_nick(peer_addr, msg.param(0)),
-        Command::Part => shared.cmd_part(peer_addr, msg.param(0), msg.param_opt(1)),
-        Command::Ping => shared.send_command(peer_addr, Command::Pong, &[msg.param(0)]),
+        Command::Nick => shared.cmd_nick(peer_addr, ps.next().unwrap()),
+        Command::Part => shared.cmd_part(peer_addr, ps.next().unwrap(), ps.next()),
+        Command::Ping => shared.send_command(peer_addr, Command::Pong, &[ps.next().unwrap()]),
         Command::Pong => {},
-        Command::PrivMsg => shared.cmd_privmsg(peer_addr, msg.param(0), msg.param(1)),
+        Command::PrivMsg => shared.cmd_privmsg(peer_addr, ps.next().unwrap(), ps.next().unwrap()),
         Command::Quit => {
-            shared.cmd_quit(peer_addr, msg.param_opt(0));
+            shared.cmd_quit(peer_addr, ps.next());
             return Err(io::Error::new(io::ErrorKind::Other, "but I just wanted to quit..."));
         },
-        Command::Topic => shared.cmd_topic(peer_addr, msg.param(0), msg.param_opt(1)),
+        Command::Topic => shared.cmd_topic(peer_addr, ps.next().unwrap(), ps.next()),
         Command::User => {
             // https://tools.ietf.org/html/rfc2812.html#section-3.1.3
-            let mode: u8 = msg.param(1).parse().unwrap_or_default();
-            shared.cmd_user(peer_addr, msg.param(0), msg.param(3), mode & 8 != 0, mode & 4 != 0);
+            let user = ps.next().unwrap();
+            let mode: u8 = ps.next().unwrap().parse().unwrap_or_default();
+            let _ = ps.next().unwrap();
+            let real = ps.next().unwrap();
+            shared.cmd_user(peer_addr, user, real, mode & 8 != 0, mode & 4 != 0);
         },
     }
     Ok(())

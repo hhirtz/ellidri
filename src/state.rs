@@ -14,7 +14,7 @@ use crate::message::{Command, Message, Reply, rpl};
 const MAX_CHANNEL_NAME_LENGTH: usize = 50;
 const MAX_NICKNAME_LENGTH: usize = 9;
 
-pub type MessageQueue = mpsc::UnboundedSender<Message>;
+pub type MessageQueue = mpsc::UnboundedSender<Message<'static>>;
 
 /// Shared state of the IRC server.
 ///
@@ -462,7 +462,7 @@ impl StateInner {
     }
 
     /// Sends the given message to all users in the given channel.
-    pub fn broadcast(&self, target: &str, msg: Message) {
+    pub fn broadcast(&self, target: &str, msg: Message<'static>) {
         let chan = &self.channels[target];
         for &member in chan.members.keys() {
             self.send(member, msg.clone());
@@ -470,7 +470,7 @@ impl StateInner {
     }
 
     /// Sends the given message to the given client.
-    pub fn send(&self, addr: SocketAddr, msg: Message) {
+    pub fn send(&self, addr: SocketAddr, msg: Message<'static>) {
         if let Some(client) = self.clients.get(&addr) {
             log::trace!("us -> {}: {}", addr, msg);
             client.send(msg);

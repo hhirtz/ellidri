@@ -2,10 +2,11 @@
 //!
 //! See the documentation of `Message` for more details.
 
+use std::borrow::Cow;
 use std::ops::Range;
 
 pub use rpl::Reply;
-use std::fmt;
+use std::{fmt, iter, mem};
 
 /// The list of IRC replies.
 ///
@@ -150,19 +151,88 @@ macro_rules! commands {
     }
 }
 
+commands! {
+    Join => 1,
+    Mode => 1,
+    Motd => 0,
+    Nick => 1,
+    Part => 1,
+    Ping => 1,
+    Pong => 1,
+    PrivMsg => 2,
+    Quit => 0,
+    Topic => 1,
+    User => 4,
+}
+
+/// For the given `word`, that is part of the given `buf`, returns the matching `Command`, or the
+/// index of `word` in `buf` otherwise.
+///
+/// `word` must be part (i.e. a word of) of `buf`, otherwise this function might panic (a.k.a.
+/// undefined behavior)...
+fn parse_message_command(word: &str, buf: &str) -> Result<Command, Range<usize>> {
+    Command::parse(word).ok_or_else(|| range_of(word, buf))
+}
+
+/// Returns the index of the `inner` string in the `outer` string.
+///
+/// If `inner` is not "inside" `outer` in memory, this function has undefined behavior (panics if
+/// `inner` is before `outer` in memory, returns nonsense otherwise).
+///
+/// # Example
+///
+/// ```rust,ignore
+/// let outer = "Hello world!";
+/// let inner = &outer[0..5];  // "Hello"
+/// assert_eq!(range_of(inner, outer), 0..5);
+/// ```
+fn range_of(inner: &str, outer: &str) -> Range<usize> {
+    let inner_len = inner.len();
+    let inner = inner.as_ptr() as usize;
+    let outer = outer.as_ptr() as usize;
+    let start = inner - outer;
+    let end = start + inner_len;
+    start..end
+}
+
+/// An iterator over the parameters of a message. Use with `Message::params`.
+pub struct Params<'a> {
+    buf: &'a str,
+}
+
+impl<'a> Iterator for Params<'a> {
+    type Item = &'a str;
+
+    fn next(&mut self) -> Option<&'a str> {
+        if self.buf.is_empty() {
+            None
+        } else if self.buf.as_bytes()[0] == b':' {
+            self.buf = self.buf[1..].trim_end();  // Discard the ':'
+            Some(mem::replace(&mut self.buf, ""))
+        } else {
+            let mut words = self.buf.splitn(2, char::is_whitespace);
+            let next = words.next().unwrap();
+            self.buf = words.next().unwrap_or("").trim_start();
+            Some(next)
+        }
+    }
+}
+
+impl<'a> iter::FusedIterator for Params<'a> {}
+
 /// Represents an IRC message, with its prefix (source), command and parameters.
 ///
-/// This type is a wrapper around a `String`. It means that when `Message::parse` is called, the
+/// This type is a wrapper around a string. It means that when `Message::parse` is called, the
 /// string is kept intact, and each component of the message are stored as indexes of the string.
-/// The only allocation is the vector for the parameters.
+/// The parameters are parsed lazily by an iterator.
 ///
 /// See `Message::new` and `Message::parse` for usage examples.
 #[derive(Clone, Debug)]
-pub struct Message {
+pub struct Message<'a> {
     /// Message buffer. Instead of having a string for the source, the command, and each parameter,
     /// there's only one string. The other struct members refer to indexes in the string (not
     /// unicode points).
-    buf: String,
+    buf: Cow<'a, str>,
 
     /// The source of the message.
     prefix: Option<Range<usize>>,
@@ -174,14 +244,11 @@ pub struct Message {
     /// start, end })`, and the command string is `self.buf[start..end]`.
     command: Result<Command, Range<usize>>,
 
-    /// The list of indexes where each parameter is.
-    ///
-    /// TODO: maybe change it to a `[Range<usize>; 15]`, as there *shouldn't* be more than 15
-    /// parameters in a message.
-    params: Vec<Range<usize>>,
+    /// The index of the first parameter. Used to create a `Params` instance.
+    first_param_index: usize,
 }
 
-impl Message {
+impl Message<'static> {
     /// Creates a new message from the given `prefix`, `command` and `params`.
     ///
     /// # Example
@@ -216,35 +283,39 @@ impl Message {
     ///   panic? since it's an error in the program. maybe not, just print a warning).
     /// - check for ':' at the first char of each `params[..]`.
     #[allow(clippy::range_plus_one)]
-    pub fn new<C>(prefix: &str, command: C, params: &[&str]) -> Message
+    pub fn new<C>(prefix: &str, command: C, params: &[&str]) -> Message<'static>
         where C: fmt::Display
     {
         let mut buf = format!(":{} {}", prefix, command);
         let prefix = 1..(prefix.len() + 1);
         let command = (prefix.end + 1)..buf.len();
-        let mut param_ranges = Vec::new();
+        let mut first_param_index = buf.len();
 
         for i in 0..params.len() {
             buf.push(' ');
             if i + 1 == params.len() {
                 buf.push(':');
             }
-            // Don't count the ':' in the last param.
-            let start = buf.len();
             buf.push_str(params[i]);
-            let end = buf.len();
-            param_ranges.push(start..end)
         }
+
+        if first_param_index != buf.len() {
+            first_param_index += 1;
+        }
+
         buf.push('\r');
         buf.push('\n');
+
         Message {
-            buf,
+            buf: buf.into(),
             prefix: Some(prefix),
             command: Err(command),
-            params: param_ranges,
+            first_param_index,
         }
     }
+}
 
+impl<'a> Message<'a> {
     /// Wraps the given string into a `Message` type, that allows to get its source, the command
     /// and each parameter.
     ///
@@ -261,26 +332,25 @@ impl Message {
     /// let msg = Message::parse(":kawai PRIVMSG #kekbab :You must be joking!")
     ///     .unwrap()   // The message was parsed successfully.
     ///     .unwrap();  // The message is not empty.
+    /// let mut params = msg.params();
     ///
     /// assert_eq!(msg.prefix(), Some("kawai"));
     /// assert_eq!(msg.command(), Ok(Command::PrivMsg));
-    /// assert_eq!(msg.param(1), "You must be joking!");  // Second parameter.
-    /// assert_eq!(msg.param_opt(2), None);  // There is no third parameter.
+    /// assert_eq!(params.next(), Some("#kekbab"));  // First parameter.
+    /// assert_eq!(params.next(), Some("You must be joking!"));  // Second parameter.
+    /// assert_eq!(params.next(), None);  // There is no third parameter.
     ///
     /// let unknown = Message::parse("waitwhat #admin hello there")
     ///     .unwrap().unwrap();
     ///
     /// assert_eq!(unknown.prefix(), None);
     /// assert_eq!(unknown.command(), Err("waitwhat"));  // Unknown command.
-    /// assert_eq!(unknown.param(0), "#admin");
-    /// assert_eq!(unknown.param_opt(1), Some("hello"));
     /// ```
     ///
     /// # Return value
     ///
     /// Returns `Ok(Some(msg))` when the message is correctly formed, `Ok(None)` when the message
-    /// is empty (see note below), and `Err(reply)` when the message is invalid and the server
-    /// should send the client a reply with the returned `reply` code.
+    /// is empty (see note below), and `Err(())` when the message is invalid.
     ///
     /// **Note:** An empty message doesn't mean just "\r\n", but actually any whitespace string.
     /// For example:
@@ -292,8 +362,8 @@ impl Message {
     ///
     /// assert!(empty.unwrap().is_none());
     /// ```
-    pub fn parse<S>(s: S) -> Result<Option<Message>, Reply>
-        where S: Into<String>
+    pub fn parse<S>(s: S) -> Result<Option<Message<'a>>, ()>
+        where S: Into<Cow<'a, str>>
     {
         let buf = s.into();
 
@@ -308,7 +378,7 @@ impl Message {
                 let mut prefix_range = range_of(word, &buf);
                 prefix_range.start += 1;  // Exclude the ':'
                 prefix = Some(prefix_range);
-                let word = words.next().ok_or(rpl::ERR_YOUREBANNEDCREEP)?;
+                let word = words.next().ok_or(())?;
                 parse_message_command(word, &buf)
             } else {
                 // The first word is the command.
@@ -319,20 +389,18 @@ impl Message {
             return Ok(None);
         };
 
-        let mut params = Vec::new();
+        let first_param_index = if let Some(word) = words.next() {
+            range_of(word, &buf).start
+        } else {
+            buf.len()
+        };
 
-        for word in words {
-            if word.starts_with(':') {
-                // The word is the first word of the trailing (last) parameter.
-                params.push(last_range_of(word, &buf));
-                break;
-            }
-
-            // This word is not the trailing parameter.
-            params.push(range_of(word, &buf));
-        }
-
-        Ok(Some(Message { buf, prefix, command, params }))
+        Ok(Some(Message {
+            buf,
+            prefix,
+            command,
+            first_param_index,
+        }))
     }
 
     /// Returns the source of the message, if any.
@@ -379,55 +447,26 @@ impl Message {
         }
     }
 
-    /// Returns the number of parameters in the message.
+    /// Returns an iterator over the parameters.
+    ///
+    /// The iterator parses parts of the message buffer at each `.next()` call, returning the next
+    /// parameter.
     ///
     /// # Example
     ///
     /// ```rust
-    /// use ellidri::message::Message;
+    /// use ellidri::message::{Message, rpl};
     ///
-    /// let topic = Message::parse("TOPIC #saucisse :Best chan of the world!?!")
-    ///     .unwrap().unwrap();
+    /// let msg = Message::new("server.org", rpl::WELCOME, &["Welcome, user"]);
+    /// let mut params = msg.params();
     ///
-    /// assert_eq!(topic.num_params(), 2);
+    /// assert_eq!(params.next(), Some("Welcome, user"));
+    /// assert_eq!(params.next(), None);
     /// ```
-    pub fn num_params(&self) -> usize {
-        self.params.len()
-    }
-
-    /// Returns the `i`th parameter. Panics if `i` is out of bounds.
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// use ellidri::message::Message;
-    ///
-    /// let topic = Message::parse("TOPIC #saucisse :Best chan of the world!?!")
-    ///     .unwrap().unwrap();
-    ///
-    /// assert_eq!(topic.param(0), "#saucisse");
-    /// assert_eq!(topic.param(1), "Best chan of the world!?!");
-    /// ```
-    pub fn param(&self, i: usize) -> &str {
-        &self.buf[self.params[i].clone()]
-    }
-
-
-    /// Returns the `i`th parameter, or `None` if `i` is out of bounds.
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// use ellidri::message::Message;
-    ///
-    /// let topic = Message::parse("TOPIC #saucisse")
-    ///     .unwrap().unwrap();
-    ///
-    /// assert_eq!(topic.param_opt(0), Some("#saucisse"));
-    /// assert_eq!(topic.param_opt(1), None);
-    /// ```
-    pub fn param_opt(&self, i: usize) -> Option<&str> {
-        self.params.get(i).map(|range| &self.buf[range.clone()])
+    pub fn params(&self) -> Params {
+        Params {
+            buf: &self.buf[self.first_param_index..],
+        }
     }
 
     /// Returns true if the message has enough parameters for its command.
@@ -440,7 +479,7 @@ impl Message {
     /// ```rust
     /// use ellidri::message::Message;
     ///
-    /// let nick = Message::parse("NICK i_suck_dice").unwrap().unwrap();
+    /// let nick = Message::parse("NICK i suck dice").unwrap().unwrap();
     /// assert_eq!(nick.has_enough_params(), true);
     ///
     /// let nick = Message::parse("NICK :").unwrap().unwrap();
@@ -451,13 +490,13 @@ impl Message {
     /// ```
     pub fn has_enough_params(&self) -> bool {
         match self.command {
-            Ok(cmd) => cmd.required_params() <= self.num_params(),
+            Ok(cmd) => cmd.required_params() <= self.params().count(),
             Err(_) => false,
         }
     }
 }
 
-impl AsRef<[u8]> for Message {
+impl<'a> AsRef<[u8]> for Message<'a> {
     /// Returns the message string as bytes. Used by the `crate::net` module with
     /// `tokio::io::write_all`.
     fn as_ref(&self) -> &[u8] {
@@ -465,75 +504,9 @@ impl AsRef<[u8]> for Message {
     }
 }
 
-impl fmt::Display for Message {
+impl<'a> fmt::Display for Message<'a> {
     /// Displays the message as a correctly formed message. Used for logging.
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", self.buf.trim_end())
     }
-}
-
-commands! {
-    Join => 1,
-    Mode => 1,
-    Motd => 0,
-    Nick => 1,
-    Part => 1,
-    Ping => 1,
-    Pong => 1,
-    PrivMsg => 2,
-    Quit => 0,
-    Topic => 1,
-    User => 4,
-}
-
-/// For the given `word`, that is part of the given `buf`, returns the matching `Command`, or the
-/// index of `word` in `buf` otherwise.
-///
-/// `word` must be part (i.e. a word of) of `buf`, otherwise this function might panic (a.k.a.
-/// undefined behavior)...
-fn parse_message_command(word: &str, buf: &str) -> Result<Command, Range<usize>> {
-    Command::parse(word).ok_or_else(|| range_of(word, buf))
-}
-
-/// Returns the index of the `inner` string in the `outer` string.
-///
-/// If `inner` is not "inside" `outer` in memory, this function has undefined behavior (panics if
-/// `inner` is before `outer` in memory, returns nonsense otherwise).
-///
-/// # Example
-///
-/// ```rust,ignore
-/// let outer = "Hello world!";
-/// let inner = &outer[0..5];  // "Hello"
-/// assert_eq!(range_of(inner, outer), 0..5);
-/// ```
-fn range_of(inner: &str, outer: &str) -> Range<usize> {
-    let inner_len = inner.len();
-    let inner = inner.as_ptr() as usize;
-    let outer = outer.as_ptr() as usize;
-    let start = inner - outer;
-    let end = start + inner_len;
-    start..end
-}
-
-/// Returns the index of the trailing parameter of `outer`, where `inner` is the first word of the
-/// parameter and contains the ':'.
-///
-/// As `range_of`, `inner` must refer to memory inside `outer`, or similar behavior will show up.
-///
-/// # Example
-///
-/// ```rust,ignore
-/// let outer = "Hello :world !";
-/// let inner = &outer[6..11];  // ":world"
-/// let range = last_range_of(inner, outer);
-/// assert_eq!(outer[range], "world !");
-/// ```
-fn last_range_of(inner: &str, outer: &str) -> Range<usize> {
-    let outer_len = outer.trim_end().len();
-    let inner = inner.as_ptr() as usize;
-    let outer = outer.as_ptr() as usize;
-    let start = inner - outer + 1;  // Don't count the ':'.
-    let end = outer_len;
-    start..end
 }
