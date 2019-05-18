@@ -396,7 +396,10 @@ impl StateInner {
             match self.channels.get_mut(target).unwrap().update_modes(modes) {
                 Ok(modes) => {
                     let nick = self.clients[&addr].nick();
-                    let msg = Message::with_prefix(nick, Command::Mode).param(&modes).build();
+                    let msg = Message::with_prefix(nick, Command::Mode)
+                        .param(target)
+                        .param(&modes)
+                        .build();
                     self.broadcast(target, msg);
                 },
                 Err(flag) => self.send_reply(addr, rpl::ERR_UNKNOWNMODE,
