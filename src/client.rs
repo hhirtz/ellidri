@@ -3,6 +3,10 @@
 use crate::message::{Command, Message, Reply, rpl};
 use crate::state::MessageQueue;
 
+fn is_mode_changeable(mode: u8) -> bool {
+    !(mode == b'a' || mode == b'r' || mode == b'o' || mode == b'O')
+}
+
 /// Client data.
 pub struct Client {
     /// The queue of messages to be sent to the client.
@@ -120,6 +124,41 @@ impl Client {
 
     pub fn state(&self) -> ConnectionState {
         self.state
+    }
+
+    pub fn update_modes<'a>(&mut self, modes: &'a str) -> Result<String, &'a str> {
+        let bmodes = modes.as_bytes();
+        let mut value = true;
+        let mut applied_modes = String::new();
+
+        if bmodes[0] != b'+' && bmodes[0] != b'-' {
+            applied_modes.push('+');
+        }
+
+        for i in 0..bmodes.len() {
+            let mode = bmodes[i];
+            if mode == b'+' {
+                value = true;
+                applied_modes.push('+');
+            } else if mode == b'-' {
+                value = false;
+                applied_modes.push('-');
+            } else if mode == b'i' {
+                self.invisible = value;
+                applied_modes.push('i');
+            } else if mode == b'w' {
+                self.wallops = value;
+                applied_modes.push('w');
+            } else if mode == b's' {
+                self.server_notices = value;
+                applied_modes.push('s');
+            } else if !is_mode_changeable(mode) {
+                // *ignores*
+            } else {
+                return Err(&modes[i..=i]);
+            }
+        }
+        Ok(applied_modes)
     }
 }
 

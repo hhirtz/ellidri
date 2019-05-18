@@ -406,8 +406,19 @@ impl StateInner {
                                              &[flag, lines::UNKNOWN_MODE]),
             }
         } else {
-            // TODO
-            log::warn!("cmd_set_modes: unimplemented for users");
+            let client = self.clients.get_mut(&addr).unwrap();
+            match client.update_modes(modes) {
+                Ok(modes) => {
+                    let nick = client.nick();
+                    let msg = Message::with_prefix(nick, Command::Mode)
+                        .param(nick)
+                        .param(modes)
+                        .build();
+                    self.send(addr, msg);
+                },
+                Err(flag) => self.send_reply(addr, rpl::ERR_UNKNOWNMODE,
+                                             &[flag, lines::UNKNOWN_MODE]),
+            }
         }
     }
 
