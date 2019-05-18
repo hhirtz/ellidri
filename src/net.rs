@@ -11,6 +11,7 @@ use crate::lines;
 use crate::message::{Command, Message, rpl};
 use crate::state::State;
 
+/// Returns a future that listens, accepts and handles incoming clear-text IRC connections.
 pub fn listen(addr: SocketAddr, shared: State) -> impl Future<Item=(), Error=()> {
     TcpListener::bind(&addr).expect("Failed to bind to address")
         .incoming()
@@ -24,6 +25,7 @@ pub fn listen(addr: SocketAddr, shared: State) -> impl Future<Item=(), Error=()>
         })
 }
 
+/// Returns a future that handle an IRC connection.
 fn handle(conn: TcpStream, peer_addr: SocketAddr, shared: State)
           -> impl Future<Item=(), Error=()>
 {
@@ -84,6 +86,7 @@ fn handle(conn: TcpStream, peer_addr: SocketAddr, shared: State)
     })
 }
 
+/// Handles an IRC message.
 fn handle_message(msg: Message, peer_addr: SocketAddr, shared: State)
                   -> Result<(), io::Error>
 {
@@ -99,6 +102,8 @@ fn handle_message(msg: Message, peer_addr: SocketAddr, shared: State)
         },
     };
 
+    // Check if the client has sent a command that can be sent right now (e.g. a client cannot send
+    // a `CAP LS` after it has registered).
     if !shared.can_issue_command(peer_addr, command) {
         log::debug!("{}: Unexpected command {:?}", peer_addr, command);
         if command == Command::User {
@@ -139,8 +144,8 @@ fn handle_message(msg: Message, peer_addr: SocketAddr, shared: State)
         },
         Command::Topic => shared.cmd_topic(peer_addr, ps.next().unwrap(), ps.next()),
         Command::User => {
-            // https://tools.ietf.org/html/rfc2812.html#section-3.1.3
             let user = ps.next().unwrap();
+            // https://tools.ietf.org/html/rfc2812.html#section-3.1.3
             let mode: u8 = ps.next().unwrap().parse().unwrap_or_default();
             let _ = ps.next().unwrap();
             let real = ps.next().unwrap();
@@ -151,6 +156,8 @@ fn handle_message(msg: Message, peer_addr: SocketAddr, shared: State)
     }
     Ok(())
 }
+
+// Logging error messages.
 
 fn broken_pipe(err: io::Error, peer_addr: SocketAddr) {
     log::info!("{} left!! I'm so sad... *sob* They said {}, meanie...", peer_addr, err);
