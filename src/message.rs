@@ -207,6 +207,7 @@ fn range_of(inner: &str, outer: &str) -> Range<usize> {
 
 /// An iterator over the parameters of a message. Use with `Message::params`.
 pub struct Params<'a> {
+    /// What is left to be parsed. Must be trimmed.
     buf: &'a str,
 }
 
@@ -217,7 +218,7 @@ impl<'a> Iterator for Params<'a> {
         if self.buf.is_empty() {
             None
         } else if self.buf.as_bytes()[0] == b':' {
-            self.buf = self.buf[1..].trim_end();  // Discard the ':'
+            self.buf = &self.buf[1..];  // Discard the ':'
             Some(mem::replace(&mut self.buf, ""))
         } else {
             let mut words = self.buf.splitn(2, char::is_whitespace);
@@ -508,7 +509,7 @@ impl<'a> Message<'a> {
     /// ```
     pub fn params(&self) -> Params {
         Params {
-            buf: &self.buf[self.first_param_index..],
+            buf: self.buf[self.first_param_index..].trim_end(),
         }
     }
 
