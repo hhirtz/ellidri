@@ -227,6 +227,14 @@ impl<'a> Iterator for Params<'a> {
             Some(next)
         }
     }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        if self.buf.is_empty() {
+            (0, Some(0))
+        } else {
+            (1, None)
+        }
+    }
 }
 
 impl<'a> iter::FusedIterator for Params<'a> {}
