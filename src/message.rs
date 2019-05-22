@@ -251,8 +251,20 @@ impl<'a> Iterator for Params<'a> {
 
 impl<'a> iter::FusedIterator for Params<'a> {}
 
-fn must_be_trailing(param: &str) -> bool {
-    param.is_empty() || param.as_bytes()[0] == b':' || param.chars().any(char::is_whitespace)
+const SANITIZED_CHAR: char = '_';
+
+fn sanitize_param(c: char) -> char {
+    match c {
+        w if w.is_whitespace() => SANITIZED_CHAR,
+        c => c,
+    }
+}
+
+fn sanitize_trailing_param(c: char) -> char {
+    match c {
+        '\r' | '\n' => SANITIZED_CHAR,
+        c => c,
+    }
 }
 
 /// Represents an IRC message, with its prefix (source), command and parameters.
@@ -313,14 +325,19 @@ impl MessageBuilder {
         where S: AsRef<str>
     {
         let param = param.as_ref();
-        self.buf.push(' ');
-        if must_be_trailing(param) {
-            panic!("MessageBuilder::param with a trailing param");
+        if param.is_empty() {
+            return self;
         }
+        self.buf.push(' ');
         if self.first_param_index == 0 {
             self.first_param_index = self.buf.len();
         }
-        self.buf.push_str(param);
+        if param.starts_with(':') {
+            self.buf.push('_');
+        } else {
+            self.buf.push(param.chars().next().unwrap());
+        }
+        self.buf.extend(param.chars().map(sanitize_param));
         self
     }
 
@@ -334,7 +351,7 @@ impl MessageBuilder {
         if self.first_param_index == 0 {
             self.first_param_index = self.buf.len();
         }
-        self.buf.push_str(trailing);
+        self.buf.extend(trailing.chars().map(sanitize_trailing_param));
         self.build()
     }
 }
