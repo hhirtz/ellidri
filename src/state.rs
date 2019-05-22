@@ -205,6 +205,7 @@ impl StateInner {
     pub fn check_cmd_join(&self, addr: SocketAddr, target: &str, key: Option<&str>) -> bool {
         if is_valid_channel_name(target) {
             if let Some(chan) = self.channels.get(target) {
+                // TODO if-let chains
                 if let Some(ref chan_key) = chan.key {
                     if key.map_or(true, |key| key != chan_key) {
                         log::debug!("{}: Can't join {:?}: Bad key", addr, target);
@@ -213,8 +214,7 @@ impl StateInner {
                         return false;
                     }
                 }
-                let nick = self.clients[&addr].nick();
-                if chan.can_join(nick) {
+                if chan.can_join(self.clients[&addr].nick()) {
                     true
                 } else {
                     log::debug!("{}: Can't join {:?}: Banned", addr, target);
@@ -591,7 +591,7 @@ impl StateInner {
         self.check_cmd_mode_user_set(addr, target_user)
     }
 
-    /// Check if the given `client` can set the mode of the given `target_user`.
+    /// Applies a "MODE" command when the target is a user.
     fn apply_cmd_mode_user_get(&self, addr: SocketAddr, _target: &str) {
         let client = &self.clients[&addr];
         let modes = client.modes();
@@ -798,8 +798,6 @@ impl StateInner {
     }
 
     /// Applies a "TOPIC" command issued by the given client with the given parameter.
-    ///
-    /// "TOPIC" has been split in two handlers, a getter and a setter.
     pub fn apply_cmd_topic_get(&self, addr: SocketAddr, target: &str) {
         if let Some(chan) = self.channels.get(target) {
             if chan.members.contains_key(&addr) {
