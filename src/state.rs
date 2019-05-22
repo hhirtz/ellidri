@@ -838,7 +838,7 @@ impl StateInner {
                 names.push(modes.symbol());
                 names.push_str(nick);
             }
-            self.send_reply(addr, rpl::NAMREPLY, &["@", chan_name, &names]);
+            self.send_reply(addr, rpl::NAMREPLY, &[chan.symbol(), chan_name, &names]);
         }
         self.send_reply(addr, rpl::ENDOFNAMES, &[chan_name, lines::END_OF_NAMES]);
     }
@@ -981,6 +981,16 @@ impl Channel {
             b'r' => { self.reop = value; },
             b't' => { self.topic_restricted = value; },
             _ => {},
+        }
+    }
+
+    pub fn symbol(&self) -> &'static str {
+        if self.secret {
+            "@"
+        } else if self.private {
+            "*"
+        } else {
+            "="
         }
     }
 }
