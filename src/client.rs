@@ -6,6 +6,8 @@ use crate::state::MessageQueue;
 pub const USER_MODES: &[u8] = b"aiwros";
 pub const SETTABLE_USER_MODES: &[u8] = b"iws";
 
+const FULL_NAME_LENGTH: usize = 63;
+
 /// Client data.
 pub struct Client {
     /// The queue of messages to be sent to the client.
@@ -29,6 +31,12 @@ pub struct Client {
     /// The real name.
     real: String,
 
+    /// The client hostname.
+    host: String,
+
+    /// The nick!user@host
+    full_name: String,
+
     /// The reason sent when a client quits.
     ///
     /// Set when it issues a "QUIT" message.
@@ -48,13 +56,18 @@ impl Client {
     ///
     /// The nickname is set to "*", as it seems it's what freenode server does.  The username and
     /// the realname are set to empty strings.
-    pub fn new(queue: MessageQueue) -> Client {
+    pub fn new(queue: MessageQueue, host: String) -> Client {
+        let mut full_name = String::with_capacity(FULL_NAME_LENGTH);
+        full_name.push('*');
+        full_name.push_str(&host);
         Client {
             queue,
             state: ConnectionState::default(),
             nick: String::from("*"),
             user: String::new(),
             real: String::new(),
+            host,
+            full_name,
             quit_message: None,
             away: false,
             invisible: false,
@@ -100,6 +113,19 @@ impl Client {
         self.queue.unbounded_send(msg).unwrap();
     }
 
+    pub fn full_name(&self) -> &str {
+        &self.full_name
+    }
+
+    fn update_full_name(&mut self) {
+        self.full_name.clear();
+        self.full_name.push_str(&self.nick);
+        self.full_name.push('!');
+        self.full_name.push_str(&self.user);
+        self.full_name.push('@');
+        self.full_name.push_str(&self.host);
+    }
+
     /// The nickname of the client
     pub fn nick(&self) -> &str {
         &self.nick
@@ -111,6 +137,7 @@ impl Client {
     pub fn set_nick(&mut self, nick: &str) {
         self.nick.clear();
         self.nick.push_str(nick);
+        self.update_full_name();
     }
 
     /// Change the username and the realname of the client.
@@ -119,6 +146,7 @@ impl Client {
     pub fn set_user_real(&mut self, user: &str, real: &str) {
         self.user.push_str(user);
         self.real.push_str(real);
+        self.update_full_name();
     }
 
     pub fn state(&self) -> ConnectionState {

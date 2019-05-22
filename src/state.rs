@@ -40,7 +40,7 @@ impl State {
     ///
     /// Called when a connection is accepted.
     pub fn insert(&self, addr: SocketAddr, queue: MessageQueue) {
-        self.0.write().unwrap().clients.insert(addr, Client::new(queue));
+        self.0.write().unwrap().clients.insert(addr, Client::new(queue, addr.ip().to_string()));
     }
 
     /// Removes a client from the state.
@@ -183,7 +183,7 @@ impl StateInner {
     /// Removes a client from the state. See `State::remove`.
     pub fn remove(&mut self, addr: SocketAddr) {
         let client = self.clients.remove(&addr).unwrap();
-        let msg = Message::with_prefix(client.nick(), Command::Quit)
+        let msg = Message::with_prefix(client.full_name(), Command::Quit)
             .trailing_param(client.quit_message());
 
         for chan in self.channels.values() {
@@ -238,7 +238,7 @@ impl StateInner {
         chan.add_member(addr);
         let modes = chan.modes();
         let client = &self.clients[&addr];
-        let join = Message::with_prefix(client.nick(), Command::Join).param(target).build();
+        let join = Message::with_prefix(client.full_name(), Command::Join).param(target).build();
         self.broadcast(target, join);
         let modes = Message::with_prefix(&self.prefix, Command::Mode)
             .param(target)
@@ -508,7 +508,7 @@ impl StateInner {
             }
         }
         if 1 < applied_modes.len() {
-            let msg = Message::with_prefix(self.clients[&addr].nick(), Command::Mode)
+            let msg = Message::with_prefix(self.clients[&addr].full_name(), Command::Mode)
                 .param(target)
                 .param(applied_modes);
             let msg = applied_modeparams.into_iter()
@@ -563,7 +563,7 @@ impl StateInner {
                 client.send(msg);
             }
         }
-        let msg = Message::with_prefix(client.nick(), Command::Mode)
+        let msg = Message::with_prefix(client.full_name(), Command::Mode)
             .param(target)
             .trailing_param(applied_modes);
         client.send(msg);
@@ -682,7 +682,7 @@ impl StateInner {
 
     /// Applies a "PART" command issued by the given client with the given parameters.
     pub fn apply_cmd_part(&mut self, addr: SocketAddr, target: &str, reason: Option<&str>) {
-        let nick = self.clients[&addr].nick();
+        let nick = self.clients[&addr].full_name();
         let msg = if let Some(reason) = reason {
             Message::with_prefix(nick, Command::Part).param(target).trailing_param(reason)
         } else {
@@ -716,7 +716,7 @@ impl StateInner {
     pub fn apply_cmd_privmsg(&self, addr: SocketAddr, targets: &str, content: &str) {
         log::debug!("{}: Privmsg to {:?}", addr, targets);
         let client = &self.clients[&addr];
-        let msg = Message::with_prefix(client.nick(), Command::PrivMsg)
+        let msg = Message::with_prefix(client.full_name(), Command::PrivMsg)
             .param(targets)
             .trailing_param(content);
         let chan = &self.channels[targets];
