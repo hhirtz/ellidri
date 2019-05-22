@@ -72,8 +72,11 @@ impl State {
 
     /// Handles a "JOIN" message.
     pub fn cmd_join(&self, addr: SocketAddr, targets: &str, keys: Option<&str>) {
-        if self.0.read().unwrap().check_cmd_join(addr, targets, keys) {
-            self.0.write().unwrap().apply_cmd_join(addr, targets, keys);
+        let mut keys = keys.unwrap_or("").split(',');
+        for target in targets.split(',') {
+            if self.0.read().unwrap().check_cmd_join(addr, target, keys.next()) {
+                self.0.write().unwrap().apply_cmd_join(addr, target);
+            }
         }
     }
 
@@ -198,44 +201,44 @@ impl StateInner {
 
     /// Whether or not a "JOIN" message with the given parameters can be issued by the given
     /// client.
-    pub fn check_cmd_join(&self, addr: SocketAddr, targets: &str, keys: Option<&str>) -> bool {
-        if is_valid_channel_name(targets) {
-            if let Some(chan) = self.channels.get(targets) {
+    pub fn check_cmd_join(&self, addr: SocketAddr, target: &str, key: Option<&str>) -> bool {
+        if is_valid_channel_name(target) {
+            if let Some(chan) = self.channels.get(target) {
                 let nick = self.clients[&addr].nick();
                 if chan.can_join(nick) {
                     true
                 } else {
-                    log::debug!("{}: Can't join {:?}: Banned", addr, targets);
+                    log::debug!("{}: Can't join {:?}: Banned", addr, target);
                     self.send_reply(addr, rpl::ERR_BANNEDFROMCHAN,
-                                    &[targets, lines::BANNED_FROM_CHAN]);
+                                    &[target, lines::BANNED_FROM_CHAN]);
                     false
                 }
             } else {
                 true
             }
         } else {
-            log::debug!("{}: Can't join {:?}: Invalid channel name", addr, targets);
-            self.send_reply(addr, rpl::ERR_NOSUCHCHANNEL, &[targets, lines::NO_SUCH_CHANNEL]);
+            log::debug!("{}: Can't join {:?}: Invalid channel name", addr, target);
+            self.send_reply(addr, rpl::ERR_NOSUCHCHANNEL, &[target, lines::NO_SUCH_CHANNEL]);
             false
         }
     }
 
     /// Applies a "JOIN" command issued by the given client with the given parameters.
-    pub fn apply_cmd_join(&mut self, addr: SocketAddr, targets: &str, keys: Option<&str>) {
-        log::debug!("{}: Join {} (keys={:?})", addr, targets, keys);
-        let chan = self.channels.entry(targets.into()).or_insert_with(Channel::new);
+    pub fn apply_cmd_join(&mut self, addr: SocketAddr, target: &str) {
+        log::debug!("{}: Join {}", addr, target);
+        let chan = self.channels.entry(target.into()).or_insert_with(Channel::new);
         chan.add_member(addr);
         let modes = chan.modes();
         let client = &self.clients[&addr];
-        let join = Message::with_prefix(client.nick(), Command::Join).param(targets).build();
-        self.broadcast(targets, join);
+        let join = Message::with_prefix(client.nick(), Command::Join).param(target).build();
+        self.broadcast(target, join);
         let modes = Message::with_prefix(&self.prefix, Command::Mode)
-            .param(targets)
+            .param(target)
             .param(modes)
             .build();
         client.send(modes);
-        self.send_topic(addr, targets);
-        self.send_names(addr, targets);
+        self.send_topic(addr, target);
+        self.send_names(addr, target);
     }
 
     /// Sends the chan modes to addr.
