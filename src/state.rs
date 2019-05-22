@@ -695,7 +695,11 @@ impl StateInner {
 
     /// Whether or not a "PRIVMSG" message with the given parameters can be issued by the given
     /// client.
-    pub fn check_cmd_privmsg(&self, addr: SocketAddr, target: &str, _content: &str) -> bool {
+    pub fn check_cmd_privmsg(&self, addr: SocketAddr, target: &str, content: &str) -> bool {
+        if content.is_empty() {
+            self.send_reply(addr, rpl::ERR_NOTEXTTOSEND, &[lines::NO_TEXT_TO_SEND]);
+            return false;
+        }
         if let Some(ref chan) = self.channels.get(target) {
             if chan.can_talk(addr) {
                 true
