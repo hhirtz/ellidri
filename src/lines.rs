@@ -2,7 +2,16 @@ pub const CANNOT_SEND_TO_CHAN: &str =
 "The fuck you're trying to do, motherfucker? Do you fucking mind knocking at the door?";
 
 pub const CHAN_O_PRIVS_NEEDED: &str =
-"";
+"TODO";
+
+pub const END_OF_BAN_LIST: &str =
+"TODO";
+
+pub const END_OF_EXCEPT_LIST: &str =
+"TODO";
+
+pub const END_OF_INVITE_LIST: &str =
+"TODO";
 
 pub const END_OF_MOTD: &str =
 "Creep, don't get cocky just because senpai told me to say it!";
@@ -12,6 +21,9 @@ pub const END_OF_NAMES: &str =
 
 pub const ERRONEOUS_NICNAME: &str =
 "That name is a joke. No, it wasn't funny. Go away.";
+
+pub const KEY_SET: &str =
+"TODO";
 
 pub const NEED_MORE_PARAMS: &str =
 "What did you expect, motherfucker? Don't bother me if you have nothing to say.";
@@ -57,10 +69,10 @@ pub const UNKNOWN_MODE: &str =
 If I see you do that again, you know what to do.";
 
 pub const USER_NOT_IN_CHANNEL: &str =
-"";
+"TODO";
 
 pub const USERS_DONT_MATCH: &str =
-"";
+"TODO";
 
 pub const WELCOME: &str =
 "Hmph. It's not like I wanted to welcome you.";

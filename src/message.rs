@@ -27,14 +27,22 @@ pub mod rpl {
     pub const CREATED: Reply   = "003";
     pub const MYINFO: Reply    = "004";
 
-    pub const CHANNELMODEIS: Reply = "324";
-    pub const NOTOPIC: Reply       = "331";
-    pub const TOPIC: Reply         = "332";
-    pub const NAMREPLY: Reply      = "353";
-    pub const ENDOFNAMES: Reply    = "366";
-    pub const MOTD: Reply          = "372";
-    pub const MOTDSTART: Reply     = "375";
-    pub const ENDOFMOTD: Reply     = "376";
+    pub const UMODEIS: Reply = "221";
+
+    pub const CHANNELMODEIS: Reply   = "324";
+    pub const NOTOPIC: Reply         = "331";
+    pub const TOPIC: Reply           = "332";
+    pub const INVITELIST: Reply      = "346";
+    pub const ENDOFINVITELIST: Reply = "347";
+    pub const EXCEPTLIST: Reply      = "348";
+    pub const ENDOFEXCEPTLIST: Reply = "349";
+    pub const NAMREPLY: Reply        = "353";
+    pub const ENDOFNAMES: Reply      = "366";
+    pub const BANLIST: Reply         = "367";
+    pub const ENDOFBANLIST: Reply    = "368";
+    pub const MOTD: Reply            = "372";
+    pub const MOTDSTART: Reply       = "375";
+    pub const ENDOFMOTD: Reply       = "376";
 
     pub const ERR_NOSUCHNICK: Reply       = "401";
     pub const ERR_NOSUCHCHANNEL: Reply    = "403";
@@ -52,10 +60,12 @@ pub mod rpl {
     pub const ERR_NEEDMOREPARAMS: Reply   = "461";
     pub const ERR_ALREADYREGISTRED: Reply = "462";
     pub const ERR_YOUREBANNEDCREEP: Reply = "465";
+    pub const ERR_KEYSET: Reply           = "467";
     pub const ERR_UNKNOWNMODE: Reply      = "472";
     pub const ERR_CHANOPRIVSNEEDED: Reply = "482";
 
-    pub const ERR_USERSDONTMATCH: Reply = "502";
+    pub const ERR_UMODEUNKNOWNFLAG: Reply = "501";
+    pub const ERR_USERSDONTMATCH: Reply   = "502";
 }
 
 /// Code generation for the list of commands.

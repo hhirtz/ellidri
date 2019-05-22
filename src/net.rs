@@ -74,6 +74,7 @@ fn handle(conn: TcpStream, peer_addr: SocketAddr, shared: State)
 
     let outgoing = outgoing_msgs
         .fold(writer, move |writer, msg| {
+            log::trace!("us -> {}: {}", peer_addr, msg);
             io::write_all(writer, msg)
                 .map(|(writer, _)| writer)
                 .map_err(move |err| broken_pipe(err, peer_addr))
@@ -131,7 +132,7 @@ fn handle_message(msg: Message, peer_addr: SocketAddr, shared: State)
     let mut ps = msg.params();
     match command {
         Command::Join => shared.cmd_join(peer_addr, ps.next().unwrap(), ps.next()),
-        Command::Mode => shared.cmd_mode(peer_addr, ps.next().unwrap(), ps.next()),
+        Command::Mode => shared.cmd_mode(peer_addr, ps.next().unwrap(), ps.next(), ps),
         Command::Motd => shared.cmd_motd(peer_addr),
         Command::Nick => shared.cmd_nick(peer_addr, ps.next().unwrap()),
         Command::Part => shared.cmd_part(peer_addr, ps.next().unwrap(), ps.next()),

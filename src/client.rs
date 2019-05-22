@@ -3,9 +3,8 @@
 use crate::message::{Command, Message, Reply, rpl};
 use crate::state::MessageQueue;
 
-fn is_mode_changeable(mode: u8) -> bool {
-    !(mode == b'a' || mode == b'r' || mode == b'o' || mode == b'O')
-}
+pub const USER_MODES: &[u8] = b"aiwros";
+pub const SETTABLE_USER_MODES: &[u8] = b"iws";
 
 /// Client data.
 pub struct Client {
@@ -126,39 +125,24 @@ impl Client {
         self.state
     }
 
-    pub fn update_modes<'a>(&mut self, modes: &'a str) -> Result<String, &'a str> {
-        let bmodes = modes.as_bytes();
-        let mut value = true;
-        let mut applied_modes = String::new();
+    pub fn modes(&self) -> String {
+        let mut modes = String::with_capacity(USER_MODES.len());
+        if self.away { modes.push('a'); }
+        if self.invisible { modes.push('i'); }
+        if self.wallops { modes.push('w'); }
+        if self.restricted { modes.push('r'); }
+        if self.operator { modes.push('o'); }
+        if self.server_notices { modes.push('s'); }
+        modes
+    }
 
-        if bmodes[0] != b'+' && bmodes[0] != b'-' {
-            applied_modes.push('+');
+    pub fn set_mode(&mut self, mode: u8, value: bool) {
+        match mode {
+            b'i' => { self.invisible = value; },
+            b'w' => { self.wallops = value; },
+            b's' => { self.server_notices = value; },
+            _ => {},
         }
-
-        for i in 0..bmodes.len() {
-            let mode = bmodes[i];
-            if mode == b'+' {
-                value = true;
-                applied_modes.push('+');
-            } else if mode == b'-' {
-                value = false;
-                applied_modes.push('-');
-            } else if mode == b'i' {
-                self.invisible = value;
-                applied_modes.push('i');
-            } else if mode == b'w' {
-                self.wallops = value;
-                applied_modes.push('w');
-            } else if mode == b's' {
-                self.server_notices = value;
-                applied_modes.push('s');
-            } else if !is_mode_changeable(mode) {
-                // *ignores*
-            } else {
-                return Err(&modes[i..=i]);
-            }
-        }
-        Ok(applied_modes)
     }
 }
 
