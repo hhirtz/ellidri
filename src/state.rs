@@ -204,6 +204,14 @@ impl StateInner {
     pub fn check_cmd_join(&self, addr: SocketAddr, target: &str, key: Option<&str>) -> bool {
         if is_valid_channel_name(target) {
             if let Some(chan) = self.channels.get(target) {
+                if let Some(ref chan_key) = chan.key {
+                    if key.map_or(true, |key| key != chan_key) {
+                        log::debug!("{}: Can't join {:?}: Bad key", addr, target);
+                        self.send_reply(addr, rpl::ERR_BADCHANKEY,
+                                        &[target, lines::BAD_CHAN_KEY]);
+                        return false;
+                    }
+                }
                 let nick = self.clients[&addr].nick();
                 if chan.can_join(nick) {
                     true

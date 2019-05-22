@@ -1,3 +1,6 @@
+pub const BAD_CHAN_KEY: &str =
+"TODO";
+
 pub const BANNED_FROM_CHAN: &str =
 "TODO";
 

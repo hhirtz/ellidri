@@ -63,6 +63,7 @@ pub mod rpl {
     pub const ERR_KEYSET: Reply           = "467";
     pub const ERR_UNKNOWNMODE: Reply      = "472";
     pub const ERR_BANNEDFROMCHAN: Reply   = "474";
+    pub const ERR_BADCHANKEY: Reply       = "475";
     pub const ERR_CHANOPRIVSNEEDED: Reply = "482";
 
     pub const ERR_UMODEUNKNOWNFLAG: Reply = "501";
