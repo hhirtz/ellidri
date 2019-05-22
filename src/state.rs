@@ -243,6 +243,28 @@ impl StateInner {
         }
     }
 
+    fn check_cmd_mode_chan_set(&self, addr: SocketAddr, target: &str) -> bool {
+        if let Some(chan) = self.channels.get(target) {
+            if let Some(modes) = chan.members.get(&addr) {
+                if modes.channel_operator {
+                    true
+                } else {
+                    self.send_reply(addr, rpl::ERR_CHANOPRIVSNEEDED,
+                                    &[target, lines::CHAN_O_PRIVS_NEEDED]);
+                    false
+                }
+            } else {
+                let nick = self.clients[&addr].nick();
+                self.send_reply(addr, rpl::ERR_USERNOTINCHANNEL,
+                                &[nick, target, lines::USER_NOT_IN_CHANNEL]);
+                false
+            }
+        } else {
+            self.send_reply(addr, rpl::ERR_NOSUCHCHANNEL, &[target, lines::NO_SUCH_CHANNEL]);
+            false
+        }
+    }
+
     #[allow(clippy::cyclomatic_complexity)]  // TODO
     fn apply_cmd_mode_chan_set(&mut self, addr: SocketAddr, target: &str,
                                modes: &str, mut modeparams: Params)
@@ -546,6 +568,9 @@ impl StateInner {
         if is_channel_name(target) {
             // Channel modes here:
             if let Some(modes) = modes {
+                if !self.check_cmd_mode_chan_set(addr, target) {
+                    return;
+                }
                 self.apply_cmd_mode_chan_set(addr, target, modes, modeparams);
             } else {
                 self.apply_cmd_mode_chan_get(addr, target);
