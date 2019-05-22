@@ -123,11 +123,11 @@ impl State {
     /// Handles a "TOPIC" message.
     pub fn cmd_topic(&self, addr: SocketAddr, target: &str, topic: Option<&str>) {
         if let Some(topic) = topic {
-            if self.0.read().unwrap().check_cmd_set_topic(addr, target, topic) {
-                self.0.write().unwrap().apply_cmd_set_topic(addr, target, topic);
+            if self.0.read().unwrap().check_cmd_topic_set(addr, target) {
+                self.0.write().unwrap().apply_cmd_topic_set(addr, target, topic);
             }
         } else {
-            self.0.read().unwrap().apply_cmd_get_topic(addr, target);
+            self.0.read().unwrap().apply_cmd_topic_get(addr, target);
         }
     }
 
@@ -758,24 +758,49 @@ impl StateInner {
     /// client.
     ///
     /// "TOPIC" has been split in two handlers, a getter and a setter.
-    pub fn check_cmd_set_topic(&self, addr: SocketAddr, target: &str, topic: &str) -> bool {
-        // TODO
-        log::warn!("cmd_set_topic: unimplemented");
-        false
+    pub fn check_cmd_topic_set(&self, addr: SocketAddr, target: &str) -> bool {
+        if let Some(chan) = self.channels.get(target) {
+            if let Some(modes) = chan.members.get(&addr) {
+                if modes.channel_operator || !chan.topic_restricted {
+                    true
+                } else {
+                    self.send_reply(addr, rpl::ERR_CHANOPRIVSNEEDED,
+                                    &[target, lines::CHAN_O_PRIVS_NEEDED]);
+                    false
+                }
+            } else {
+                self.send_reply(addr, rpl::ERR_NOTONCHANNEL,
+                                &[target, lines::NOT_ON_CHANNEL_TOPIC]);
+                false
+            }
+        } else {
+            self.send_reply(addr, rpl::ERR_NOTONCHANNEL, &[target, lines::NOT_ON_CHANNEL_TOPIC]);
+            false
+        }
     }
 
     /// Apply a "TOPIC" command issued by the given client with the given parameters.
     ///
     /// "TOPIC" has been split in two handlers, a getter and a setter.
-    pub fn apply_cmd_set_topic(&mut self, addr: SocketAddr, target: &str, modes: &str) {
-        // TODO
-        log::warn!("cmd_set_topic: unimplemented");
+    pub fn apply_cmd_topic_set(&mut self, addr: SocketAddr, target: &str, topic: &str) {
+        log::debug!("{} Set topic of {:?} to {:?}", addr, target, topic);
+        let chan = self.channels.get_mut(target).unwrap();
+        if topic.is_empty() {
+            chan.topic = None;
+        } else {
+            chan.topic = Some(topic.to_owned());
+        }
+        let msg = Message::with_prefix(self.clients[&addr].full_name(), Command::Topic)
+            .param(target)
+            .trailing_param(topic)
+            .into_bytes();
+        self.broadcast(target, msg);
     }
 
     /// Applies a "TOPIC" command issued by the given client with the given parameter.
     ///
     /// "TOPIC" has been split in two handlers, a getter and a setter.
-    pub fn apply_cmd_get_topic(&self, addr: SocketAddr, target: &str) {
+    pub fn apply_cmd_topic_get(&self, addr: SocketAddr, target: &str) {
         if let Some(chan) = self.channels.get(target) {
             if chan.members.contains_key(&addr) {
                 self.send_topic(addr, target);
