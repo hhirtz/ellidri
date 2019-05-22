@@ -838,7 +838,7 @@ impl StateInner {
                 names.push(modes.symbol());
                 names.push_str(nick);
             }
-            self.send_reply(addr, rpl::NAMREPLY, &[chan.symbol(), chan_name, &names]);
+            self.send_reply(addr, rpl::NAMREPLY, &[chan.symbol(), chan_name, names.trim_start()]);
         }
         self.send_reply(addr, rpl::ENDOFNAMES, &[chan_name, lines::END_OF_NAMES]);
     }
