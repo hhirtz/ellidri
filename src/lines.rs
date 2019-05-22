@@ -1,3 +1,6 @@
+pub const BANNED_FROM_CHAN: &str =
+"TODO";
+
 pub const CANNOT_SEND_TO_CHAN: &str =
 "The fuck you're trying to do, motherfucker? Do you fucking mind knocking at the door?";
 

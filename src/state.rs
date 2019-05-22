@@ -200,7 +200,19 @@ impl StateInner {
     /// client.
     pub fn check_cmd_join(&self, addr: SocketAddr, targets: &str, keys: Option<&str>) -> bool {
         if is_valid_channel_name(targets) {
-            true
+            if let Some(chan) = self.channels.get(targets) {
+                let nick = self.clients[&addr].nick();
+                if chan.can_join(nick) {
+                    true
+                } else {
+                    log::debug!("{}: Can't join {:?}: Banned", addr, targets);
+                    self.send_reply(addr, rpl::ERR_BANNEDFROMCHAN,
+                                    &[targets, lines::BANNED_FROM_CHAN]);
+                    false
+                }
+            } else {
+                true
+            }
         } else {
             log::debug!("{}: Can't join {:?}: Invalid channel name", addr, targets);
             self.send_reply(addr, rpl::ERR_NOSUCHCHANNEL, &[targets, lines::NO_SUCH_CHANNEL]);
@@ -917,6 +929,12 @@ impl Channel {
     /// Removes a member.
     pub fn remove_member(&mut self, addr: SocketAddr) {
         self.members.remove(&addr);
+    }
+
+    pub fn can_join(&self, nick: &str) -> bool {
+        !self.ban_mask.contains(nick)
+            || self.exception_mask.contains(nick)
+            || self.invitation_mask.contains(nick)
     }
 
     pub fn can_talk(&self, addr: SocketAddr) -> bool {
