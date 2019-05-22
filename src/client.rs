@@ -1,7 +1,7 @@
 //! Client management and connection state.
 
-use crate::message::{Command, Message, Reply, rpl};
-use crate::state::MessageQueue;
+use crate::message::{Command, Reply, rpl};
+use crate::state::{MessageQueue, MessageQueueItem};
 
 pub const USER_MODES: &[u8] = b"aiwros";
 pub const SETTABLE_USER_MODES: &[u8] = b"iws";
@@ -109,7 +109,7 @@ impl Client {
     /// Add a message to the client message queue.
     ///
     /// Use this function to send messages to the client.
-    pub fn send(&self, msg: Message<'static>) {
+    pub fn send(&self, msg: MessageQueueItem) {
         self.queue.unbounded_send(msg).unwrap();
     }
 

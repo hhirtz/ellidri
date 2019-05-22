@@ -74,7 +74,7 @@ fn handle(conn: TcpStream, peer_addr: SocketAddr, shared: State)
 
     let outgoing = outgoing_msgs
         .fold(writer, move |writer, msg| {
-            log::trace!("us -> {}: {}", peer_addr, msg);
+            //log::trace!("us -> {}: {}", peer_addr, msg);
             io::write_all(writer, msg)
                 .map(|(writer, _)| writer)
                 .map_err(move |err| broken_pipe(err, peer_addr))

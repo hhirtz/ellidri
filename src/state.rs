@@ -14,7 +14,8 @@ use crate::message::{Command, Message, Params, Reply, rpl};
 const MAX_CHANNEL_NAME_LENGTH: usize = 50;
 const MAX_NICKNAME_LENGTH: usize = 9;
 
-pub type MessageQueue = mpsc::UnboundedSender<Message<'static>>;
+pub type MessageQueueItem = Arc<[u8]>;
+pub type MessageQueue = mpsc::UnboundedSender<MessageQueueItem>;
 
 /// Shared state of the IRC server.
 ///
@@ -184,8 +185,8 @@ impl StateInner {
     pub fn remove(&mut self, addr: SocketAddr) {
         let client = self.clients.remove(&addr).unwrap();
         let msg = Message::with_prefix(client.full_name(), Command::Quit)
-            .trailing_param(client.quit_message());
-
+            .trailing_param(client.quit_message())
+            .into_bytes();
         for chan in self.channels.values() {
             if chan.members.contains_key(&addr) {
                 for &member in chan.members.keys() {
@@ -239,11 +240,12 @@ impl StateInner {
         let modes = chan.modes();
         let client = &self.clients[&addr];
         let join = Message::with_prefix(client.full_name(), Command::Join).param(target).build();
-        self.broadcast(target, join);
+        self.broadcast(target, join.into_bytes());
         let modes = Message::with_prefix(&self.prefix, Command::Mode)
             .param(target)
             .param(modes)
-            .build();
+            .build()
+            .into_bytes();
         client.send(modes);
         self.send_topic(addr, target);
         self.send_names(addr, target);
@@ -258,8 +260,10 @@ impl StateInner {
                 .param(target)
                 .param(modes);
             let msg = chan.user_limit.iter()
-                .fold(msg, |msg, limit| msg.param(limit.to_string()))
-                .build();
+                .fold(msg, |msg, limit| msg.param(limit.to_string()));
+            let msg = chan.key.iter()
+                .fold(msg, |msg, key| msg.param(key.to_string()));
+            let msg = msg.build().into_bytes();
             self.clients[&addr].send(msg);
         } else {
             self.send_reply(addr, rpl::ERR_NOSUCHCHANNEL, &[target, lines::NO_SUCH_CHANNEL]);
@@ -331,7 +335,8 @@ impl StateInner {
                                                        Command::Reply(rpl::ERR_KEYSET))
                             .param(self.clients[&addr].nick())
                             .param(target)
-                            .trailing_param(lines::KEY_SET);
+                            .trailing_param(lines::KEY_SET)
+                            .into_bytes();
                         self.clients[&addr].send(msg);
                     } else if chan.key.as_ref().unwrap() == param {
                         // Removing the key when there is some.
@@ -375,14 +380,16 @@ impl StateInner {
                             .param(self.clients[&addr].nick())
                             .param(target)
                             .param(exception)
-                            .build();
+                            .build()
+                            .into_bytes();
                         self.clients[&addr].send(msg);
                     }
                     let msg = Message::with_prefix(&self.prefix,
                                                    Command::Reply(rpl::ENDOFEXCEPTLIST))
                         .param(self.clients[&addr].nick())
                         .param(target)
-                        .trailing_param(lines::END_OF_EXCEPT_LIST);
+                        .trailing_param(lines::END_OF_EXCEPT_LIST)
+                        .into_bytes();
                     self.clients[&addr].send(msg);
                 }
             } else if mode == b'b' {
@@ -406,14 +413,16 @@ impl StateInner {
                             .param(self.clients[&addr].nick())
                             .param(target)
                             .param(ban)
-                            .build();
+                            .build()
+                            .into_bytes();
                         self.clients[&addr].send(msg);
                     }
                     let msg = Message::with_prefix(&self.prefix,
                                                    Command::Reply(rpl::ENDOFBANLIST))
                         .param(self.clients[&addr].nick())
                         .param(target)
-                        .trailing_param(lines::END_OF_BAN_LIST);
+                        .trailing_param(lines::END_OF_BAN_LIST)
+                        .into_bytes();
                     self.clients[&addr].send(msg);
                 }
             } else if mode == b'I' {
@@ -437,14 +446,16 @@ impl StateInner {
                             .param(self.clients[&addr].nick())
                             .param(target)
                             .param(invitation)
-                            .build();
+                            .build()
+                            .into_bytes();
                         self.clients[&addr].send(msg);
                     }
                     let msg = Message::with_prefix(&self.prefix,
                                                    Command::Reply(rpl::ENDOFINVITELIST))
                         .param(self.clients[&addr].nick())
                         .param(target)
-                        .trailing_param(lines::END_OF_INVITE_LIST);
+                        .trailing_param(lines::END_OF_INVITE_LIST)
+                        .into_bytes();
                     self.clients[&addr].send(msg);
                 }
             } else if mode == b'o' {
@@ -465,7 +476,8 @@ impl StateInner {
                             .param(self.clients[&addr].nick())
                             .param(param)
                             .param(target)
-                            .trailing_param(lines::USER_NOT_IN_CHANNEL);
+                            .trailing_param(lines::USER_NOT_IN_CHANNEL)
+                            .into_bytes();
                         self.clients[&addr].send(msg);
                     }
                     if changed {
@@ -491,7 +503,8 @@ impl StateInner {
                             .param(self.clients[&addr].nick())
                             .param(param)
                             .param(target)
-                            .trailing_param(lines::USER_NOT_IN_CHANNEL);
+                            .trailing_param(lines::USER_NOT_IN_CHANNEL)
+                            .into_bytes();
                         self.clients[&addr].send(msg);
                     }
                     if changed {
@@ -503,7 +516,8 @@ impl StateInner {
                 let msg = Message::with_prefix(&self.prefix, Command::Reply(rpl::ERR_UNKNOWNMODE))
                     .param(self.clients[&addr].nick())
                     .param(&modes[i..=i])
-                    .trailing_param(lines::UNKNOWN_MODE);
+                    .trailing_param(lines::UNKNOWN_MODE)
+                    .into_bytes();
                 self.clients[&addr].send(msg);
             }
         }
@@ -513,7 +527,8 @@ impl StateInner {
                 .param(applied_modes);
             let msg = applied_modeparams.into_iter()
                 .fold(msg, |msg, param| msg.param(param))
-                .build();
+                .build()
+                .into_bytes();
             self.broadcast(target, msg);
         }
     }
@@ -559,13 +574,15 @@ impl StateInner {
                 let msg = Message::with_prefix(&self.prefix,
                                                Command::Reply(rpl::ERR_UMODEUNKNOWNFLAG))
                     .param(client.nick())
-                    .trailing_param(lines::UNKNOWN_MODE);
+                    .trailing_param(lines::UNKNOWN_MODE)
+                    .into_bytes();
                 client.send(msg);
             }
         }
         let msg = Message::with_prefix(client.full_name(), Command::Mode)
             .param(target)
-            .trailing_param(applied_modes);
+            .trailing_param(applied_modes)
+            .into_bytes();
         client.send(msg);
     }
 
@@ -580,7 +597,8 @@ impl StateInner {
         let modes = client.modes();
         let msg = Message::with_prefix(&self.prefix, Command::Reply(rpl::UMODEIS))
             .param(modes)
-            .build();
+            .build()
+            .into_bytes();
         client.send(msg);
     }
 
@@ -649,7 +667,8 @@ impl StateInner {
         log::debug!("{}: Changing nick to {:?}", addr, nick);
         let msg = Message::with_prefix(self.clients[&addr].nick(), Command::Nick)
             .param(nick)
-            .build();
+            .build()
+            .into_bytes();
         let noticed = self.channels
             .values()
             .filter(|chan| chan.members.contains_key(&addr))
@@ -688,7 +707,7 @@ impl StateInner {
         } else {
             Message::with_prefix(nick, Command::Part).param(target).build()
         };
-        self.broadcast(target, msg);
+        self.broadcast(target, msg.into_bytes());
         let chan = self.channels.get_mut(target).unwrap();
         chan.members.remove(&addr);
     }
@@ -722,7 +741,8 @@ impl StateInner {
         let client = &self.clients[&addr];
         let msg = Message::with_prefix(client.full_name(), Command::PrivMsg)
             .param(targets)
-            .trailing_param(content);
+            .trailing_param(content)
+            .into_bytes();
         let chan = &self.channels[targets];
         chan.members.keys()
             .filter(|&&a| a != addr)
@@ -782,7 +802,7 @@ impl StateInner {
     }
 
     /// Sends the given message to all users in the given channel.
-    pub fn broadcast(&self, target: &str, msg: Message<'static>) {
+    pub fn broadcast(&self, target: &str, msg: MessageQueueItem) {
         let chan = &self.channels[target];
         for &member in chan.members.keys() {
             self.send(member, msg.clone());
@@ -790,7 +810,7 @@ impl StateInner {
     }
 
     /// Sends the given message to the given client.
-    pub fn send(&self, addr: SocketAddr, msg: Message<'static>) {
+    pub fn send(&self, addr: SocketAddr, msg: MessageQueueItem) {
         if let Some(client) = self.clients.get(&addr) {
             client.send(msg);
         }
@@ -808,7 +828,7 @@ impl StateInner {
             } else {
                 msg.build()
             };
-            client.send(msg);
+            client.send(msg.into_bytes());
         }
     }
 
@@ -827,7 +847,7 @@ impl StateInner {
             } else {
                 msg.build()
             };
-            client.send(msg);
+            client.send(msg.into_bytes());
         }
     }
 
@@ -971,6 +991,7 @@ impl Channel {
         if self.reop { modes.push('r'); }
         if self.topic_restricted { modes.push('t'); }
         if self.user_limit.is_some() { modes.push('l'); }
+        if self.key.is_some() { modes.push('k'); }
         modes
     }
 

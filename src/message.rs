@@ -4,6 +4,7 @@
 
 use std::borrow::Cow;
 use std::ops::Range;
+use std::sync::Arc;
 
 pub use rpl::Reply;
 use std::{fmt, iter, mem};
@@ -337,7 +338,7 @@ impl MessageBuilder {
         } else {
             self.buf.push(param.chars().next().unwrap());
         }
-        self.buf.extend(param.chars().map(sanitize_param));
+        self.buf.extend(param.chars().skip(1).map(sanitize_param));
         self
     }
 
@@ -575,13 +576,10 @@ impl<'a> Message<'a> {
             Err(_) => false,
         }
     }
-}
 
-impl<'a> AsRef<[u8]> for Message<'a> {
-    /// Returns the message string as bytes. Used by the `crate::net` module with
-    /// `tokio::io::write_all`.
-    fn as_ref(&self) -> &[u8] {
-        self.buf.as_bytes()
+    /// Unwraps the underlying string, and clone it if it is not owned.
+    pub fn into_bytes(self) -> Arc<[u8]> {
+        self.buf.into_owned().into_bytes().into()
     }
 }
 
