@@ -314,7 +314,7 @@ impl StateInner {
         for maybe_change in modes::ChannelQuery::new(modes, modeparams) {
             match maybe_change {
                 Ok(change) => {
-                    let applied = chan.apply_mode_change(change, &mut response, &self.prefix,
+                    let applied = chan.apply_mode_change(&change, &mut response, &self.prefix,
                                                          self.clients[&addr].nick(),
                                                          &self.clients, target);
                     if applied {
@@ -820,14 +820,14 @@ impl Channel {
         modes
     }
 
-    pub fn apply_mode_change(&mut self, change: modes::ChannelModeChange,
+    pub fn apply_mode_change(&mut self, change: &modes::ChannelModeChange,
                              out: &mut ResponseBuffer, prefix: &str, nick: &str,
                              clients: &HashMap<SocketAddr, Client>,
                              chan_name: &str) -> bool
     {
         use modes::ChannelModeChange::*;
         let mut applied = false;
-        match change {
+        match *change {
             Anonymous(value) => {
                 applied = self.anonymous != value;
                 self.anonymous = value;
@@ -860,7 +860,7 @@ impl Channel {
                 applied = self.topic_restricted != value;
                 self.topic_restricted = value;
             },
-            Key(value, key) => if value {
+            Key(value, ref key) => if value {
                 if self.key.is_some() {
                     out.message(prefix, rpl::ERR_KEYSET)
                         .param(nick)
@@ -869,15 +869,15 @@ impl Channel {
                     return false;
                 } else {
                     applied = true;
-                    self.key = Some(key.to_owned());
+                    self.key = Some(key.clone().into_owned());
                 }
             } else if let Some(ref chan_key) = self.key {
-                if key == chan_key {
+                if key.as_ref() == chan_key {
                     applied = true;
                     self.key = None;
                 }
             },
-            UserLimit(Some(s)) => if let Ok(limit) = s.parse() {
+            UserLimit(Some(ref s)) => if let Ok(limit) = s.parse() {
                 applied = self.user_limit.map_or(true, |chan_limit| chan_limit != limit);
                 self.user_limit = Some(limit);
             },
@@ -893,28 +893,28 @@ impl Channel {
             GetInvitations => out.list(prefix, rpl::EXCEPTLIST, rpl::ENDOFEXCEPTLIST,
                                        lines::END_OF_EXCEPT_LIST, &self.exception_mask,
                                        |msg| msg.param(nick).param(chan_name)),
-            ChangeBan(value, param) => {
+            ChangeBan(value, ref param) => {
                 applied = if value {
-                    self.ban_mask.insert(param.to_owned())
+                    self.ban_mask.insert(param.clone().into_owned())
                 } else {
-                    self.ban_mask.remove(param)
+                    self.ban_mask.remove(param.as_ref())
                 };
             },
-            ChangeException(value, param) => {
+            ChangeException(value, ref param) => {
                 applied = if value {
-                    self.exception_mask.insert(param.to_owned())
+                    self.exception_mask.insert(param.clone().into_owned())
                 } else {
-                    self.exception_mask.remove(param)
+                    self.exception_mask.remove(param.as_ref())
                 };
             },
-            ChangeInvitation(value, param) => {
+            ChangeInvitation(value, ref param) => {
                 applied = if value {
-                    self.invitation_mask.insert(param.to_owned())
+                    self.invitation_mask.insert(param.clone().into_owned())
                 } else {
-                    self.invitation_mask.remove(param)
+                    self.invitation_mask.remove(param.as_ref())
                 };
             },
-            ChangeOperator(value, param) => {
+            ChangeOperator(value, ref param) => {
                 let mut has_it = false;
                 for (member, modes) in self.members.iter_mut() {
                     if clients[member].nick() == param {
@@ -932,7 +932,7 @@ impl Channel {
                         .trailing_param(lines::USER_NOT_IN_CHANNEL);
                 }
             },
-            ChangeVoice(value, param) => {
+            ChangeVoice(value, ref param) => {
                 let mut has_it = false;
                 for (member, modes) in self.members.iter_mut() {
                     if clients[member].nick() == param {

@@ -1,3 +1,5 @@
+use std::borrow::Cow;
+
 struct SimpleQuery<'a> {
     modes: &'a [u8],
     value: bool,
@@ -68,7 +70,7 @@ impl<'a> Iterator for UserQuery<'a> {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Debug)]
 pub enum ChannelModeChange<'a> {
     Anonymous(bool),
     InviteOnly(bool),
@@ -78,16 +80,16 @@ pub enum ChannelModeChange<'a> {
     Private(bool),
     Secret(bool),
     TopicRestricted(bool),
-    Key(bool, &'a str),
-    UserLimit(Option<&'a str>),
+    Key(bool, Cow<'a, str>),
+    UserLimit(Option<Cow<'a, str>>),
     GetBans,
     GetExceptions,
     GetInvitations,
-    ChangeBan(bool, &'a str),
-    ChangeException(bool, &'a str),
-    ChangeInvitation(bool, &'a str),
-    ChangeOperator(bool, &'a str),
-    ChangeVoice(bool, &'a str),
+    ChangeBan(bool, Cow<'a, str>),
+    ChangeException(bool, Cow<'a, str>),
+    ChangeInvitation(bool, Cow<'a, str>),
+    ChangeOperator(bool, Cow<'a, str>),
+    ChangeVoice(bool, Cow<'a, str>),
 }
 
 impl<'a> ChannelModeChange<'a> {
@@ -135,16 +137,16 @@ impl<'a> ChannelModeChange<'a> {
         }
     }
 
-    pub fn param(&self) -> Option<&'a str> {
+    pub fn param(&'a self) -> Option<&'a str> {
         use ChannelModeChange::*;
         match self {
-            Key(_, p) => Some(p),
-            UserLimit(l) => *l,
-            ChangeBan(_, p) => Some(p),
-            ChangeException(_, p) => Some(p),
-            ChangeInvitation(_, p) => Some(p),
-            ChangeOperator(_, p) => Some(p),
-            ChangeVoice(_, p) => Some(p),
+            UserLimit(Some(p)) |
+            Key(_, p) |
+            ChangeBan(_, p) |
+            ChangeException(_, p) |
+            ChangeInvitation(_, p) |
+            ChangeOperator(_, p) |
+            ChangeVoice(_, p) => Some(p.as_ref()),
             _ => None,
         }
     }
@@ -184,33 +186,33 @@ impl<'a, I> Iterator for ChannelQuery<'a, I>
                 b'p' => Ok(ChannelModeChange::Private(value)),
                 b't' => Ok(ChannelModeChange::TopicRestricted(value)),
                 b'k' => if let Some(param) = self.params.next() {
-                    Ok(ChannelModeChange::Key(value, param))
+                    Ok(ChannelModeChange::Key(value, param.into()))
                 } else {
                     Err(Error::MissingModeParam)
                 },
-                b'l' => Ok(ChannelModeChange::UserLimit(self.params.next())),
+                b'l' => Ok(ChannelModeChange::UserLimit(self.params.next().map(Into::into))),
                 b'b' => if let Some(param) = self.params.next() {
-                    Ok(ChannelModeChange::ChangeBan(value, param))
+                    Ok(ChannelModeChange::ChangeBan(value, param.into()))
                 } else {
                     Ok(ChannelModeChange::GetBans)
                 },
                 b'e' => if let Some(param) = self.params.next() {
-                    Ok(ChannelModeChange::ChangeException(value, param))
+                    Ok(ChannelModeChange::ChangeException(value, param.into()))
                 } else {
                     Ok(ChannelModeChange::GetExceptions)
                 },
                 b'I' => if let Some(param) = self.params.next() {
-                    Ok(ChannelModeChange::ChangeInvitation(value, param))
+                    Ok(ChannelModeChange::ChangeInvitation(value, param.into()))
                 } else {
                     Ok(ChannelModeChange::GetInvitations)
                 },
                 b'o' => if let Some(param) = self.params.next() {
-                    Ok(ChannelModeChange::ChangeOperator(value, param))
+                    Ok(ChannelModeChange::ChangeOperator(value, param.into()))
                 } else {
                     Err(Error::MissingModeParam)
                 },
                 b'v' => if let Some(param) = self.params.next() {
-                    Ok(ChannelModeChange::ChangeVoice(value, param))
+                    Ok(ChannelModeChange::ChangeVoice(value, param.into()))
                 } else {
                     Err(Error::MissingModeParam)
                 },
