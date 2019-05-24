@@ -1,6 +1,6 @@
 [package]
 name = "ellidri"
-version = "0.1.0"
+version = "0.2.0"
 authors = ["Taiite <hubert.hirtz@laposte.net>"]
 edition = "2018"
 
