@@ -23,6 +23,7 @@ use futures::Future;
 
 use crate::state::State;
 
+pub mod channel;
 pub mod client;
 pub mod config;
 pub mod lines;
