@@ -347,7 +347,8 @@ impl<'a> Message<'a> {
     /// # Return value
     ///
     /// Returns `Ok(Some(msg))` when the message is correctly formed, `Ok(None)` when the message
-    /// is empty (see note below), and `Err(())` when the message is invalid.
+    /// is empty (see note below), and `Err(())` when the message is invalid (has a prefix but no
+    /// command).
     ///
     /// **Note:** An empty message doesn't mean just "\r\n", but actually any whitespace string.
     /// For example:
