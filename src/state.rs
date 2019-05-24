@@ -9,7 +9,8 @@ use futures::sync::mpsc;
 
 use crate::client::{Client, SETTABLE_USER_MODES, USER_MODES};
 use crate::lines;
-use crate::message::{Command, Message, Params, Reply, rpl};
+use crate::message::{Command, Message, Params, Reply, rpl, ResponseBuffer};
+use crate::modes;
 
 const MAX_CHANNEL_NAME_LENGTH: usize = 50;
 const MAX_NICKNAME_LENGTH: usize = 9;
@@ -253,6 +254,7 @@ impl StateInner {
 
     /// Sends the chan modes to addr.
     fn apply_cmd_mode_chan_get(&self, addr: SocketAddr, target: &str) {
+        log::debug!("{}: getting modes of {:?}", addr, target);
         if let Some(chan) = self.channels.get(target) {
             let modes = chan.modes();
             let msg = Message::with_prefix(&self.prefix, Command::Reply(rpl::CHANNELMODEIS))
@@ -276,252 +278,69 @@ impl StateInner {
                 if modes.channel_operator {
                     true
                 } else {
+                    log::debug!("{}: can't set modes of {:?}: not operator", addr, target);
                     self.send_reply(addr, rpl::ERR_CHANOPRIVSNEEDED,
                                     &[target, lines::CHAN_O_PRIVS_NEEDED]);
                     false
                 }
             } else {
+                log::debug!("{}: can't set modes of {:?}: not in channel", addr, target);
                 let nick = self.clients[&addr].nick();
                 self.send_reply(addr, rpl::ERR_USERNOTINCHANNEL,
                                 &[nick, target, lines::USER_NOT_IN_CHANNEL]);
                 false
             }
         } else {
+            log::debug!("{}: can't set modes of {:?}: no such channel", addr, target);
             self.send_reply(addr, rpl::ERR_NOSUCHCHANNEL, &[target, lines::NO_SUCH_CHANNEL]);
             false
         }
     }
 
-    #[allow(clippy::cyclomatic_complexity)]  // TODO
     fn apply_cmd_mode_chan_set(&mut self, addr: SocketAddr, target: &str,
-                               modes: &str, mut modeparams: Params)
+                               modes: &str, modeparams: Params)
     {
+        log::debug!("{}: settings modes of {:?} to {:?} (params eluded)",
+                    addr, target, modes);
         let modes = modes.trim();
         if modes.is_empty() {
             // Received a "MODE #chan :", nothing left to be done...
             return;
         }
-        let chan = self.channels.get_mut(target).unwrap();
-        let bmodes = modes.as_bytes();
         let mut applied_modes = String::new();
         let mut applied_modeparams = Vec::new();
-        let mut mode_value = true;
-        if bmodes[0] != b'+' && bmodes[0] != b'-' {
-            applied_modes.push('+');
-        }
-        for i in 0..bmodes.len() {
-            let mode = bmodes[i];
-            if mode == b'+' {
-                mode_value = true;
-                applied_modes.push('+');
-            } else if mode == b'-' {
-                mode_value = false;
-                applied_modes.push('-');
-            } else if SIMPLE_CHAN_MODES.contains(&mode) {
-                chan.set_simple_mode(mode, mode_value);
-                applied_modes.push(mode as char);
-            } else if mode == b'k' {
-                if let Some(param) = modeparams.next() {
-                    if chan.key.is_none() && mode_value {
-                        // Setting the key when there is none.
-                        chan.key = Some(param.to_owned());
-                        applied_modes.push('k');
-                        applied_modeparams.push(param.to_owned());
-                    } else if chan.key.is_none() {
-                        // Removing the key when there is none.
-                    } else if mode_value {
-                        // Setting the key when there is some.
-                        let msg = Message::with_prefix(&self.prefix,
-                                                       Command::Reply(rpl::ERR_KEYSET))
-                            .param(self.clients[&addr].nick())
-                            .param(target)
-                            .trailing_param(lines::KEY_SET)
-                            .into_bytes();
-                        self.clients[&addr].send(msg);
-                    } else if chan.key.as_ref().unwrap() == param {
-                        // Removing the key when there is some.
-                        // The key param must be the channel key.
-                        chan.key = None;
-                        applied_modes.push('k');
-                        applied_modeparams.push(param.to_owned());
-                    }
-                }
-            } else if mode == b'l' {
-                if mode_value {
-                    if let Some(limit) = modeparams.next().and_then(|p| p.parse().ok()) {
-                        // Set the limit.
-                        chan.user_limit = Some(limit);
-                        applied_modes.push('l');
-                        applied_modeparams.push(limit.to_string());
-                    }
-                } else {
-                    // Remove the limit.
-                    chan.user_limit = None;
-                    applied_modes.push('l');
-                }
-            } else if mode == b'e' {
-                if let Some(param) = modeparams.next() {
-                    let changed = if mode_value {
-                        // Set an exception.
-                        chan.exception_mask.insert(param.to_owned())
-                    } else {
-                        // Remove an exception.
-                        chan.exception_mask.remove(param)
-                    };
-                    if changed {
-                        applied_modes.push('e');
-                        applied_modeparams.push(param.to_owned());
-                    }
-                } else {
-                    // Get the list of exceptions.
-                    for exception in &chan.invitation_mask {
-                        let msg = Message::with_prefix(&self.prefix,
-                                                       Command::Reply(rpl::EXCEPTLIST))
-                            .param(self.clients[&addr].nick())
-                            .param(target)
-                            .param(exception)
-                            .build()
-                            .into_bytes();
-                        self.clients[&addr].send(msg);
-                    }
-                    let msg = Message::with_prefix(&self.prefix,
-                                                   Command::Reply(rpl::ENDOFEXCEPTLIST))
-                        .param(self.clients[&addr].nick())
-                        .param(target)
-                        .trailing_param(lines::END_OF_EXCEPT_LIST)
-                        .into_bytes();
-                    self.clients[&addr].send(msg);
-                }
-            } else if mode == b'b' {
-                if let Some(param) = modeparams.next() {
-                    let changed = if mode_value {
-                        // Set an exception.
-                        chan.ban_mask.insert(param.to_owned())
-                    } else {
-                        // Remove an exception.
-                        chan.ban_mask.remove(param)
-                    };
-                    if changed {
-                        applied_modes.push('b');
-                        applied_modeparams.push(param.to_owned());
-                    }
-                } else {
-                    // Get the list of bans.
-                    for ban in &chan.ban_mask {
-                        let msg = Message::with_prefix(&self.prefix,
-                                                       Command::Reply(rpl::BANLIST))
-                            .param(self.clients[&addr].nick())
-                            .param(target)
-                            .param(ban)
-                            .build()
-                            .into_bytes();
-                        self.clients[&addr].send(msg);
-                    }
-                    let msg = Message::with_prefix(&self.prefix,
-                                                   Command::Reply(rpl::ENDOFBANLIST))
-                        .param(self.clients[&addr].nick())
-                        .param(target)
-                        .trailing_param(lines::END_OF_BAN_LIST)
-                        .into_bytes();
-                    self.clients[&addr].send(msg);
-                }
-            } else if mode == b'I' {
-                if let Some(param) = modeparams.next() {
-                    let changed = if mode_value {
-                        // Set an exception.
-                        chan.invitation_mask.insert(param.to_owned())
-                    } else {
-                        // Remove an exception.
-                        chan.invitation_mask.remove(param)
-                    };
-                    if changed {
-                        applied_modes.push('I');
-                        applied_modeparams.push(param.to_owned());
-                    }
-                } else {
-                    // Get the list of invitations.
-                    for invitation in &chan.invitation_mask {
-                        let msg = Message::with_prefix(&self.prefix,
-                                                       Command::Reply(rpl::INVITELIST))
-                            .param(self.clients[&addr].nick())
-                            .param(target)
-                            .param(invitation)
-                            .build()
-                            .into_bytes();
-                        self.clients[&addr].send(msg);
-                    }
-                    let msg = Message::with_prefix(&self.prefix,
-                                                   Command::Reply(rpl::ENDOFINVITELIST))
-                        .param(self.clients[&addr].nick())
-                        .param(target)
-                        .trailing_param(lines::END_OF_INVITE_LIST)
-                        .into_bytes();
-                    self.clients[&addr].send(msg);
-                }
-            } else if mode == b'o' {
-                if let Some(param) = modeparams.next() {
-                    let mut changed = false;
-                    let mut has_it = false;
-                    for (member, modes) in chan.members.iter_mut() {
-                        if self.clients[member].nick() == param {
-                            changed = modes.channel_operator != mode_value;
-                            has_it = true;
-                            modes.channel_operator = mode_value;
-                            break;
+        let mut response = ResponseBuffer::new();
+        let chan = self.channels.get_mut(target).unwrap();
+        for maybe_change in modes::ChannelQuery::new(modes, modeparams) {
+            match maybe_change {
+                Ok(change) => {
+                    let applied = chan.apply_mode_change(change, &mut response, &self.prefix,
+                                                         self.clients[&addr].nick(),
+                                                         &self.clients, target);
+                    if applied {
+                        log::debug!("  - Applied {:?}", change);
+                        if let Some(symbol) = change.symbol() {
+                            applied_modes.push(if change.value() {'+'} else {'-'});
+                            applied_modes.push(symbol);
+                        }
+                        if let Some(param) = change.param() {
+                            applied_modeparams.push(param.to_owned());
                         }
                     }
-                    if !has_it {
-                        let msg = Message::with_prefix(&self.prefix,
-                                                       Command::Reply(rpl::ERR_USERNOTINCHANNEL))
-                            .param(self.clients[&addr].nick())
-                            .param(param)
-                            .param(target)
-                            .trailing_param(lines::USER_NOT_IN_CHANNEL)
-                            .into_bytes();
-                        self.clients[&addr].send(msg);
-                    }
-                    if changed {
-                        applied_modes.push('o');
-                        applied_modeparams.push(param.to_owned());
-                    }
-                }
-            } else if mode == b'v' {
-                if let Some(param) = modeparams.next() {
-                    let mut changed = false;
-                    let mut has_it = false;
-                    for (member, modes) in chan.members.iter_mut() {
-                        if self.clients[member].nick() == param {
-                            changed = modes.voice != mode_value;
-                            has_it = true;
-                            modes.voice = mode_value;
-                            break;
-                        }
-                    }
-                    if !has_it {
-                        let msg = Message::with_prefix(&self.prefix,
-                                                       Command::Reply(rpl::ERR_USERNOTINCHANNEL))
-                            .param(self.clients[&addr].nick())
-                            .param(param)
-                            .param(target)
-                            .trailing_param(lines::USER_NOT_IN_CHANNEL)
-                            .into_bytes();
-                        self.clients[&addr].send(msg);
-                    }
-                    if changed {
-                        applied_modes.push('v');
-                        applied_modeparams.push(param.to_owned());
-                    }
-                }
-            } else {
-                let msg = Message::with_prefix(&self.prefix, Command::Reply(rpl::ERR_UNKNOWNMODE))
-                    .param(self.clients[&addr].nick())
-                    .param(&modes[i..=i])
-                    .trailing_param(lines::UNKNOWN_MODE)
-                    .into_bytes();
-                self.clients[&addr].send(msg);
+                },
+                Err(modes::Error::UnknownMode(mode)) => {
+                    response.message(&self.prefix, rpl::ERR_UNKNOWNMODE)
+                        .param(self.clients[&addr].nick())
+                        .param(mode.to_string())
+                        .trailing_param(lines::UNKNOWN_MODE);
+                },
+                Err(_) => {},
             }
         }
-        if 1 < applied_modes.len() {
+        if !response.is_empty() {
+            self.clients[&addr].send(response.build());
+        }
+        if !applied_modes.is_empty() {
             let msg = Message::with_prefix(self.clients[&addr].full_name(), Command::Mode)
                 .param(target)
                 .param(applied_modes);
@@ -536,10 +355,12 @@ impl StateInner {
     /// Check if the given `client` can set the mode of the given `target_user`.
     fn check_cmd_mode_user_set(&self, addr: SocketAddr, target_user: &str) -> bool {
         if !self.clients.values().any(|c| c.nick() == target_user) {
+            log::debug!("{}: can't set modes: no such nick", addr);
             self.send_reply(addr, rpl::ERR_NOSUCHNICK, &[target_user, lines::NO_SUCH_NICK]);
             return false;
         }
         if target_user != self.clients[&addr].nick() {
+            log::debug!("{}: can't set modes: users don't match", addr);
             self.send_reply(addr, rpl::ERR_USERSDONTMATCH,
                             &[target_user, lines::USERS_DONT_MATCH]);
             return false;
@@ -548,6 +369,7 @@ impl StateInner {
     }
 
     fn apply_cmd_mode_user_set(&mut self, addr: SocketAddr, target: &str, modes: &str) {
+        log::debug!("{}: setting user modes to {:?}", addr, modes);
         let modes = modes.trim();
         if modes.is_empty() {
             // Received a "MODE person :", nothing left to be done...
@@ -592,7 +414,8 @@ impl StateInner {
     }
 
     /// Applies a "MODE" command when the target is a user.
-    fn apply_cmd_mode_user_get(&self, addr: SocketAddr, _target: &str) {
+    fn apply_cmd_mode_user_get(&self, addr: SocketAddr) {
+        log::debug!("{}: getting user modes", addr);
         let client = &self.clients[&addr];
         let modes = client.modes();
         let msg = Message::with_prefix(&self.prefix, Command::Reply(rpl::UMODEIS))
@@ -607,7 +430,6 @@ impl StateInner {
                           modes: Option<&str>, modeparams: Params)
     {
         if is_channel_name(target) {
-            // Channel modes here:
             if let Some(modes) = modes {
                 if !self.check_cmd_mode_chan_set(addr, target) {
                     return;
@@ -625,7 +447,7 @@ impl StateInner {
             if !self.check_cmd_mode_user_get(addr, target) {
                 return;
             }
-            self.apply_cmd_mode_user_get(addr, target);
+            self.apply_cmd_mode_user_get(addr);
         }
     }
 
@@ -911,26 +733,6 @@ impl StateInner {
     }
 }
 
-const SIMPLE_CHAN_MODES: &[u8] = b"aimnqprt";
-//const EXTENDED_CHAN_MODES: &[u8] = b"klebI";
-
-/*
-enum ChannelModeChange<'a> {
-    SimpleMode(bool, u8),
-    Operator(bool, &'a str),
-    Voice(bool, &'a str),
-    Key(bool, &'a str),
-    Ban(bool, &'a str),
-    Exempt(bool, &'a str),
-    Invited(bool, &'a str),
-    AddLimit(usize),
-    RemoveLimit,
-}
-
-fn parse_chan_mode_query(s: &str) {
-}
-// */
-
 /// Channel data.
 #[derive(Default)]
 struct Channel {
@@ -1018,18 +820,138 @@ impl Channel {
         modes
     }
 
-    pub fn set_simple_mode(&mut self, mode: u8, value: bool) {
-        match mode {
-            b'a' => { self.anonymous = value; },
-            b'i' => { self.invite_only = value; },
-            b'm' => { self.moderated = value; },
-            b'n' => { self.no_privmsg_from_outside = value; },
-            b'q' => { self.quiet = value; },
-            b'p' => { self.private = value; },
-            b'r' => { self.reop = value; },
-            b't' => { self.topic_restricted = value; },
-            _ => {},
+    pub fn apply_mode_change(&mut self, change: modes::ChannelModeChange,
+                             out: &mut ResponseBuffer, prefix: &str, nick: &str,
+                             clients: &HashMap<SocketAddr, Client>,
+                             chan_name: &str) -> bool
+    {
+        use modes::ChannelModeChange::*;
+        let mut applied = false;
+        match change {
+            Anonymous(value) => {
+                applied = self.anonymous != value;
+                self.anonymous = value;
+            },
+            InviteOnly(value) => {
+                applied = self.invite_only != value;
+                self.invite_only = value;
+            },
+            Moderated(value) => {
+                applied = self.moderated != value;
+                self.moderated = value;
+            },
+            NoPrivMsgFromOutside(value) => {
+                applied = self.no_privmsg_from_outside != value;
+                self.no_privmsg_from_outside = value;
+            },
+            Quiet(value) => {
+                applied = self.quiet != value;
+                self.quiet = value;
+            },
+            Private(value) => {
+                applied = self.private != value;
+                self.private = value;
+            },
+            Secret(value) => {
+                applied = self.secret != value;
+                self.secret = value;
+            },
+            TopicRestricted(value) => {
+                applied = self.topic_restricted != value;
+                self.topic_restricted = value;
+            },
+            Key(value, key) => if value {
+                if self.key.is_some() {
+                    out.message(prefix, rpl::ERR_KEYSET)
+                        .param(nick)
+                        .param(chan_name)
+                        .trailing_param(lines::KEY_SET);
+                    return false;
+                } else {
+                    applied = true;
+                    self.key = Some(key.to_owned());
+                }
+            } else if let Some(ref chan_key) = self.key {
+                if key == chan_key {
+                    applied = true;
+                    self.key = None;
+                }
+            },
+            UserLimit(Some(s)) => if let Ok(limit) = s.parse() {
+                applied = self.user_limit.map_or(true, |chan_limit| chan_limit != limit);
+                self.user_limit = Some(limit);
+            },
+            UserLimit(None) => {
+                applied = self.user_limit.is_some();
+                self.user_limit = None;
+            },
+            GetBans => out.list(prefix, rpl::BANLIST, rpl::ENDOFBANLIST, lines::END_OF_BAN_LIST,
+                                &self.ban_mask, |msg| msg.param(nick).param(chan_name)),
+            GetExceptions => out.list(prefix, rpl::INVITELIST, rpl::ENDOFINVITELIST,
+                                      lines::END_OF_INVITE_LIST, &self.invitation_mask,
+                                      |msg| msg.param(nick).param(chan_name)),
+            GetInvitations => out.list(prefix, rpl::EXCEPTLIST, rpl::ENDOFEXCEPTLIST,
+                                       lines::END_OF_EXCEPT_LIST, &self.exception_mask,
+                                       |msg| msg.param(nick).param(chan_name)),
+            ChangeBan(value, param) => {
+                applied = if value {
+                    self.ban_mask.insert(param.to_owned())
+                } else {
+                    self.ban_mask.remove(param)
+                };
+            },
+            ChangeException(value, param) => {
+                applied = if value {
+                    self.exception_mask.insert(param.to_owned())
+                } else {
+                    self.exception_mask.remove(param)
+                };
+            },
+            ChangeInvitation(value, param) => {
+                applied = if value {
+                    self.invitation_mask.insert(param.to_owned())
+                } else {
+                    self.invitation_mask.remove(param)
+                };
+            },
+            ChangeOperator(value, param) => {
+                let mut has_it = false;
+                for (member, modes) in self.members.iter_mut() {
+                    if clients[member].nick() == param {
+                        has_it = true;
+                        applied = modes.channel_operator != value;
+                        modes.channel_operator = value;
+                        break;
+                    }
+                }
+                if !has_it {
+                    out.message(prefix, rpl::ERR_USERNOTINCHANNEL)
+                        .param(nick)
+                        .param(param)
+                        .param(chan_name)
+                        .trailing_param(lines::USER_NOT_IN_CHANNEL);
+                }
+            },
+            ChangeVoice(value, param) => {
+                let mut has_it = false;
+                for (member, modes) in self.members.iter_mut() {
+                    if clients[member].nick() == param {
+                        has_it = true;
+                        applied = modes.channel_operator != value;
+                        modes.channel_operator = value;
+                        break;
+                    }
+                }
+                if !has_it {
+                    out.message(prefix, rpl::ERR_USERNOTINCHANNEL)
+                        .param(nick)
+                        .param(param)
+                        .param(chan_name)
+                        .trailing_param(lines::USER_NOT_IN_CHANNEL);
+                }
+            },
         }
+        applied
     }
 
     pub fn symbol(&self) -> &'static str {

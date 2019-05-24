@@ -171,6 +171,12 @@ macro_rules! commands {
                 write!(f, "{}", self.as_str())
             }
         }
+
+        impl From<&'static str> for Command {
+            fn from(reply: &'static str) -> Command {
+                Command::Reply(reply)
+            }
+        }
     }
 }
 
@@ -252,22 +258,6 @@ impl<'a> Iterator for Params<'a> {
 
 impl<'a> iter::FusedIterator for Params<'a> {}
 
-const SANITIZED_CHAR: char = '_';
-
-fn sanitize_param(c: char) -> char {
-    match c {
-        w if w.is_whitespace() => SANITIZED_CHAR,
-        c => c,
-    }
-}
-
-fn sanitize_trailing_param(c: char) -> char {
-    match c {
-        '\r' | '\n' => SANITIZED_CHAR,
-        c => c,
-    }
-}
-
 /// Represents an IRC message, with its prefix (source), command and parameters.
 ///
 /// This type is a wrapper around a string. It means that when `Message::parse` is called, the
@@ -296,67 +286,6 @@ pub struct Message<'a> {
     first_param_index: usize,
 }
 
-/// Helper to build progressively an IRC message. Use with `Message::with_prefix`.
-pub struct MessageBuilder {
-    buf: String,
-    prefix: Option<Range<usize>>,
-    command: Command,
-    first_param_index: usize,
-}
-
-impl MessageBuilder {
-    /// Returns the built message.
-    pub fn build(mut self) -> Message<'static> {
-        self.buf.push('\r');
-        self.buf.push('\n');
-        Message {
-            buf: self.buf.into(),
-            prefix: self.prefix,
-            command: Ok(self.command),
-            first_param_index: self.first_param_index,
-        }
-    }
-
-    /// Add a middle (not trailing) parameter to the message.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the parameter contains whitespace or starts with ':'.
-    pub fn param<S>(mut self, param: S) -> MessageBuilder
-        where S: AsRef<str>
-    {
-        let param = param.as_ref();
-        if param.is_empty() {
-            return self;
-        }
-        self.buf.push(' ');
-        if self.first_param_index == 0 {
-            self.first_param_index = self.buf.len();
-        }
-        if param.starts_with(':') {
-            self.buf.push('_');
-        } else {
-            self.buf.push(param.chars().next().unwrap());
-        }
-        self.buf.extend(param.chars().skip(1).map(sanitize_param));
-        self
-    }
-
-    /// Add a trailing parameter and build the message.
-    pub fn trailing_param<S>(mut self, trailing: S) -> Message<'static>
-        where S: AsRef<str>
-    {
-        let trailing = trailing.as_ref();
-        self.buf.push(' ');
-        self.buf.push(':');
-        if self.first_param_index == 0 {
-            self.first_param_index = self.buf.len();
-        }
-        self.buf.extend(trailing.chars().map(sanitize_trailing_param));
-        self.build()
-    }
-}
-
 impl Message<'static> {
     /// Starts building a new message.
     ///
@@ -379,18 +308,7 @@ impl Message<'static> {
     ///            &b":admin PrivMsg #agora :The server is back up!\r\n"[..]);
     /// ```
     pub fn with_prefix(prefix: &str, command: Command) -> MessageBuilder {
-        let mut buf = String::with_capacity(MAX_MESSAGE_LENGTH);
-        buf.push(':');
-        buf.push_str(prefix);
-        let prefix = Some(1..buf.len());
-        buf.push(' ');
-        buf.push_str(command.as_str());
-        MessageBuilder {
-            buf,
-            prefix,
-            command,
-            first_param_index: 0,
-        }
+        MessageBuilder::with_prefix(prefix, command)
     }
 }
 
@@ -587,5 +505,186 @@ impl<'a> fmt::Display for Message<'a> {
     /// Displays the message as a correctly formed message. Used for logging.
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", self.buf.trim_end())
+    }
+}
+
+const SANITIZED_CHAR: char = '_';
+
+fn sanitize_param(c: char) -> char {
+    match c {
+        w if w.is_whitespace() => SANITIZED_CHAR,
+        c => c,
+    }
+}
+
+fn sanitize_trailing_param(c: char) -> char {
+    match c {
+        '\r' | '\n' => SANITIZED_CHAR,
+        c => c,
+    }
+}
+
+/// Helper to build progressively an IRC message. Use with `Message::with_prefix`.
+pub struct MessageBuilder {
+    buf: String,
+    prefix: Option<Range<usize>>,
+    command: Command,
+    first_param_index: usize,
+}
+
+impl MessageBuilder {
+    fn with_prefix(prefix: &str, command: Command) -> MessageBuilder {
+        let mut buf = String::with_capacity(MAX_MESSAGE_LENGTH);
+        buf.push(':');
+        buf.push_str(prefix);
+        let prefix = Some(1..buf.len());
+        buf.push(' ');
+        buf.push_str(command.as_str());
+        MessageBuilder {
+            buf,
+            prefix,
+            command,
+            first_param_index: 0,
+        }
+    }
+
+    /// Returns the built message.
+    pub fn build(mut self) -> Message<'static> {
+        self.buf.push('\r');
+        self.buf.push('\n');
+        Message {
+            buf: self.buf.into(),
+            prefix: self.prefix,
+            command: Ok(self.command),
+            first_param_index: self.first_param_index,
+        }
+    }
+
+    /// Add a middle (not trailing) parameter to the message.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the parameter contains whitespace or starts with ':'.
+    pub fn param<S>(mut self, param: S) -> MessageBuilder
+        where S: AsRef<str>
+    {
+        let param = param.as_ref();
+        if param.is_empty() {
+            return self;
+        }
+        self.buf.push(' ');
+        if self.first_param_index == 0 {
+            self.first_param_index = self.buf.len();
+        }
+        if param.starts_with(':') {
+            self.buf.push('_');
+        } else {
+            self.buf.push(param.chars().next().unwrap());
+        }
+        self.buf.extend(param.chars().skip(1).map(sanitize_param));
+        self
+    }
+
+    /// Add a trailing parameter and build the message.
+    pub fn trailing_param<S>(mut self, trailing: S) -> Message<'static>
+        where S: AsRef<str>
+    {
+        let trailing = trailing.as_ref();
+        self.buf.push(' ');
+        self.buf.push(':');
+        if self.first_param_index == 0 {
+            self.first_param_index = self.buf.len();
+        }
+        self.buf.extend(trailing.chars().map(sanitize_trailing_param));
+        self.build()
+    }
+}
+
+pub struct MessageBuffer<'a> {
+    buf: &'a mut String,
+}
+
+impl<'a> MessageBuffer<'a> {
+    fn with_prefix<C>(buf: &'a mut String, prefix: &str, command: C) -> MessageBuffer<'a>
+        where C: Into<Command>
+    {
+        buf.push(':');
+        buf.push_str(prefix);
+        buf.push(' ');
+        buf.push_str(command.into().as_str());
+        MessageBuffer { buf }
+    }
+
+    pub fn build(self) {
+        self.buf.push('\r');
+        self.buf.push('\n');
+    }
+
+    pub fn param<S>(self, param: S) -> MessageBuffer<'a>
+        where S: AsRef<str>
+    {
+        let param = param.as_ref();
+        if param.is_empty() {
+            return self;
+        }
+        self.buf.push(' ');
+        if param.starts_with(':') {
+            self.buf.push('_');
+        } else {
+            self.buf.push(param.chars().next().unwrap());
+        }
+        self.buf.extend(param.chars().skip(1).map(sanitize_param));
+        self
+    }
+
+    pub fn trailing_param<S>(self, param: S)
+        where S: AsRef<str>
+    {
+        let param = param.as_ref();
+        self.buf.push(' ');
+        self.buf.push(':');
+        self.buf.extend(param.chars().map(sanitize_trailing_param));
+        self.build()
+    }
+}
+
+#[derive(Debug, Default)]
+pub struct ResponseBuffer {
+    buf: String,
+}
+
+impl ResponseBuffer {
+    pub fn new() -> ResponseBuffer {
+        ResponseBuffer::default()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.buf.is_empty()
+    }
+
+    pub fn message<C>(&mut self, prefix: &str, command: C) -> MessageBuffer
+        where C: Into<Command>
+    {
+        MessageBuffer::with_prefix(&mut self.buf, prefix, command)
+    }
+
+    pub fn list<I, F>(&mut self, prefix: &str, item_reply: Reply, end_reply: Reply,
+                      end_line: &str, list: I, mut map: F)
+        where I: IntoIterator,
+              I::Item: AsRef<str>,
+              F: FnMut(MessageBuffer) -> MessageBuffer
+    {
+        for item in list {
+            map(self.message(prefix, item_reply))
+                .param(item)
+                .build();
+        }
+        map(self.message(prefix, end_reply))
+            .trailing_param(end_line);
+    }
+
+    pub fn build(self) -> Arc<[u8]> {
+        // TODO don't fcking vv clone vv the fucking whole buffer just to have a god damn Arc
+        self.buf.into_bytes()  .into()
     }
 }
