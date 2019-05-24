@@ -6,6 +6,7 @@ use std::sync::{Arc, RwLock};
 
 use chrono::{DateTime, Utc};
 use futures::sync::mpsc;
+use crate::misc::UniCase;
 
 use crate::channel::Channel;
 use crate::client::{Client, SETTABLE_USER_MODES, USER_MODES};
@@ -161,8 +162,8 @@ struct StateInner {
     /// The set of clients, identified by their socket address.
     clients: HashMap<SocketAddr, Client>,
 
-    /// The set of channels, identified by their name.
-    channels: HashMap<String, Channel>,
+    /// The set of channels, identified by their case-insensitive name.
+    channels: HashMap<UniCase<String>, Channel>,
 
     /// The UTC local time when the `StateInner` instance is created. It is sent to the client when
     /// they register (in a "003 RPL_CREATED" reply, as per the RFC).
@@ -211,7 +212,7 @@ impl StateInner {
     /// client.
     pub fn check_cmd_join(&self, addr: SocketAddr, target: &str, key: Option<&str>) -> bool {
         if is_valid_channel_name(target) {
-            if let Some(chan) = self.channels.get(target) {
+            if let Some(chan) = self.channels.get(<&UniCase<str>>::from(target)) {
                 // TODO if-let chains
                 if let Some(ref chan_key) = chan.key {
                     if key.map_or(true, |key| key != chan_key) {
@@ -243,7 +244,7 @@ impl StateInner {
     pub fn apply_cmd_join(&mut self, addr: SocketAddr, target: &str) {
         log::debug!("{}: Join {}", addr, target);
         let default_chan_mode = &self.default_chan_mode;
-        let chan = self.channels.entry(target.into())
+        let chan = self.channels.entry(UniCase(target.to_owned()))
             .or_insert_with(|| Channel::new(&default_chan_mode));
         chan.add_member(addr);
         let modes = chan.modes();
@@ -263,7 +264,7 @@ impl StateInner {
     /// Sends the chan modes to addr.
     fn apply_cmd_mode_chan_get(&self, addr: SocketAddr, target: &str) {
         log::debug!("{}: getting modes of {:?}", addr, target);
-        if let Some(chan) = self.channels.get(target) {
+        if let Some(chan) = self.channels.get(<&UniCase<str>>::from(target)) {
             let modes = chan.modes();
             let msg = Message::with_prefix(&self.prefix, Command::Reply(rpl::CHANNELMODEIS))
                 .param(self.clients[&addr].nick())
@@ -281,7 +282,7 @@ impl StateInner {
     }
 
     fn check_cmd_mode_chan_set(&self, addr: SocketAddr, target: &str) -> bool {
-        if let Some(chan) = self.channels.get(target) {
+        if let Some(chan) = self.channels.get(<&UniCase<str>>::from(target)) {
             if let Some(modes) = chan.members.get(&addr) {
                 if modes.operator {
                     true
@@ -318,7 +319,7 @@ impl StateInner {
         let mut applied_modes = String::new();
         let mut applied_modeparams = Vec::new();
         let mut response = ResponseBuffer::new();
-        let chan = self.channels.get_mut(target).unwrap();
+        let chan = self.channels.get_mut(<&UniCase<str>>::from(target)).unwrap();
         let clients = &self.clients;
         for maybe_change in modes::ChannelQuery::new(modes, modeparams) { match maybe_change {
             Ok(modes::ChannelModeChange::GetBans) => {
@@ -544,7 +545,7 @@ impl StateInner {
     /// Whether or not a "PART" message with the given parameters can be issued by the given
     /// client.
     pub fn check_cmd_part(&self, addr: SocketAddr, target: &str, _reason: Option<&str>) -> bool {
-        let is_on_chan = self.channels.get(target)
+        let is_on_chan = self.channels.get(<&UniCase<str>>::from(target))
             .map_or(false, |chan| chan.members.contains_key(&addr));
         if !is_on_chan {
             self.send_reply(addr, rpl::ERR_NOTONCHANNEL, &[target, lines::NOT_ON_CHANNEL_PART]);
@@ -563,7 +564,7 @@ impl StateInner {
             Message::with_prefix(nick, Command::Part).param(target).build()
         };
         self.broadcast(target, msg.into_bytes());
-        let chan = self.channels.get_mut(target).unwrap();
+        let chan = self.channels.get_mut(<&UniCase<str>>::from(target)).unwrap();
         chan.members.remove(&addr);
     }
 
@@ -574,7 +575,7 @@ impl StateInner {
             self.send_reply(addr, rpl::ERR_NOTEXTTOSEND, &[lines::NO_TEXT_TO_SEND]);
             return false;
         }
-        if let Some(ref chan) = self.channels.get(target) {
+        if let Some(ref chan) = self.channels.get(<&UniCase<str>>::from(target)) {
             if chan.can_talk(addr) {
                 true
             } else {
@@ -598,7 +599,7 @@ impl StateInner {
             .param(targets)
             .trailing_param(content)
             .into_bytes();
-        let chan = &self.channels[targets];
+        let chan = &self.channels[<&UniCase<str>>::from(targets)];
         chan.members.keys()
             .filter(|&&a| a != addr)
             .for_each(|&member| self.send(member, msg.clone()));
@@ -614,7 +615,7 @@ impl StateInner {
     ///
     /// "TOPIC" has been split in two handlers, a getter and a setter.
     pub fn check_cmd_topic_set(&self, addr: SocketAddr, target: &str) -> bool {
-        if let Some(chan) = self.channels.get(target) {
+        if let Some(chan) = self.channels.get(<&UniCase<str>>::from(target)) {
             if let Some(modes) = chan.members.get(&addr) {
                 if modes.operator || !chan.topic_restricted {
                     true
@@ -639,7 +640,7 @@ impl StateInner {
     /// "TOPIC" has been split in two handlers, a getter and a setter.
     pub fn apply_cmd_topic_set(&mut self, addr: SocketAddr, target: &str, topic: &str) {
         log::debug!("{} Set topic of {:?} to {:?}", addr, target, topic);
-        let chan = self.channels.get_mut(target).unwrap();
+        let chan = self.channels.get_mut(<&UniCase<str>>::from(target)).unwrap();
         if topic.is_empty() {
             chan.topic = None;
         } else {
@@ -654,7 +655,7 @@ impl StateInner {
 
     /// Applies a "TOPIC" command issued by the given client with the given parameter.
     pub fn apply_cmd_topic_get(&self, addr: SocketAddr, target: &str) {
-        if let Some(chan) = self.channels.get(target) {
+        if let Some(chan) = self.channels.get(<&UniCase<str>>::from(target)) {
             if chan.members.contains_key(&addr) {
                 self.send_topic(addr, target);
                 return;
@@ -681,7 +682,7 @@ impl StateInner {
 
     /// Sends the given message to all users in the given channel.
     pub fn broadcast(&self, target: &str, msg: MessageQueueItem) {
-        let chan = &self.channels[target];
+        let chan = &self.channels[<&UniCase<str>>::from(target)];
         for &member in chan.members.keys() {
             self.send(member, msg.clone());
         }
@@ -731,7 +732,7 @@ impl StateInner {
 
     /// Sends the list of nicknames in the channel `chan_name` to the given client.
     fn send_names(&self, addr: SocketAddr, chan_name: &str) {
-        let chan = &self.channels[chan_name];
+        let chan = &self.channels[<&UniCase<str>>::from(chan_name)];
         if !chan.members.is_empty() {
             let mut names = String::with_capacity(512);
             for (member, modes) in chan.members.iter() {
@@ -747,7 +748,7 @@ impl StateInner {
 
     /// Sends the topic of the channel `chan_name` to the given client.
     fn send_topic(&self, addr: SocketAddr, chan_name: &str) {
-        let chan = &self.channels[chan_name];
+        let chan = &self.channels[<&UniCase<str>>::from(chan_name)];
         if let Some(ref topic) = chan.topic {
             self.send_reply(addr, rpl::TOPIC, &[chan_name, topic]);
         } else {

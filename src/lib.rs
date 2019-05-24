@@ -28,6 +28,7 @@ pub mod client;
 pub mod config;
 pub mod lines;
 pub mod message;
+pub mod misc;
 pub mod modes;
 pub mod net;
 pub mod state;
