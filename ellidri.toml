@@ -15,6 +15,14 @@ domain = "ellidri.localdomain"
 # Type: String
 #bind_to_address = "0.0.0.0:6667"
 
+# Modes that are set automatically when channels are created.
+# Type: String
+# It must be a valid <modes> parameter of the MODE command. For the complete
+# list of modes, see the following link:
+# https://tools.ietf.org/html/rfc2811.html#section-4
+# The '+' is optional.
+#default_chan_mode = "+nt"
+
 # The log filter.
 # Type: String
 # Valid values are:
@@ -23,7 +31,7 @@ domain = "ellidri.localdomain"
 # - "info": report new/closed connections (default for releases).
 # - "warn": report warnings.
 # - "error": report critical errors/bugs in the program.
-#log_level = "debug"
+log_level = "trace"
 
 # The message of the day.
 # Type: String

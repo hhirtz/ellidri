@@ -64,7 +64,7 @@ pub fn start() {
         })
         .init();
 
-    let shared = State::new(c.domain, c.motd);
+    let shared = State::new(c.domain, c.motd, c.default_chan_mode);
     let server = net::listen(c.bind_to_address, shared);
 
     log::warn!("Let's get started senpai!");

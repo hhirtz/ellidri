@@ -1,4 +1,5 @@
 use std::borrow::Cow;
+use std::iter;
 
 struct SimpleQuery<'a> {
     modes: &'a [u8],
@@ -170,6 +171,12 @@ impl<'a, I> ChannelQuery<'a, I> {
     }
 }
 
+impl<'a> ChannelQuery<'a, iter::Empty<&'a str>> {
+    pub fn simple(modes: &'a str) -> Self {
+        ChannelQuery::new(modes, iter::empty())
+    }
+}
+
 impl<'a, I> Iterator for ChannelQuery<'a, I>
     where I: Iterator<Item=&'a str>
 {
@@ -220,4 +227,8 @@ impl<'a, I> Iterator for ChannelQuery<'a, I>
             }
         })
     }
+}
+
+pub fn is_channel_mode_string(s: &str) -> bool {
+    ChannelQuery::simple(s).all(|r| r.is_ok())
 }

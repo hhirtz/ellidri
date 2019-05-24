@@ -10,8 +10,14 @@ use serde::Deserialize;
 use std::path::Path;
 use std::{fmt, fs, process, net};
 
+use crate::modes::is_channel_mode_string;
+
 fn bind_to_address() -> net::SocketAddr {
     net::SocketAddr::from(([0, 0, 0, 0], 6667))
+}
+
+fn default_chan_modes() -> String {
+    String::from("+nt")
 }
 
 fn worker_threads() -> usize {
@@ -30,6 +36,10 @@ pub struct Config {
     /// It is set to *:6667 by default.
     #[serde(default = "bind_to_address")]
     pub bind_to_address: net::SocketAddr,
+
+    /// These modes are set when a channel is created.
+    #[serde(default = "default_chan_modes")]
+    pub default_chan_mode: String,
 
     /// The optional log level.
     ///
@@ -70,10 +80,6 @@ fn invalid_config<T, E>(err: E) -> T
 /// Error cases:
 /// - can't open and read the file (does not exist, missing permissions, ...).
 /// - can't decode its contents (missing value, invalid format).
-///
-/// # TODO
-///
-/// - validate the `domain` and the `log_level`.
 pub fn from_file<P>(path: P) -> Config
     where P: AsRef<Path>
 {
@@ -94,6 +100,9 @@ pub fn from_file<P>(path: P) -> Config
         {
             invalid_config(r#"log_level must be "trace", "debug", "info", "warn" or "error"."#)
         }
+    }
+    if !is_channel_mode_string(&config.default_chan_mode) {
+        invalid_config("Bad default_chan_mode")
     }
     config
 }
