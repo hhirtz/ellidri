@@ -789,11 +789,33 @@ impl StateInner {
 
     /// Sends welcome messages. Called when a client has completed its registration.
     fn send_welcome(&self, addr: SocketAddr) {
-        self.send_reply(addr, rpl::WELCOME, &[lines::WELCOME]);
-        self.send_reply(addr, rpl::YOURHOST, &[lines::YOUR_HOST]);
-        let m = format!("We've been together since {}", self.created_at.to_rfc2822());
-        self.send_reply(addr, rpl::CREATED, &[&m]);
-        self.send_reply(addr, rpl::MYINFO, &[&self.prefix, env!("CARGO_PKG_VERSION"), "i", "i"]);
+        let client = &self.clients[&addr];
+        let mut response = ResponseBuffer::new();
+        response.message(&self.prefix, rpl::WELCOME)
+            .param(client.nick())
+            .trailing_param(lines::WELCOME);
+        response.message(&self.prefix, rpl::YOURHOST)
+            .param(client.nick())
+            .trailing_param(lines::YOUR_HOST);
+        let mut msg = response.message(&self.prefix, rpl::CREATED)
+            .param(client.nick());
+        let trailing = msg.raw_trailing();
+        trailing.push_str("We've been together since ");
+        trailing.push_str(&self.created_at.to_rfc2822());
+        msg.build();
+        response.message(&self.prefix, rpl::MYINFO)
+            .param(client.nick())
+            .param(&self.prefix)
+            .param(env!("CARGO_PKG_VERSION"))
+            .param(modes::USER_MODES)
+            .param(modes::SIMPLE_CHAN_MODES)
+            .param(modes::EXTENDED_CHAN_MODES)
+            .build();
+        response.message(&self.prefix, rpl::ISUPPORT)
+            .param(client.nick())
+            .param("CASEMAPPING=ascii")
+            .trailing_param(lines::I_SUPPORT);
+        client.send(response.build());
         self.apply_cmd_motd(addr);
     }
 }

@@ -80,8 +80,13 @@ pub const USER_NOT_IN_CHANNEL: &str =
 pub const USERS_DONT_MATCH: &str =
 "TODO";
 
+// Welcome messages
+
 pub const WELCOME: &str =
 "Hmph. It's not like I wanted to welcome you.";
 
 pub const YOUR_HOST: &str =
 "I did it for senpai! Ooh senpai~ you're the best!";
+
+pub const I_SUPPORT: &str =
+"are allowed by senpai";

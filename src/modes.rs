@@ -1,5 +1,9 @@
 use std::iter;
 
+pub const USER_MODES: &str = "aiorsw";
+pub const SIMPLE_CHAN_MODES: &str = "aimnpqst";
+pub const EXTENDED_CHAN_MODES: &str = "beIklov";
+
 struct SimpleQuery<'a> {
     modes: &'a [u8],
     value: bool,

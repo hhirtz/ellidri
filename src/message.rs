@@ -27,6 +27,7 @@ pub mod rpl {
     pub const YOURHOST: Reply  = "002";
     pub const CREATED: Reply   = "003";
     pub const MYINFO: Reply    = "004";
+    pub const ISUPPORT: Reply  = "005";
 
     pub const UMODEIS: Reply = "221";
 
