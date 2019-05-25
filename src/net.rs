@@ -27,6 +27,7 @@ pub fn listen(addr: SocketAddr, shared: State) -> impl Future<Item=(), Error=()>
         })
 }
 
+/// Returns a future that listens, accepts and handles incoming IRC-over-TLS connections.
 pub fn listen_tls(addr: SocketAddr, shared: State, der: &[u8]) -> impl Future<Item=(), Error=()> {
     let identity = native_tls::Identity::from_pkcs12(der, "").unwrap();
     let tls_acceptor = tokio_tls::TlsAcceptor::from(native_tls::TlsAcceptor::builder(identity).build().unwrap());

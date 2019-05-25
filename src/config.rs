@@ -12,19 +12,25 @@ use std::{fmt, fs, net, path, process};
 
 use crate::modes::is_channel_mode_string;
 
+/// Options specific to TLS connections.
 #[derive(Deserialize)]
 pub struct TlsOptions {
+    /// The identity file to use as certificate and private key for the TCP socket.
     pub tls_identity: path::PathBuf,
 }
 
+/// An address record, with options for TLS connections.
 #[derive(Deserialize)]
 pub struct BindToAddress {
+    /// The IP and TCP port to which to bind.
     pub addr: net::SocketAddr,
 
+    /// The TLS options associated with the IP/TCP port.
     #[serde(flatten)]
     pub tls: Option<TlsOptions>,
 }
 
+/// Default bound-to addresses.
 fn bind_to_address() -> Vec<BindToAddress> {
     vec![BindToAddress {
         addr: net::SocketAddr::from(([0, 0, 0, 0], 6667)),
@@ -32,10 +38,12 @@ fn bind_to_address() -> Vec<BindToAddress> {
     }]
 }
 
+/// Default default chan modes.
 fn default_chan_modes() -> String {
     String::from("+nt")
 }
 
+/// Default number of threads spawned by the server.
 fn worker_threads() -> usize {
     1
 }
@@ -47,9 +55,9 @@ pub struct Config {
     /// The domain of the irc server. Sent to clients in most IRC messages.
     pub domain: String,
 
-    /// The IP and TCP port to which to bind.
+    /// The IP and TCP ports to which to bind.
     ///
-    /// It is set to *:6667 by default.
+    /// It is set to *:6667 (clear-text) by default.
     #[serde(default = "bind_to_address")]
     pub bind_to_address: Vec<BindToAddress>,
 
@@ -94,8 +102,9 @@ fn invalid_config<T, E>(err: E) -> T
 /// Reads the configuration file at `path`, or exit if there is an error.
 ///
 /// Error cases:
-/// - can't open and read the file (does not exist, missing permissions, ...).
-/// - can't decode its contents (missing value, invalid format).
+/// - can't open and read the file (e.g. does not exist, missing permissions).
+/// - can't decode its contents (e.g. missing value, invalid format).
+/// - contents are semantically invalid (e.g. no address given, unexpected log_level string)
 pub fn from_file<P>(path: P) -> Config
     where P: AsRef<Path>
 {
@@ -119,6 +128,9 @@ pub fn from_file<P>(path: P) -> Config
     }
     if !is_channel_mode_string(&config.default_chan_mode) {
         invalid_config("Bad default_chan_mode")
+    }
+    if config.bind_to_address.is_empty() {
+        invalid_config("No address to bind to")
     }
     config
 }
