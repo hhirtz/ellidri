@@ -115,9 +115,9 @@ impl Channel {
         if self.reop { modes.push('r'); }
         if self.secret { modes.push('s'); }
         if self.topic_restricted { modes.push('t'); }
+        if self.user_limit.is_some() { modes.push('l'); }
+        if self.key.is_some() { modes.push('k'); }
         if full_info {
-            if self.user_limit.is_some() { modes.push('l'); }
-            if self.key.is_some() { modes.push('k'); }
             if let Some(user_limit) = self.user_limit {
                 out = out.param(user_limit.to_string());
             }
