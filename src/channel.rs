@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 use std::net::SocketAddr;
 
-use crate::message::{Reply, rpl};
+use crate::message::{MessageBuffer, Reply, rpl};
 use crate::modes;
 
 /// Modes applied to clients on a per-channel basis.
@@ -99,8 +99,9 @@ impl Channel {
         }
     }
 
-    pub fn modes(&self) -> String {
-        let mut modes = String::from("+");
+    pub fn modes(&self, mut out: MessageBuffer, full_info: bool) {
+        let modes = out.raw_param();
+        modes.push('+');
         if self.anonymous { modes.push('a'); }
         if self.invite_only { modes.push('i'); }
         if self.moderated { modes.push('m'); }
@@ -109,9 +110,17 @@ impl Channel {
         if self.private { modes.push('p'); }
         if self.reop { modes.push('r'); }
         if self.topic_restricted { modes.push('t'); }
-        if self.user_limit.is_some() { modes.push('l'); }
-        if self.key.is_some() { modes.push('k'); }
-        modes
+        if full_info {
+            if self.user_limit.is_some() { modes.push('l'); }
+            if self.key.is_some() { modes.push('k'); }
+            if let Some(user_limit) = self.user_limit {
+                out = out.param(user_limit.to_string());
+            }
+            if let Some(ref key) = self.key {
+                out = out.param(key.to_string());
+            }
+        }
+        out.build();
     }
 
     pub fn apply_mode_change<'a, F>(&mut self, change: modes::ChannelModeChange,

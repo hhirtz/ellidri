@@ -260,16 +260,9 @@ impl StateInner {
         let chan = self.channels.entry(UniCase(target.to_owned()))
             .or_insert_with(|| Channel::new(&default_chan_mode));
         chan.add_member(addr);
-        let modes = chan.modes();
         let client = &self.clients[&addr];
         let join = Message::with_prefix(client.full_name(), Command::Join).param(target).build();
         self.broadcast(target, join.into_bytes());
-        let modes = Message::with_prefix(&self.prefix, Command::Mode)
-            .param(target)
-            .param(modes)
-            .build()
-            .into_bytes();
-        client.send(modes);
         self.send_topic(addr, target);
         self.send_names(addr, target);
     }
@@ -278,17 +271,13 @@ impl StateInner {
     fn apply_cmd_mode_chan_get(&self, addr: SocketAddr, target: &str) {
         log::debug!("{}: getting modes of {:?}", addr, target);
         if let Some(chan) = self.channels.get(<&UniCase<str>>::from(target)) {
-            let modes = chan.modes();
-            let msg = Message::with_prefix(&self.prefix, Command::Reply(rpl::CHANNELMODEIS))
-                .param(self.clients[&addr].nick())
-                .param(target)
-                .param(modes);
-            let msg = chan.user_limit.iter()
-                .fold(msg, |msg, limit| msg.param(limit.to_string()));
-            let msg = chan.key.iter()
-                .fold(msg, |msg, key| msg.param(key.to_string()));
-            let msg = msg.build().into_bytes();
-            self.clients[&addr].send(msg);
+            let client = &self.clients[&addr];
+            let mut response = ResponseBuffer::new();
+            let msg = response.message(&self.prefix, rpl::CHANNELMODEIS)
+                .param(client.nick())
+                .param(target);
+            chan.modes(msg, chan.members.contains_key(&addr));
+            client.send(response.build());
         } else {
             self.send_reply(addr, rpl::ERR_NOSUCHCHANNEL, &[target, lines::NO_SUCH_CHANNEL]);
         }
@@ -764,7 +753,7 @@ impl StateInner {
                     .param(client.nick())
                     .param(chan.symbol())
                     .param(chan_name);
-                let trailing = message.raw_trailing();
+                let trailing = message.raw_trailing_param();
                 let mut members = chan.members.iter();
                 if let Some((member, modes)) = members.next() {
                     trailing.push(modes.symbol());
@@ -807,7 +796,7 @@ impl StateInner {
             .trailing_param(lines::YOUR_HOST);
         let mut msg = response.message(&self.prefix, rpl::CREATED)
             .param(client.nick());
-        let trailing = msg.raw_trailing();
+        let trailing = msg.raw_trailing_param();
         trailing.push_str("We've been together since ");
         trailing.push_str(&self.created_at.to_rfc2822());
         msg.build();

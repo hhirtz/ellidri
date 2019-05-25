@@ -651,7 +651,12 @@ impl<'a> MessageBuffer<'a> {
         self.build()
     }
 
-    pub fn raw_trailing(&mut self) -> &mut String {
+    pub fn raw_param(&mut self) -> &mut String {
+        self.buf.push(' ');
+        &mut self.buf
+    }
+
+    pub fn raw_trailing_param(&mut self) -> &mut String {
         self.buf.push(' ');
         self.buf.push(':');
         &mut self.buf
