@@ -1,5 +1,5 @@
 # Example configuration file.
-# All commented values are optional.
+# All commented settings are optional, showing their default value.
 # Follow the TOML format: https://github.com/toml-lang/toml#toml
 
 # REQUIRED VALUES
@@ -41,7 +41,7 @@ domain = "ellidri.localdomain"
 # - "info": report new/closed connections (default for releases).
 # - "warn": report warnings.
 # - "error": report critical errors/bugs in the program.
-log_level = "trace"
+#log_level = "debug"
 
 # The message of the day.
 # Type: String
