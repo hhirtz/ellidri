@@ -733,17 +733,31 @@ impl StateInner {
     /// Sends the list of nicknames in the channel `chan_name` to the given client.
     fn send_names(&self, addr: SocketAddr, chan_name: &str) {
         let chan = &self.channels[<&UniCase<str>>::from(chan_name)];
+        let client = &self.clients[&addr];
+        let mut response = ResponseBuffer::new();
         if !chan.members.is_empty() {
-            let mut names = String::with_capacity(512);
-            for (member, modes) in chan.members.iter() {
-                let nick = self.clients[member].nick();
-                names.push(' ');
-                names.push(modes.symbol());
-                names.push_str(nick);
+            let mut message = response.message(&self.prefix, rpl::NAMREPLY)
+                .param(client.nick())
+                .param(chan.symbol())
+                .param(chan_name);
+            let trailing = message.raw_trailing();
+            let mut members = chan.members.iter();
+            if let Some((member, modes)) = members.next() {
+                trailing.push(modes.symbol());
+                trailing.push_str(self.clients[member].nick());
+                for (member, modes) in members {
+                    trailing.push(' ');
+                    trailing.push(modes.symbol());
+                    trailing.push_str(self.clients[member].nick());
+                }
             }
-            self.send_reply(addr, rpl::NAMREPLY, &[chan.symbol(), chan_name, names.trim_start()]);
+            message.build();
         }
-        self.send_reply(addr, rpl::ENDOFNAMES, &[chan_name, lines::END_OF_NAMES]);
+        response.message(&self.prefix, rpl::ENDOFNAMES)
+            .param(client.nick())
+            .param(chan_name)
+            .trailing_param(lines::END_OF_NAMES);
+        self.send(addr, response.build());
     }
 
     /// Sends the topic of the channel `chan_name` to the given client.

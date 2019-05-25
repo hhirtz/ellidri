@@ -647,6 +647,12 @@ impl<'a> MessageBuffer<'a> {
         self.buf.extend(param.chars().map(sanitize_trailing_param));
         self.build()
     }
+
+    pub fn raw_trailing(&mut self) -> &mut String {
+        self.buf.push(' ');
+        self.buf.push(':');
+        &mut self.buf
+    }
 }
 
 #[derive(Debug, Default)]
