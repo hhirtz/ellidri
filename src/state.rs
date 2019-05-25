@@ -603,6 +603,8 @@ impl StateInner {
                                 &[target, lines::CANNOT_SEND_TO_CHAN]);
                 false
             }
+        } else if is_valid_nickname(target) && self.clients.values().any(|c| c.nick() == target) {
+            true
         } else {
             log::debug!("{}: Can't send privmsg to {:?}: No such channel", addr, target);
             self.send_reply(addr, rpl::ERR_NOSUCHNICK, &[target, lines::NO_SUCH_NICK]);
@@ -611,17 +613,20 @@ impl StateInner {
     }
 
     /// Applies a "PRIVMSG" command issued by the given client with the given parameters.
-    pub fn apply_cmd_privmsg(&self, addr: SocketAddr, targets: &str, content: &str) {
-        log::debug!("{}: Privmsg to {:?}", addr, targets);
+    pub fn apply_cmd_privmsg(&self, addr: SocketAddr, target: &str, content: &str) {
+        log::debug!("{}: Privmsg to {:?}", addr, target);
         let client = &self.clients[&addr];
         let msg = Message::with_prefix(client.full_name(), Command::PrivMsg)
-            .param(targets)
+            .param(target)
             .trailing_param(content)
             .into_bytes();
-        let chan = &self.channels[<&UniCase<str>>::from(targets)];
-        chan.members.keys()
-            .filter(|&&a| a != addr)
-            .for_each(|&member| self.send(member, msg.clone()));
+        if let Some(ref chan) = self.channels.get(<&UniCase<str>>::from(target)) {
+            chan.members.keys()
+                .filter(|&&a| a != addr)
+                .for_each(|&member| self.send(member, msg.clone()));
+        } else {
+            self.clients.values().find(|c| c.nick() == target).unwrap().send(msg);
+        }
     }
 
     /// Applies a "QUIT" command issued by the given client with the given parameters.
