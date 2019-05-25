@@ -17,10 +17,12 @@
 
 #![warn(clippy::all)]
 
-use std::{env, fs, process};
+use std::{env, fs, path, process};
+use std::collections::HashMap;
 
 use futures::Future;
 
+use crate::config::BindToAddress;
 use crate::state::State;
 
 pub mod channel;
@@ -32,6 +34,41 @@ pub mod misc;
 pub mod modes;
 pub mod net;
 pub mod state;
+
+/// Read the file at `path`, parse the identity and builds a TlsAcceptor object.
+fn build_acceptor(path: &path::Path) -> tokio_tls::TlsAcceptor {
+    let der = fs::read(path).unwrap_or_else(|err| {
+        log::error!("I'm so sorry, senpai! I couldn't read {}...", path.display());
+        log::error!("Please fix this, senpai...: {}", err);
+        process::exit(1);
+    });
+    let identity = native_tls::Identity::from_pkcs12(&der, "").unwrap_or_else(|err| {
+        log::error!("Senpai... there's something wrong with your identity file here: {}", err);
+        process::exit(1);
+    });
+    let acceptor = native_tls::TlsAcceptor::builder(identity)
+        .build()
+        .unwrap_or_else(|err| {
+            log::error!("I don't know what to do with this identity senpai: {}", err);
+            process::exit(1);
+        });
+    tokio_tls::TlsAcceptor::from(acceptor)
+}
+
+/// TlsAcceptor cache, to avoid reading the same identity file several times.
+#[derive(Default)]
+struct TlsIdentityStore {
+    acceptors: HashMap<path::PathBuf, tokio_tls::TlsAcceptor>,
+}
+
+impl TlsIdentityStore {
+    /// Retrieves the acceptor at `path`, or get it from the cache if it has already been built.
+    pub fn acceptor(&mut self, path: path::PathBuf) -> tokio_tls::TlsAcceptor {
+        self.acceptors.entry(path.clone())
+            .or_insert_with(|| build_acceptor(&path))
+            .clone()
+    }
+}
 
 /// The beginning of everything
 pub fn start() {
@@ -79,21 +116,17 @@ pub fn start() {
             process::exit(1);
         });
 
-    for bind in c.bind_to_address {
-        if let Some(options) = bind.tls {
-            let der = fs::read(&options.tls_identity).unwrap_or_else(|err| {
-                let path = options.tls_identity.to_str().unwrap();
-                log::error!("I'm so sorry, senpai! I couldn't read {}...", path);
-                log::error!("Please fix this, senpai...: {}", err);
-                process::exit(1);
-            });
-            let server = net::listen_tls(bind.addr, shared.clone(), &der);
+    let mut store = TlsIdentityStore::default();
+    for BindToAddress { addr, tls } in c.bind_to_address.into_iter() {
+        if let Some(options) = tls {
+            let acceptor = store.acceptor(options.tls_identity);
+            let server = net::listen_tls(addr, shared.clone(), acceptor);
             runtime.spawn(server);
-            log::warn!("I'm listening on {} (tls ^^), ok?", bind.addr);
+            log::warn!("I'm listening on {} (tls ^^), ok?", addr);
         } else {
-            let server = net::listen(bind.addr, shared.clone());
+            let server = net::listen(addr, shared.clone());
             runtime.spawn(server);
-            log::warn!("I'm listening on {}, ok?", bind.addr);
+            log::warn!("I'm listening on {}, ok?", addr);
         }
     }
 
