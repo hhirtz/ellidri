@@ -1,5 +1,6 @@
 use std::iter;
 
+// Don't forget to change CHANMODES in StateInner::send_welcome
 pub const USER_MODES: &str = "aiorsw";
 pub const SIMPLE_CHAN_MODES: &str = "aimnpqst";
 pub const EXTENDED_CHAN_MODES: &str = "beIklov";
