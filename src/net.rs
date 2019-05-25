@@ -160,6 +160,7 @@ fn handle_message(msg: Message, peer_addr: SocketAddr, shared: State)
         Command::Join => shared.cmd_join(peer_addr, ps.next().unwrap(), ps.next()),
         Command::Mode => shared.cmd_mode(peer_addr, ps.next().unwrap(), ps.next(), ps),
         Command::Motd => shared.cmd_motd(peer_addr),
+        Command::Names => shared.cmd_names(peer_addr, ps.next()),
         Command::Nick => shared.cmd_nick(peer_addr, ps.next().unwrap()),
         Command::Part => shared.cmd_part(peer_addr, ps.next().unwrap(), ps.next()),
         Command::Ping => shared.send_command(peer_addr, Command::Pong, &[ps.next().unwrap()]),

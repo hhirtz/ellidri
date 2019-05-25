@@ -184,6 +184,7 @@ commands! {
     Join => 1,
     Mode => 1,
     Motd => 0,
+    Names => 0,
     Nick => 1,
     Part => 1,
     Ping => 1,

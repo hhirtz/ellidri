@@ -96,6 +96,11 @@ impl State {
         self.0.read().unwrap().apply_cmd_motd(addr);
     }
 
+    /// Handles a "NAMES" message.
+    pub fn cmd_names(&self, addr: SocketAddr, targets: Option<&str>) {
+        self.0.read().unwrap().apply_cmd_names(addr, targets.unwrap_or(""));
+    }
+
     /// Handles a "NICK" message.
     pub fn cmd_nick(&self, addr: SocketAddr, nick: &str) {
         if self.0.read().unwrap().check_cmd_nick(addr, nick) {
@@ -499,6 +504,17 @@ impl StateInner {
         } else {
             log::debug!("{}: Sending no-motd error", addr);
             self.send_reply(addr, rpl::ERR_NOMOTD, &[lines::NO_MOTD]);
+        }
+    }
+
+    /// Applies a "NAMES" command issues by the given client.
+    pub fn apply_cmd_names(&self, addr: SocketAddr, targets: &str) {
+        if targets.is_empty() || targets == "*" {
+            self.send_reply(addr, rpl::ENDOFNAMES, &["*", lines::END_OF_NAMES]);
+        } else {
+            for target in targets.split(',') {
+                self.send_names(addr, target);
+            }
         }
     }
 
