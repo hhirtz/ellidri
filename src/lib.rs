@@ -66,12 +66,9 @@ pub fn start() {
         })
         .init();
 
-    let shared = State::new(c.domain, c.motd, c.default_chan_mode);
-    let server = net::listen(c.bind_to_address, shared);
-
     log::warn!("Let's get started senpai!");
-    log::warn!("I'm listening on {}, ok?", c.bind_to_address);
 
+    let shared = State::new(c.domain, c.motd, c.default_chan_mode);
     let mut runtime = tokio::runtime::Builder::new()
         .core_threads(c.worker_threads)
         // TODO panic_handler
@@ -81,6 +78,12 @@ pub fn start() {
             log::error!("*dies painfully because of {}*", err);
             process::exit(1);
         });
-    runtime.spawn(server);
+
+    for bind in c.bind_to_address {
+        let server = net::listen(bind.addr, shared.clone());
+        runtime.spawn(server);
+        log::warn!("I'm listening on {}, ok?", bind.addr);
+    }
+
     runtime.shutdown_on_idle().wait().unwrap();
 }

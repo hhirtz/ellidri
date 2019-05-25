@@ -8,12 +8,29 @@
 
 use serde::Deserialize;
 use std::path::Path;
-use std::{fmt, fs, process, net};
+use std::{fmt, fs, net, path, process};
 
 use crate::modes::is_channel_mode_string;
 
-fn bind_to_address() -> net::SocketAddr {
-    net::SocketAddr::from(([0, 0, 0, 0], 6667))
+#[derive(Deserialize)]
+pub struct TlsOptions {
+    pub tls_cert: Option<path::PathBuf>,
+    pub tls_key: Option<path::PathBuf>,
+}
+
+#[derive(Deserialize)]
+pub struct BindToAddress {
+    pub addr: net::SocketAddr,
+
+    #[serde(flatten)]
+    pub tls: Option<TlsOptions>,
+}
+
+fn bind_to_address() -> Vec<BindToAddress> {
+    vec![BindToAddress {
+        addr: net::SocketAddr::from(([0, 0, 0, 0], 6667)),
+        tls: None,
+    }]
 }
 
 fn default_chan_modes() -> String {
@@ -35,7 +52,7 @@ pub struct Config {
     ///
     /// It is set to *:6667 by default.
     #[serde(default = "bind_to_address")]
-    pub bind_to_address: net::SocketAddr,
+    pub bind_to_address: Vec<BindToAddress>,
 
     /// These modes are set when a channel is created.
     #[serde(default = "default_chan_modes")]

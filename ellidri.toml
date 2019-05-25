@@ -11,9 +11,9 @@ domain = "ellidri.localdomain"
 
 # OPTIONAL VALUES
 
-# The IP and TCP port to which to bind.
-# Type: String
-#bind_to_address = "0.0.0.0:6667"
+# The IPs and TCP ports to which to bind.
+# Type: Array of { addr: String, [tls_cert: String, tls_key: String] }
+#bind_to_address = [ { addr = "0.0.0.0:6667" } ]
 
 # Modes that are set automatically when channels are created.
 # Type: String
