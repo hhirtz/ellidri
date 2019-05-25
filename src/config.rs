@@ -14,8 +14,7 @@ use crate::modes::is_channel_mode_string;
 
 #[derive(Deserialize)]
 pub struct TlsOptions {
-    pub tls_cert: Option<path::PathBuf>,
-    pub tls_key: Option<path::PathBuf>,
+    pub tls_identity: path::PathBuf,
 }
 
 #[derive(Deserialize)]

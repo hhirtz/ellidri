@@ -3,9 +3,11 @@ use std::io::BufReader;
 use std::net::SocketAddr;
 
 use futures::sync::mpsc;
+use native_tls;
 use tokio::io;
-use tokio::net::{TcpListener, TcpStream};
+use tokio::net::TcpListener;
 use tokio::prelude::*;
+use tokio_tls;
 
 use crate::lines;
 use crate::message::{Command, Message, rpl};
@@ -25,9 +27,33 @@ pub fn listen(addr: SocketAddr, shared: State) -> impl Future<Item=(), Error=()>
         })
 }
 
+pub fn listen_tls(addr: SocketAddr, shared: State, der: &[u8]) -> impl Future<Item=(), Error=()> {
+    let identity = native_tls::Identity::from_pkcs12(der, "").unwrap();
+    let tls_acceptor = tokio_tls::TlsAcceptor::from(native_tls::TlsAcceptor::builder(identity).build().unwrap());
+    TcpListener::bind(&addr).expect("Failed to bind to address")
+        .incoming()
+        .map_err(|err| {
+            log::info!("I'm seeing thing senpai, someone just {}. Or is it that I'm getting too old?? No way!", err);
+        })
+        .for_each(move |conn| {
+            let peer_addr = conn.peer_addr().map_err(|_| ())?;
+            let shared = shared.clone();
+            let tls_accept = tls_acceptor.accept(conn)
+                .map_err(move |err| {
+                    log::info!("Senpai! Some weird {} didn't know how to speak TLS! Like, who would have {} anyway", peer_addr, err);
+                })
+                .and_then(move |tls_conn| {
+                    tokio::spawn(handle(tls_conn, peer_addr, shared));
+                    Ok(())
+                });
+            tokio::spawn(tls_accept);
+            Ok(())
+        })
+}
+
 /// Returns a future that handle an IRC connection.
-fn handle(conn: TcpStream, peer_addr: SocketAddr, shared: State)
-          -> impl Future<Item=(), Error=()>
+fn handle<S>(conn: S, peer_addr: SocketAddr, shared: State) -> impl Future<Item=(), Error=()>
+    where S: AsyncRead + AsyncWrite
 {
     let (reader, writer) = conn.split();
     let reader = BufReader::new(reader);

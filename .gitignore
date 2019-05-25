@@ -4,3 +4,6 @@ Cargo.lock
 
 *.iml
 .idea/
+
+*.pem
+*.pfx

@@ -12,8 +12,18 @@ domain = "ellidri.localdomain"
 # OPTIONAL VALUES
 
 # The IPs and TCP ports to which to bind.
-# Type: Array of { addr: String, [tls_cert: String, tls_key: String] }
-#bind_to_address = [ { addr = "0.0.0.0:6667" } ]
+# Type: Array of { addr: String, [tls_identity: String] }
+#
+# You can also add a "tls_identity" to tell ellidri this socket should be IRC
+# over TLS with the given identity. You can generate a new identity from a
+# certificate and a private key using OpenSSL:
+#
+# ```
+# openssl pkcs12 -export -out identity.pfx -inkey key.pem -in cert.pem [-certfile chain_certs.pem]
+# ```
+#bind_to_address = [
+#    { addr = "0.0.0.0:6667" },
+#]
 
 # Modes that are set automatically when channels are created.
 # Type: String

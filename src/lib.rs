@@ -17,7 +17,7 @@
 
 #![warn(clippy::all)]
 
-use std::{env, process};
+use std::{env, fs, process};
 
 use futures::Future;
 
@@ -80,9 +80,21 @@ pub fn start() {
         });
 
     for bind in c.bind_to_address {
-        let server = net::listen(bind.addr, shared.clone());
-        runtime.spawn(server);
-        log::warn!("I'm listening on {}, ok?", bind.addr);
+        if let Some(options) = bind.tls {
+            let der = fs::read(&options.tls_identity).unwrap_or_else(|err| {
+                let path = options.tls_identity.to_str().unwrap();
+                log::error!("I'm so sorry, senpai! I couldn't read {}...", path);
+                log::error!("Please fix this, senpai...: {}", err);
+                process::exit(1);
+            });
+            let server = net::listen_tls(bind.addr, shared.clone(), &der);
+            runtime.spawn(server);
+            log::warn!("I'm listening on {} (tls ^^), ok?", bind.addr);
+        } else {
+            let server = net::listen(bind.addr, shared.clone());
+            runtime.spawn(server);
+            log::warn!("I'm listening on {}, ok?", bind.addr);
+        }
     }
 
     runtime.shutdown_on_idle().wait().unwrap();
