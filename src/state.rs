@@ -227,7 +227,7 @@ impl StateInner {
                         return false;
                     }
                 }
-                if chan.can_join(self.clients[&addr].nick()) {
+                if !chan.is_banned(self.clients[&addr].nick()) {
                     true
                 } else {
                     log::debug!("{}: Can't join {:?}: Banned", addr, target);

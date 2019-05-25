@@ -85,10 +85,10 @@ impl Channel {
         self.members.remove(&addr);
     }
 
-    pub fn can_join(&self, nick: &str) -> bool {
-        !self.ban_mask.contains(nick)
-            || self.exception_mask.contains(nick)
-            || self.invitation_mask.contains(nick)
+    pub fn is_banned(&self, nick: &str) -> bool {
+        self.ban_mask.contains(nick)
+            && !self.exception_mask.contains(nick)
+            && !self.invitation_mask.contains(nick)
     }
 
     pub fn can_talk(&self, addr: SocketAddr) -> bool {
