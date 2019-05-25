@@ -218,6 +218,7 @@ impl StateInner {
     pub fn check_cmd_join(&self, addr: SocketAddr, target: &str, key: Option<&str>) -> bool {
         if is_valid_channel_name(target) {
             if let Some(chan) = self.channels.get(<&UniCase<str>>::from(target)) {
+                let nick = self.clients[&addr].nick();
                 // TODO if-let chains
                 if let Some(ref chan_key) = chan.key {
                     if key.map_or(true, |key| key != chan_key) {
@@ -235,14 +236,19 @@ impl StateInner {
                         return false;
                     }
                 }
-                if !chan.is_banned(self.clients[&addr].nick()) {
-                    true
-                } else {
+                if chan.invite_only && !chan.is_invited(nick) {
+                    log::debug!("{}: Can't join {:?}: not invited", addr, target);
+                    self.send_reply(addr, rpl::ERR_INVITEONLYCHAN,
+                                    &[target, lines::INVITE_ONLY_CHAN]);
+                    return false;
+                }
+                if chan.is_banned(nick) {
                     log::debug!("{}: Can't join {:?}: Banned", addr, target);
                     self.send_reply(addr, rpl::ERR_BANNEDFROMCHAN,
                                     &[target, lines::BANNED_FROM_CHAN]);
-                    false
+                    return false;
                 }
+                true
             } else {
                 true
             }

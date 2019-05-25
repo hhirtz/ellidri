@@ -91,6 +91,10 @@ impl Channel {
             && !self.invitation_mask.contains(nick)
     }
 
+    pub fn is_invited(&self, nick: &str) -> bool {
+        self.invitation_mask.contains(nick)
+    }
+
     pub fn can_talk(&self, addr: SocketAddr) -> bool {
         if self.moderated {
             self.members.get(&addr).map(|m| m.voice || m.operator).unwrap_or(false)

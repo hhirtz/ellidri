@@ -31,6 +31,9 @@ pub const END_OF_NAMES: &str =
 pub const ERRONEOUS_NICNAME: &str =
 "That name is a joke. No, it wasn't funny. Go away.";
 
+pub const INVITE_ONLY_CHAN: &str =
+"TODO";
+
 pub const KEY_SET: &str =
 "TODO";
 
