@@ -227,6 +227,14 @@ impl StateInner {
                         return false;
                     }
                 }
+                if let Some(chan_limit) = chan.user_limit {
+                    if chan_limit <= chan.members.len() {
+                        log::debug!("{}: Can't join {:?}: user limit reached", addr, target);
+                        self.send_reply(addr, rpl::ERR_CHANNELISFULL,
+                                        &[target, lines::CHANNEL_IS_FULL]);
+                        return false;
+                    }
+                }
                 if !chan.is_banned(self.clients[&addr].nick()) {
                     true
                 } else {

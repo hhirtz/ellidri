@@ -10,6 +10,9 @@ pub const CANNOT_SEND_TO_CHAN: &str =
 pub const CHAN_O_PRIVS_NEEDED: &str =
 "TODO";
 
+pub const CHANNEL_IS_FULL: &str =
+"TODO";
+
 pub const END_OF_BAN_LIST: &str =
 "TODO";
 

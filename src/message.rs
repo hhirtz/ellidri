@@ -63,6 +63,7 @@ pub mod rpl {
     pub const ERR_ALREADYREGISTRED: Reply = "462";
     pub const ERR_YOUREBANNEDCREEP: Reply = "465";
     pub const ERR_KEYSET: Reply           = "467";
+    pub const ERR_CHANNELISFULL: Reply    = "471";
     pub const ERR_UNKNOWNMODE: Reply      = "472";
     pub const ERR_BANNEDFROMCHAN: Reply   = "474";
     pub const ERR_BADCHANKEY: Reply       = "475";
