@@ -49,8 +49,8 @@ pub struct Channel {
     pub invite_only: bool,
     pub moderated: bool,
     pub no_privmsg_from_outside: bool,
-    pub quiet: bool,
     pub private: bool,
+    pub quiet: bool,
     pub secret: bool,
     pub reop: bool,
     pub topic_restricted: bool,
@@ -110,9 +110,10 @@ impl Channel {
         if self.invite_only { modes.push('i'); }
         if self.moderated { modes.push('m'); }
         if self.no_privmsg_from_outside { modes.push('n'); }
-        if self.quiet { modes.push('q'); }
         if self.private { modes.push('p'); }
+        if self.quiet { modes.push('q'); }
         if self.reop { modes.push('r'); }
+        if self.secret { modes.push('s'); }
         if self.topic_restricted { modes.push('t'); }
         if full_info {
             if self.user_limit.is_some() { modes.push('l'); }

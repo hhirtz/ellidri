@@ -193,8 +193,9 @@ impl<'a, I> Iterator for ChannelQuery<'a, I>
                 b'i' => Ok(ChannelModeChange::InviteOnly(value)),
                 b'm' => Ok(ChannelModeChange::Moderated(value)),
                 b'n' => Ok(ChannelModeChange::NoPrivMsgFromOutside(value)),
-                b'q' => Ok(ChannelModeChange::Quiet(value)),
                 b'p' => Ok(ChannelModeChange::Private(value)),
+                b'q' => Ok(ChannelModeChange::Quiet(value)),
+                b's' => Ok(ChannelModeChange::Secret(value)),
                 b't' => Ok(ChannelModeChange::TopicRestricted(value)),
                 b'k' => if let Some(param) = self.params.next() {
                     Ok(ChannelModeChange::Key(value, param))
