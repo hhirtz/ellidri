@@ -847,11 +847,11 @@ impl StateInner {
                 let trailing = message.raw_trailing_param();
                 let mut members = chan.members.iter();
                 if let Some((member, modes)) = members.next() {
-                    trailing.push(modes.symbol());
+                    if let Some(s) = modes.symbol() { trailing.push(s); }
                     trailing.push_str(self.clients[member].nick());
                     for (member, modes) in members {
                         trailing.push(' ');
-                        trailing.push(modes.symbol());
+                        if let Some(s) = modes.symbol() { trailing.push(s); }
                         trailing.push_str(self.clients[member].nick());
                     }
                 }

@@ -15,13 +15,13 @@ pub struct MemberModes {
 }
 
 impl MemberModes {
-    pub fn symbol(&self) -> char {
+    pub fn symbol(&self) -> Option<char> {
         if self.operator {
-            '@'
+            Some('@')
         } else if self.voice {
-            '+'
+            Some('+')
         } else {
-            ' '
+            None
         }
     }
 }
