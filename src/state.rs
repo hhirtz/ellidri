@@ -909,6 +909,7 @@ impl StateInner {
             .param("INVEX")
             .trailing_param(lines::I_SUPPORT);
         client.send(response.build());
+        self.apply_cmd_lusers(addr);
         self.apply_cmd_motd(addr);
     }
 }
