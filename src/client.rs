@@ -1,6 +1,6 @@
 //! Client management and connection state.
 
-use crate::message::{Command, Reply, rpl};
+use crate::message::{Command, MessageBuffer, Reply, rpl};
 use crate::state::{MessageQueue, MessageQueueItem};
 
 pub const USER_MODES: &[u8] = b"aiwros";
@@ -153,15 +153,16 @@ impl Client {
         self.state
     }
 
-    pub fn modes(&self) -> String {
-        let mut modes = String::with_capacity(USER_MODES.len());
+    pub fn modes(&self, mut out: MessageBuffer) {
+        let modes = out.raw_param();
+        modes.push('+');
         if self.away { modes.push('a'); }
         if self.invisible { modes.push('i'); }
         if self.wallops { modes.push('w'); }
         if self.restricted { modes.push('r'); }
         if self.operator { modes.push('o'); }
         if self.server_notices { modes.push('s'); }
-        modes
+        out.build();
     }
 
     pub fn set_mode(&mut self, mode: u8, value: bool) {

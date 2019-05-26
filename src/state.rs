@@ -498,12 +498,11 @@ impl StateInner {
     fn apply_cmd_mode_user_get(&self, addr: SocketAddr) {
         log::debug!("{}: getting user modes", addr);
         let client = &self.clients[&addr];
-        let modes = client.modes();
-        let msg = Message::with_prefix(&self.prefix, Command::Reply(rpl::UMODEIS))
-            .param(modes)
-            .build()
-            .into_bytes();
-        client.send(msg);
+        let mut response = ResponseBuffer::new();
+        let msg = response.message(&self.prefix, rpl::UMODEIS)
+            .param(client.nick());
+        client.modes(msg);
+        client.send(response.build());
     }
 
     /// Applies a "MODE" command issued by the given client.
