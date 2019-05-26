@@ -291,6 +291,7 @@ impl StateInner {
     }
 
     pub fn apply_cmd_list(&self, addr: SocketAddr, targets: &str) {
+        log::debug!("{}: get list of {:?}", addr, targets);
         let client = &self.clients[&addr];
         let mut response = ResponseBuffer::new();
         if targets.is_empty() {
@@ -317,6 +318,7 @@ impl StateInner {
     }
 
     pub fn apply_cmd_lusers(&self, addr: SocketAddr) {
+        log::debug!("{}: lusers", addr);
         let client = &self.clients[&addr];
         let mut response = ResponseBuffer::new();
         let cs = self.clients.len();
@@ -659,6 +661,7 @@ impl StateInner {
 
     /// Applies a "PART" command issued by the given client with the given parameters.
     pub fn apply_cmd_part(&mut self, addr: SocketAddr, target: &str, reason: Option<&str>) {
+        log::debug!("{}: part {:?} {:?}", addr, target, reason);
         let nick = self.clients[&addr].full_name();
         let msg = if let Some(reason) = reason {
             Message::with_prefix(nick, Command::Part).param(target).trailing_param(reason)
@@ -713,6 +716,7 @@ impl StateInner {
 
     /// Applies a "QUIT" command issued by the given client with the given parameters.
     pub fn apply_cmd_quit(&mut self, addr: SocketAddr, reason: Option<&str>) {
+        log::debug!("{}: quit {:?}", addr, reason);
         self.clients.get_mut(&addr).unwrap().set_quit_message(reason);
     }
 
@@ -745,7 +749,7 @@ impl StateInner {
     ///
     /// "TOPIC" has been split in two handlers, a getter and a setter.
     pub fn apply_cmd_topic_set(&mut self, addr: SocketAddr, target: &str, topic: &str) {
-        log::debug!("{} Set topic of {:?} to {:?}", addr, target, topic);
+        log::debug!("{}: Set topic of {:?} to {:?}", addr, target, topic);
         let chan = self.channels.get_mut(<&UniCase<str>>::from(target)).unwrap();
         if topic.is_empty() {
             chan.topic = None;
@@ -761,6 +765,7 @@ impl StateInner {
 
     /// Applies a "TOPIC" command issued by the given client with the given parameter.
     pub fn apply_cmd_topic_get(&self, addr: SocketAddr, target: &str) {
+        log::debug!("{}: get topic of {:?}", addr, target);
         if let Some(chan) = self.channels.get(<&UniCase<str>>::from(target)) {
             if chan.members.contains_key(&addr) {
                 self.send_topic(addr, target);
