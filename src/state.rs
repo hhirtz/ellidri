@@ -89,6 +89,10 @@ impl State {
         self.0.read().unwrap().apply_cmd_list(addr, targets.unwrap_or(""));
     }
 
+    pub fn cmd_lusers(&self, addr: SocketAddr) {
+        self.0.read().unwrap().apply_cmd_lusers(addr);
+    }
+
     /// Handles a "MODE" message.
     pub fn cmd_mode(&self, addr: SocketAddr, target: &str, modes: Option<&str>, modeparams: Params)
     {
@@ -309,6 +313,27 @@ impl StateInner {
         response.message(&self.prefix, rpl::LISTEND)
             .param(client.nick())
             .trailing_param(lines::END_OF_LIST);
+        client.send(response.build());
+    }
+
+    pub fn apply_cmd_lusers(&self, addr: SocketAddr) {
+        let client = &self.clients[&addr];
+        let mut response = ResponseBuffer::new();
+        let cs = self.clients.len();
+        response.message(&self.prefix, rpl::LUSERCLIENT)
+            .param(client.nick())
+            .trailing_param(format!("There are {} shitheads and 0 services on 1 server", cs));
+        // TODO LUSEROP
+        // TODO LUSERUNKNOWN
+        if !self.channels.is_empty() {
+            response.message(&self.prefix, rpl::LUSERCHANNELS)
+                .param(client.nick())
+                .param(self.channels.len().to_string())
+                .trailing_param(lines::LUSER_CHANNELS);
+        }
+        response.message(&self.prefix, rpl::LUSERME)
+            .param(client.nick())
+            .trailing_param(format!("I have {} shitheads and 0 servers", cs));
         client.send(response.build());
     }
 

@@ -159,6 +159,7 @@ fn handle_message(msg: Message, peer_addr: SocketAddr, shared: State)
     match command {
         Command::Join => shared.cmd_join(peer_addr, ps.next().unwrap(), ps.next()),
         Command::List => shared.cmd_list(peer_addr, ps.next()),
+        Command::Lusers => shared.cmd_lusers(peer_addr),
         Command::Mode => shared.cmd_mode(peer_addr, ps.next().unwrap(), ps.next(), ps),
         Command::Motd => shared.cmd_motd(peer_addr),
         Command::Names => shared.cmd_names(peer_addr, ps.next()),

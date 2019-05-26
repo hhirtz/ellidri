@@ -29,7 +29,12 @@ pub mod rpl {
     pub const MYINFO: Reply    = "004";
     pub const ISUPPORT: Reply  = "005";
 
-    pub const UMODEIS: Reply = "221";
+    pub const UMODEIS: Reply       = "221";
+    pub const LUSERCLIENT: Reply   = "251";
+    pub const LUSEROP: Reply       = "252";
+    pub const LUSERUNKNOWN: Reply  = "253";
+    pub const LUSERCHANNELS: Reply = "254";
+    pub const LUSERME: Reply       = "255";
 
     pub const LIST: Reply            = "322";
     pub const LISTEND: Reply         = "323";
@@ -188,6 +193,7 @@ macro_rules! commands {
 commands! {
     Join => 1,
     List => 0,
+    Lusers => 0,
     Mode => 1,
     Motd => 0,
     Names => 0,

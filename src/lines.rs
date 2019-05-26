@@ -40,6 +40,9 @@ pub const INVITE_ONLY_CHAN: &str =
 pub const KEY_SET: &str =
 "TODO";
 
+pub const LUSER_CHANNELS: &str =
+"stinking dens dug";
+
 pub const NEED_MORE_PARAMS: &str =
 "What did you expect, motherfucker? Don't bother me if you have nothing to say.";
 
