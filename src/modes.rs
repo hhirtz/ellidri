@@ -38,7 +38,6 @@ impl<'a> Iterator for SimpleQuery<'a> {
 pub enum Error {
     UnknownMode(char),
     MissingModeParam,
-    BadModeParam,
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -221,7 +220,15 @@ impl<'a, I> Iterator for ChannelQuery<'a, I>
                 } else {
                     Err(Error::MissingModeParam)
                 },
-                b'l' => Ok(ChannelModeChange::UserLimit(self.params.next())),
+                b'l' => if value {
+                    if let Some(param) = self.params.next() {
+                        Ok(ChannelModeChange::UserLimit(Some(param)))
+                    } else {
+                        Err(Error::MissingModeParam)
+                    }
+                } else {
+                    Ok(ChannelModeChange::UserLimit(None))
+                },
                 b'b' => if let Some(param) = self.params.next() {
                     Ok(ChannelModeChange::ChangeBan(value, param))
                 } else {
