@@ -1,6 +1,9 @@
 use std::collections::{HashMap, HashSet};
 use std::net::SocketAddr;
 
+#[cfg(feature = "irdille")]
+use regex::Regex;
+
 use crate::message::{MessageBuffer, Reply, rpl};
 use crate::modes;
 
@@ -54,6 +57,9 @@ pub struct Channel {
     pub secret: bool,
     pub reop: bool,
     pub topic_restricted: bool,
+
+    #[cfg(feature = "irdille")]
+    pub msg_modifier: Vec<(f64, Regex, String)>,
 }
 
 impl Channel {
@@ -122,12 +128,17 @@ impl Channel {
         if self.topic_restricted { modes.push('t'); }
         if self.user_limit.is_some() { modes.push('l'); }
         if self.key.is_some() { modes.push('k'); }
+
+        #[cfg(feature = "irdille")] {
+            if !self.msg_modifier.is_empty() { modes.push('P'); }
+        }
+
         if full_info {
             if let Some(user_limit) = self.user_limit {
                 out = out.param(user_limit.to_string());
             }
             if let Some(ref key) = self.key {
-                out = out.param(key.to_string());
+                out = out.param(key.to_owned());
             }
         }
         out.build();
@@ -242,6 +253,42 @@ impl Channel {
                     return Err(rpl::ERR_USERNOTINCHANNEL);
                 }
             },
+
+            #[cfg(feature = "irdille")]
+            MsgModifier(Some(p)) => {
+                applied = true;
+                let mut modifiers = Vec::new();
+                let mut split = p.split("||");
+                loop {
+                    let proba = if let Some(p) = split.next().and_then(|s| s.parse().ok()) {
+                        if 0.0 <= p && p <= 1.0 {
+                            p
+                        } else {
+                            break;
+                        }
+                    } else {
+                        break;
+                    };
+                    let regex = if let Some(r) = split.next().and_then(|s| Regex::new(s).ok()) {
+                        r
+                    } else {
+                        break;
+                    };
+                    let repl = if let Some(r) = split.next() {
+                        r.to_owned()
+                    } else {
+                        break;
+                    };
+                    modifiers.push((proba, regex, repl));
+                }
+                self.msg_modifier = modifiers;
+            },
+            #[cfg(feature = "irdille")]
+            MsgModifier(None) => {
+                applied = !self.msg_modifier.is_empty();
+                self.msg_modifier = Vec::new();
+            },
+
             _ => {},
         }
         Ok(applied)

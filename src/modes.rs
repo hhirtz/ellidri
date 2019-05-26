@@ -3,7 +3,11 @@ use std::iter;
 // Don't forget to change CHANMODES in StateInner::send_welcome
 pub const USER_MODES: &str = "aiorsw";
 pub const SIMPLE_CHAN_MODES: &str = "aimnpqst";
+
+#[cfg(not(feature = "irdille"))]
 pub const EXTENDED_CHAN_MODES: &str = "beIklov";
+#[cfg(feature = "irdille")]
+pub const EXTENDED_CHAN_MODES: &str = "beIklovP";
 
 struct SimpleQuery<'a> {
     modes: &'a [u8],
@@ -95,6 +99,9 @@ pub enum ChannelModeChange<'a> {
     ChangeInvitation(bool, &'a str),
     ChangeOperator(bool, &'a str),
     ChangeVoice(bool, &'a str),
+
+    #[cfg(feature = "irdille")]
+    MsgModifier(Option<&'a str>),
 }
 
 impl<'a> ChannelModeChange<'a> {
@@ -116,6 +123,10 @@ impl<'a> ChannelModeChange<'a> {
             ChangeOperator(v, _) |
             ChangeVoice(v, _) => *v,
             UserLimit(l) => l.is_some(),
+
+            #[cfg(feature = "irdille")]
+            MsgModifier(l) => l.is_some(),
+
             _ => false,
         }
     }
@@ -138,6 +149,10 @@ impl<'a> ChannelModeChange<'a> {
             ChangeInvitation(_, _) => Some('I'),
             ChangeOperator(_, _) => Some('o'),
             ChangeVoice(_, _) => Some('v'),
+
+            #[cfg(feature = "irdille")]
+            MsgModifier(_) => Some('P'),
+
             _ => None,
         }
     }
@@ -152,6 +167,10 @@ impl<'a> ChannelModeChange<'a> {
             ChangeInvitation(_, p) => Some(p),
             ChangeOperator(_, p) => Some(p),
             ChangeVoice(_, p) => Some(p),
+
+            #[cfg(feature = "irdille")]
+            MsgModifier(p) => *p,
+
             _ => None,
         }
     }
@@ -228,6 +247,18 @@ impl<'a, I> Iterator for ChannelQuery<'a, I>
                 } else {
                     Err(Error::MissingModeParam)
                 },
+
+                #[cfg(feature = "irdille")]
+                b'P' => if value {
+                    if let Some(param) = self.params.next() {
+                        Ok(ChannelModeChange::MsgModifier(Some(param)))
+                    } else {
+                        Err(Error::MissingModeParam)
+                    }
+                } else {
+                    Ok(ChannelModeChange::MsgModifier(None))
+                },
+
                 other => Err(Error::UnknownMode(other as char)),
             }
         })

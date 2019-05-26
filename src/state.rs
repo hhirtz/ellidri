@@ -701,15 +701,36 @@ impl StateInner {
     /// Applies a "PRIVMSG" command issued by the given client with the given parameters.
     pub fn apply_cmd_privmsg(&self, addr: SocketAddr, target: &str, content: &str) {
         log::debug!("{}: Privmsg to {:?}", addr, target);
-        let msg = Message::with_prefix(self.clients[&addr].full_name(), Command::PrivMsg)
-            .param(target)
-            .trailing_param(content)
-            .into_bytes();
         if let Some(ref chan) = self.channels.get(<&UniCase<str>>::from(target)) {
-            chan.members.keys()
-                .filter(|&&a| a != addr)
-                .for_each(|&member| self.send(member, msg.clone()));
+            #[cfg(feature = "irdille")] {
+                let mut content = String::from(content);
+                for (proba, regex, repl) in &chan.msg_modifier {
+                    if rand::random::<f64>() < *proba {
+                        content = regex.replace_all(&content, repl.as_str()).into();
+                    }
+                }
+                let msg = Message::with_prefix(self.clients[&addr].full_name(), Command::PrivMsg)
+                    .param(target)
+                    .trailing_param(content)
+                    .into_bytes();
+                chan.members.keys()
+                    .filter(|&&a| a != addr)
+                    .for_each(|&member| self.send(member, msg.clone()));
+            }
+            #[cfg(not(feature = "irdille"))] {
+                let msg = Message::with_prefix(self.clients[&addr].full_name(), Command::PrivMsg)
+                    .param(target)
+                    .trailing_param(content)
+                    .into_bytes();
+                chan.members.keys()
+                    .filter(|&&a| a != addr)
+                    .for_each(|&member| self.send(member, msg.clone()));
+            }
         } else {
+            let msg = Message::with_prefix(self.clients[&addr].full_name(), Command::PrivMsg)
+                .param(target)
+                .trailing_param(content)
+                .into_bytes();
             self.clients.values().find(|c| c.nick() == target).unwrap().send(msg);
         }
     }
