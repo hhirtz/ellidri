@@ -22,6 +22,9 @@ pub const END_OF_EXCEPT_LIST: &str =
 pub const END_OF_INVITE_LIST: &str =
 "TODO";
 
+pub const END_OF_LIST: &str =
+"TODO";
+
 pub const END_OF_MOTD: &str =
 "Creep, don't get cocky just because senpai told me to say it!";
 

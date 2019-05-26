@@ -85,6 +85,11 @@ impl Channel {
         self.members.remove(&addr);
     }
 
+    pub fn list_entry(&self, msg: MessageBuffer) {
+        msg.param(self.members.len().to_string())
+            .trailing_param(self.topic.as_ref().map(|s| s.as_ref()).unwrap_or(""));
+    }
+
     pub fn is_banned(&self, nick: &str) -> bool {
         self.ban_mask.contains(nick)
             && !self.exception_mask.contains(nick)

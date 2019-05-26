@@ -85,6 +85,10 @@ impl State {
         }
     }
 
+    pub fn cmd_list(&self, addr: SocketAddr, targets: Option<&str>) {
+        self.0.read().unwrap().apply_cmd_list(addr, targets.unwrap_or(""));
+    }
+
     /// Handles a "MODE" message.
     pub fn cmd_mode(&self, addr: SocketAddr, target: &str, modes: Option<&str>, modeparams: Params)
     {
@@ -280,6 +284,32 @@ impl StateInner {
         self.broadcast(target, join.into_bytes());
         self.send_topic(addr, target);
         self.send_names(addr, target);
+    }
+
+    pub fn apply_cmd_list(&self, addr: SocketAddr, targets: &str) {
+        let client = &self.clients[&addr];
+        let mut response = ResponseBuffer::new();
+        if targets.is_empty() {
+            for (name, channel) in self.channels.iter() {
+                let msg = response.message(&self.prefix, rpl::LIST)
+                    .param(client.nick())
+                    .param(name);
+                channel.list_entry(msg);
+            }
+        } else {
+            for name in targets.split(',') {
+                if let Some(channel) = self.channels.get(<&UniCase<str>>::from(name)) {
+                    let msg = response.message(&self.prefix, rpl::LIST)
+                        .param(client.nick())
+                        .param(name);
+                    channel.list_entry(msg);
+                }
+            }
+        }
+        response.message(&self.prefix, rpl::LISTEND)
+            .param(client.nick())
+            .trailing_param(lines::END_OF_LIST);
+        client.send(response.build());
     }
 
     /// Sends the chan modes to addr.

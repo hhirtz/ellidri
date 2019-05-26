@@ -31,6 +31,8 @@ pub mod rpl {
 
     pub const UMODEIS: Reply = "221";
 
+    pub const LIST: Reply            = "322";
+    pub const LISTEND: Reply         = "323";
     pub const CHANNELMODEIS: Reply   = "324";
     pub const NOTOPIC: Reply         = "331";
     pub const TOPIC: Reply           = "332";
@@ -185,6 +187,7 @@ macro_rules! commands {
 
 commands! {
     Join => 1,
+    List => 0,
     Mode => 1,
     Motd => 0,
     Names => 0,
