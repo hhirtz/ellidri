@@ -922,7 +922,7 @@ impl StateInner {
         response.message(&self.prefix, rpl::MYINFO)
             .param(client.nick())
             .param(&self.prefix)
-            .param(env!("CARGO_PKG_VERSION"))
+            .param(concat!(env!("CARGO_PKG_NAME"), "-", env!("CARGO_PKG_VERSION")))
             .param(modes::USER_MODES)
             .param(modes::SIMPLE_CHAN_MODES)
             .param(modes::EXTENDED_CHAN_MODES)
