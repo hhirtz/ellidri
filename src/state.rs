@@ -603,23 +603,25 @@ impl StateInner {
     /// Applies a "NICK" command issued by the given client with the given parameter.
     pub fn apply_cmd_nick(&mut self, addr: SocketAddr, nick: &str) {
         log::debug!("{}: Changing nick to {:?}", addr, nick);
-        let msg = Message::with_prefix(self.clients[&addr].nick(), Command::Nick)
+        let client = self.clients.get_mut(&addr).unwrap();
+        let old_state = client.state();
+        let new_state = client.apply_command(Command::Nick);
+        let msg = Message::with_prefix(client.full_name(), Command::Nick)
             .param(nick)
             .build()
             .into_bytes();
-        let noticed = self.channels
-            .values()
-            .filter(|chan| chan.members.contains_key(&addr))
-            .flat_map(|chan| chan.members.keys())
-            .collect::<HashSet<_>>();
-        for &client in noticed.into_iter() {
-            self.send(client, msg.clone());
-        }
-        let client = self.clients.get_mut(&addr).unwrap();
         client.set_nick(nick);
-        let old_state = client.state();
-        let new_state = client.apply_command(Command::Nick);
-        if new_state.is_registered() && !old_state.is_registered() {
+        if old_state.is_registered() {
+            let mut noticed = self.channels
+                .values()
+                .filter(|chan| chan.members.contains_key(&addr))
+                .flat_map(|chan| chan.members.keys())
+                .collect::<HashSet<_>>();
+            noticed.insert(&addr);
+            for &client in noticed.into_iter() {
+                self.send(client, msg.clone());
+            }
+        } else if new_state.is_registered() {
             self.send_welcome(addr);
         }
     }
