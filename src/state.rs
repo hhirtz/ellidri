@@ -108,6 +108,14 @@ impl State {
         }
     }
 
+    /// Handles a "NOTICE" message.
+    pub fn cmd_notice(&self, addr: SocketAddr, targets: &str, content: &str) {
+        let lock = self.0.read().unwrap();
+        if lock.check_cmd_notice(addr, targets, content) {
+            lock.apply_cmd_notice(addr, targets, content);
+        }
+    }
+
     /// Handles a "PART" message.
     pub fn cmd_part(&self, addr: SocketAddr, targets: &str, reason: Option<&str>) {
         for target in targets.split(',') {
@@ -119,8 +127,9 @@ impl State {
 
     /// Handles a "PRIVMSG" message.
     pub fn cmd_privmsg(&self, addr: SocketAddr, targets: &str, content: &str) {
-        if self.0.read().unwrap().check_cmd_privmsg(addr, targets, content) {
-            self.0.read().unwrap().apply_cmd_privmsg(addr, targets, content);
+        let lock = self.0.read().unwrap();
+        if lock.check_cmd_privmsg(addr, targets, content) {
+            lock.apply_cmd_privmsg(addr, targets, content);
         }
     }
 
@@ -561,6 +570,24 @@ impl StateInner {
         }
     }
 
+    pub fn check_cmd_notice(&self, addr: SocketAddr, target: &str, content: &str) -> bool {
+        self.check_cmd_privmsg(addr, target, content)
+    }
+
+    pub fn apply_cmd_notice(&self, addr: SocketAddr, target: &str, content: &str) {
+        let msg = Message::with_prefix(self.clients[&addr].full_name(), Command::Notice)
+            .param(target)
+            .trailing_param(content)
+            .into_bytes();
+        if let Some(ref chan) = self.channels.get(<&UniCase<str>>::from(target)) {
+            chan.members.keys()
+                .filter(|&&a| a != addr)
+                .for_each(|&member| self.send(member, msg.clone()));
+        } else {
+            self.clients.values().find(|c| c.nick() == target).unwrap().send(msg);
+        }
+    }
+
     /// Whether or not a "PART" message with the given parameters can be issued by the given
     /// client.
     pub fn check_cmd_part(&self, addr: SocketAddr, target: &str, _reason: Option<&str>) -> bool {
@@ -615,8 +642,7 @@ impl StateInner {
     /// Applies a "PRIVMSG" command issued by the given client with the given parameters.
     pub fn apply_cmd_privmsg(&self, addr: SocketAddr, target: &str, content: &str) {
         log::debug!("{}: Privmsg to {:?}", addr, target);
-        let client = &self.clients[&addr];
-        let msg = Message::with_prefix(client.full_name(), Command::PrivMsg)
+        let msg = Message::with_prefix(self.clients[&addr].full_name(), Command::PrivMsg)
             .param(target)
             .trailing_param(content)
             .into_bytes();

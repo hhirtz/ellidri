@@ -189,6 +189,7 @@ commands! {
     Motd => 0,
     Names => 0,
     Nick => 1,
+    Notice => 2,
     Part => 1,
     Ping => 1,
     Pong => 1,

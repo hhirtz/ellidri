@@ -144,9 +144,9 @@ fn handle_message(msg: Message, peer_addr: SocketAddr, shared: State)
         let num_params = msg.params().count();
         if command == Command::Nick {
             shared.send_reply(peer_addr, rpl::ERR_NONICKNAMEGIVEN, &[lines::NO_NICKNAME_GIVEN]);
-        } else if command == Command::PrivMsg && num_params == 0 {
+        } else if (command == Command::PrivMsg || command == Command::Notice) && num_params == 0 {
             shared.send_reply(peer_addr, rpl::ERR_NORECIPIENT, &[lines::NO_RECIPIENT]);
-        } else if command == Command::PrivMsg && num_params == 1 {
+        } else if (command == Command::PrivMsg || command == Command::Notice) && num_params == 1 {
             shared.send_reply(peer_addr, rpl::ERR_NOTEXTTOSEND, &[lines::NO_TEXT_TO_SEND]);
         } else {
             shared.send_reply(peer_addr, rpl::ERR_NEEDMOREPARAMS,
@@ -162,6 +162,7 @@ fn handle_message(msg: Message, peer_addr: SocketAddr, shared: State)
         Command::Motd => shared.cmd_motd(peer_addr),
         Command::Names => shared.cmd_names(peer_addr, ps.next()),
         Command::Nick => shared.cmd_nick(peer_addr, ps.next().unwrap()),
+        Command::Notice => shared.cmd_notice(peer_addr, ps.next().unwrap(), ps.next().unwrap()),
         Command::Part => shared.cmd_part(peer_addr, ps.next().unwrap(), ps.next()),
         Command::Ping => shared.send_command(peer_addr, Command::Pong, &[ps.next().unwrap()]),
         Command::Pong => {},
