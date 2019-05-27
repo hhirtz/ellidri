@@ -79,6 +79,8 @@ pub mod rpl {
 
     pub const ERR_UMODEUNKNOWNFLAG: Reply = "501";
     pub const ERR_USERSDONTMATCH: Reply   = "502";
+
+    #[cfg(feature = "irdille")] pub const IRDILLE_MODIFIEDPRIVMSG: Reply = "802";
 }
 
 /// Code generation for the list of commands.
