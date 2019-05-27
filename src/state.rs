@@ -218,6 +218,7 @@ impl StateInner {
             .trailing_param(client.quit_message())
             .into_bytes();
         for chan in self.channels.values() {
+            if chan.quiet { continue; }
             if chan.members.contains_key(&addr) {
                 for &member in chan.members.keys() {
                     self.send(member, msg.clone());
@@ -284,8 +285,15 @@ impl StateInner {
             .or_insert_with(|| Channel::new(&default_chan_mode));
         chan.add_member(addr);
         let client = &self.clients[&addr];
-        let join = Message::with_prefix(client.full_name(), Command::Join).param(target).build();
-        self.broadcast(target, join.into_bytes());
+        let join = Message::with_prefix(client.full_name(), Command::Join)
+            .param(target)
+            .build()
+            .into_bytes();
+        if chan.quiet {
+            client.send(join);
+        } else {
+            self.broadcast(target, join);
+        }
         self.send_topic(addr, target);
         self.send_names(addr, target);
     }
@@ -618,7 +626,7 @@ impl StateInner {
         if old_state.is_registered() {
             let mut noticed = self.channels
                 .values()
-                .filter(|chan| chan.members.contains_key(&addr))
+                .filter(|chan| !chan.quiet && chan.members.contains_key(&addr))
                 .flat_map(|chan| chan.members.keys())
                 .collect::<HashSet<_>>();
             noticed.insert(&addr);
@@ -664,15 +672,19 @@ impl StateInner {
     /// Applies a "PART" command issued by the given client with the given parameters.
     pub fn apply_cmd_part(&mut self, addr: SocketAddr, target: &str, reason: Option<&str>) {
         log::debug!("{}: part {:?} {:?}", addr, target, reason);
-        let nick = self.clients[&addr].full_name();
-        let msg = if let Some(reason) = reason {
-            Message::with_prefix(nick, Command::Part).param(target).trailing_param(reason)
-        } else {
-            Message::with_prefix(nick, Command::Part).param(target).build()
-        };
-        self.broadcast(target, msg.into_bytes());
         let chan = self.channels.get_mut(<&UniCase<str>>::from(target)).unwrap();
         chan.members.remove(&addr);
+        let client = &self.clients[&addr];
+        let msg = if let Some(reason) = reason {
+            Message::with_prefix(client.nick(), Command::Part).param(target).trailing_param(reason)
+        } else {
+            Message::with_prefix(client.nick(), Command::Part).param(target).build()
+        };
+        if chan.quiet {
+            client.send(msg.into_bytes());
+        } else {
+            self.broadcast(target, msg.into_bytes());
+        }
     }
 
     /// Whether or not a "PRIVMSG" message with the given parameters can be issued by the given
@@ -870,7 +882,7 @@ impl StateInner {
             if chan.secret && !chan.members.contains_key(&addr) { return; }
             let client = &self.clients[&addr];
             let mut response = ResponseBuffer::new();
-            if !chan.members.is_empty() {
+            if !chan.quiet && !chan.members.is_empty() {
                 let mut message = response.message(&self.prefix, rpl::NAMREPLY)
                     .param(client.nick())
                     .param(chan.symbol())
@@ -886,6 +898,15 @@ impl StateInner {
                         trailing.push_str(self.clients[member].nick());
                     }
                 }
+                message.build();
+            } else if chan.quiet && chan.members.contains_key(&addr) {
+                let mut message = response.message(&self.prefix, rpl::NAMREPLY)
+                    .param(client.nick())
+                    .param(chan.symbol())
+                    .param(chan_name);
+                let trailing = message.raw_trailing_param();
+                if let Some(s) = chan.members[&addr].symbol() { trailing.push(s); }
+                trailing.push_str(client.nick());
                 message.build();
             }
             response.message(&self.prefix, rpl::ENDOFNAMES)
