@@ -679,11 +679,10 @@ impl StateInner {
             Message::with_prefix(client.nick(), Command::Part).param(target).trailing_param(reason)
         } else {
             Message::with_prefix(client.nick(), Command::Part).param(target).build()
-        };
-        if chan.quiet {
-            client.send(msg.into_bytes());
-        } else {
-            self.broadcast(target, msg.into_bytes());
+        }.into_bytes();
+        client.send(msg.clone());
+        if !chan.quiet {
+            self.broadcast(target, msg);
         }
     }
 
