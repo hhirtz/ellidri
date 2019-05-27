@@ -102,7 +102,7 @@ impl Channel {
     }
 
     pub fn is_invited(&self, nick: &str) -> bool {
-        self.invitation_mask.contains(nick)
+        !self.invite_only || self.invitation_mask.contains(nick)
     }
 
     pub fn can_talk(&self, addr: SocketAddr) -> bool {

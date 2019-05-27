@@ -79,7 +79,7 @@ impl State {
     pub fn cmd_join(&self, addr: SocketAddr, targets: &str, keys: Option<&str>) {
         let mut keys = keys.unwrap_or("").split(',');
         for target in targets.split(',') {
-            if self.0.read().unwrap().check_cmd_join(addr, target, keys.next()) {
+            if self.0.read().unwrap().check_cmd_join(addr, target, keys.next().unwrap_or("")) {
                 self.0.write().unwrap().apply_cmd_join(addr, target);
             }
         }
@@ -234,48 +234,41 @@ impl StateInner {
 
     /// Whether or not a "JOIN" message with the given parameters can be issued by the given
     /// client.
-    pub fn check_cmd_join(&self, addr: SocketAddr, target: &str, key: Option<&str>) -> bool {
-        if is_valid_channel_name(target) {
-            if let Some(chan) = self.channels.get(<&UniCase<str>>::from(target)) {
-                let nick = self.clients[&addr].nick();
-                // TODO if-let chains
-                if let Some(ref chan_key) = chan.key {
-                    if key.map_or(true, |key| key != chan_key) {
-                        log::debug!("{}: Can't join {:?}: Bad key", addr, target);
-                        self.send_reply(addr, rpl::ERR_BADCHANKEY,
-                                        &[target, lines::BAD_CHAN_KEY]);
-                        return false;
-                    }
-                }
-                if let Some(chan_limit) = chan.user_limit {
-                    if chan_limit <= chan.members.len() {
-                        log::debug!("{}: Can't join {:?}: user limit reached", addr, target);
-                        self.send_reply(addr, rpl::ERR_CHANNELISFULL,
-                                        &[target, lines::CHANNEL_IS_FULL]);
-                        return false;
-                    }
-                }
-                if chan.invite_only && !chan.is_invited(nick) {
-                    log::debug!("{}: Can't join {:?}: not invited", addr, target);
-                    self.send_reply(addr, rpl::ERR_INVITEONLYCHAN,
-                                    &[target, lines::INVITE_ONLY_CHAN]);
-                    return false;
-                }
-                if chan.is_banned(nick) {
-                    log::debug!("{}: Can't join {:?}: Banned", addr, target);
-                    self.send_reply(addr, rpl::ERR_BANNEDFROMCHAN,
-                                    &[target, lines::BANNED_FROM_CHAN]);
-                    return false;
-                }
-                true
-            } else {
-                true
-            }
-        } else {
+    pub fn check_cmd_join(&self, addr: SocketAddr, target: &str, key: &str) -> bool {
+        if !is_valid_channel_name(target) {
             log::debug!("{}: Can't join {:?}: Invalid channel name", addr, target);
             self.send_reply(addr, rpl::ERR_NOSUCHCHANNEL, &[target, lines::NO_SUCH_CHANNEL]);
-            false
+            return false;
         }
+        if let Some(chan) = self.channels.get(<&UniCase<str>>::from(target)) {
+            let nick = self.clients[&addr].nick();
+            // TODO if-let chains
+            if chan.key.as_ref().map_or(false, |chan_key| chan_key != key) {
+                log::debug!("{}: Can't join {:?}: Bad key", addr, target);
+                self.send_reply(addr, rpl::ERR_BADCHANKEY,
+                                &[target, lines::BAD_CHAN_KEY]);
+                return false;
+            }
+            if chan.user_limit.map_or(false, |user_limit| user_limit <= chan.members.len()) {
+                log::debug!("{}: Can't join {:?}: user limit reached", addr, target);
+                self.send_reply(addr, rpl::ERR_CHANNELISFULL,
+                                &[target, lines::CHANNEL_IS_FULL]);
+                return false;
+            }
+            if !chan.is_invited(nick) {
+                log::debug!("{}: Can't join {:?}: not invited", addr, target);
+                self.send_reply(addr, rpl::ERR_INVITEONLYCHAN,
+                                &[target, lines::INVITE_ONLY_CHAN]);
+                return false;
+            }
+            if chan.is_banned(nick) {
+                log::debug!("{}: Can't join {:?}: Banned", addr, target);
+                self.send_reply(addr, rpl::ERR_BANNEDFROMCHAN,
+                                &[target, lines::BANNED_FROM_CHAN]);
+                return false;
+            }
+        }
+        true
     }
 
     /// Applies a "JOIN" command issued by the given client with the given parameters.
