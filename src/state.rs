@@ -226,9 +226,10 @@ impl StateInner {
             }
         }
 
-        self.channels.iter_mut()
-            .filter(|(_, chan)| chan.members.contains_key(&addr))
-            .for_each(|(_, chan)| chan.remove_member(addr));
+        self.channels.retain(|_, chan| {
+            chan.members.remove(&addr);
+            !chan.members.is_empty()
+        });
     }
 
     /// Whether or not a "JOIN" message with the given parameters can be issued by the given
@@ -681,7 +682,9 @@ impl StateInner {
             Message::with_prefix(client.nick(), Command::Part).param(target).build()
         }.into_bytes();
         client.send(msg.clone());
-        if !chan.quiet {
+        if chan.members.is_empty() {
+            self.channels.remove(<&UniCase<str>>::from(target));
+        } else if !chan.quiet {
             self.broadcast(target, msg);
         }
     }
