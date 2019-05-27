@@ -964,11 +964,12 @@ impl StateInner {
         response.message(&self.prefix, rpl::ISUPPORT)
             .param(client.nick())
             .param("CASEMAPPING=ascii")
-            .param("CHANMODES=beI,k,l,aimnpqst")
             .param(format!("CHANLEN={}", MAX_CHANNEL_NAME_LENGTH))
-            .param(format!("NICKLEN={}", MAX_NICKNAME_LENGTH))
+            .param(modes::CHANMODES)
             .param("EXCEPTS")
             .param("INVEX")
+            .param("MODES")
+            .param(format!("NICKLEN={}", MAX_NICKNAME_LENGTH))
             .trailing_param(lines::I_SUPPORT);
         client.send(response.build());
         self.apply_cmd_lusers(addr);

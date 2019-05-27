@@ -9,6 +9,11 @@ pub const EXTENDED_CHAN_MODES: &str = "beIklov";
 #[cfg(feature = "irdille")]
 pub const EXTENDED_CHAN_MODES: &str = "beIklovP";
 
+#[cfg(not(feature = "irdille"))]
+pub const CHANMODES: &str = "CHANMODES=beI,k,l,aimnpqst";
+#[cfg(feature = "irdille")]
+pub const CHANMODES: &str = "CHANMODES=beI,k,l,aimnpqstP";
+
 struct SimpleQuery<'a> {
     modes: &'a [u8],
     value: bool,
