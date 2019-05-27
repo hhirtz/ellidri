@@ -2,7 +2,7 @@ use std::iter;
 
 // Don't forget to change CHANMODES in StateInner::send_welcome
 pub const USER_MODES: &str = "aiorsw";
-pub const SIMPLE_CHAN_MODES: &str = "aimnpqst";
+pub const SIMPLE_CHAN_MODES: &str = "aimnqst";
 
 #[cfg(not(feature = "irdille"))]
 pub const EXTENDED_CHAN_MODES: &str = "beIklov";
@@ -85,7 +85,6 @@ pub enum ChannelModeChange<'a> {
     Moderated(bool),
     NoPrivMsgFromOutside(bool),
     Quiet(bool),
-    Private(bool),
     Secret(bool),
     TopicRestricted(bool),
     Key(bool, &'a str),
@@ -112,7 +111,6 @@ impl<'a> ChannelModeChange<'a> {
             Moderated(v) |
             NoPrivMsgFromOutside(v) |
             Quiet(v) |
-            Private(v) |
             Secret(v) |
             TopicRestricted(v) |
             Key(v, _) |
@@ -138,7 +136,6 @@ impl<'a> ChannelModeChange<'a> {
             Moderated(_) => Some('m'),
             NoPrivMsgFromOutside(_) => Some('n'),
             Quiet(_) => Some('q'),
-            Private(_) => Some('p'),
             Secret(_) => Some('s'),
             TopicRestricted(_) => Some('t'),
             Key(_, _) => Some('k'),
@@ -211,7 +208,6 @@ impl<'a, I> Iterator for ChannelQuery<'a, I>
                 b'i' => Ok(ChannelModeChange::InviteOnly(value)),
                 b'm' => Ok(ChannelModeChange::Moderated(value)),
                 b'n' => Ok(ChannelModeChange::NoPrivMsgFromOutside(value)),
-                b'p' => Ok(ChannelModeChange::Private(value)),
                 b'q' => Ok(ChannelModeChange::Quiet(value)),
                 b's' => Ok(ChannelModeChange::Secret(value)),
                 b't' => Ok(ChannelModeChange::TopicRestricted(value)),

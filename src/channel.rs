@@ -52,7 +52,6 @@ pub struct Channel {
     pub invite_only: bool,
     pub moderated: bool,
     pub no_privmsg_from_outside: bool,
-    pub private: bool,
     pub quiet: bool,
     pub secret: bool,
     pub reop: bool,
@@ -121,7 +120,6 @@ impl Channel {
         if self.invite_only { modes.push('i'); }
         if self.moderated { modes.push('m'); }
         if self.no_privmsg_from_outside { modes.push('n'); }
-        if self.private { modes.push('p'); }
         if self.quiet { modes.push('q'); }
         if self.reop { modes.push('r'); }
         if self.secret { modes.push('s'); }
@@ -170,10 +168,6 @@ impl Channel {
             Quiet(value) => {
                 applied = self.quiet != value;
                 self.quiet = value;
-            },
-            Private(value) => {
-                applied = self.private != value;
-                self.private = value;
             },
             Secret(value) => {
                 applied = self.secret != value;
@@ -297,8 +291,6 @@ impl Channel {
     pub fn symbol(&self) -> &'static str {
         if self.secret {
             "@"
-        } else if self.private {
-            "*"
         } else {
             "="
         }
