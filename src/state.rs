@@ -296,6 +296,7 @@ impl StateInner {
         let mut response = ResponseBuffer::new();
         if targets.is_empty() {
             for (name, channel) in self.channels.iter() {
+                if channel.secret && !channel.members.contains_key(&addr) { continue; }
                 let msg = response.message(&self.prefix, rpl::LIST)
                     .param(client.nick())
                     .param(name);
@@ -304,6 +305,7 @@ impl StateInner {
         } else {
             for name in targets.split(',') {
                 if let Some(channel) = self.channels.get(<&UniCase<str>>::from(name)) {
+                    if channel.secret && !channel.members.contains_key(&addr) { continue; }
                     let msg = response.message(&self.prefix, rpl::LIST)
                         .param(client.nick())
                         .param(name);
@@ -330,7 +332,7 @@ impl StateInner {
         if !self.channels.is_empty() {
             response.message(&self.prefix, rpl::LUSERCHANNELS)
                 .param(client.nick())
-                .param(self.channels.len().to_string())
+                .param(self.channels.values().filter(|c| !c.secret).count().to_string())
                 .trailing_param(lines::LUSER_CHANNELS);
         }
         response.message(&self.prefix, rpl::LUSERME)
@@ -865,6 +867,7 @@ impl StateInner {
     /// Sends the list of nicknames in the channel `chan_name` to the given client.
     fn send_names(&self, addr: SocketAddr, chan_name: &str) {
         if let Some(chan) = &self.channels.get(<&UniCase<str>>::from(chan_name)) {
+            if chan.secret && !chan.members.contains_key(&addr) { return; }
             let client = &self.clients[&addr];
             let mut response = ResponseBuffer::new();
             if !chan.members.is_empty() {
