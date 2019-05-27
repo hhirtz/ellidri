@@ -222,7 +222,7 @@ impl<'a, I> Iterator for ChannelQuery<'a, I>
                     Err(Error::MissingModeParam)
                 },
                 b'l' => if value {
-                    if let Some(param) = self.params.next() {
+                    if let Some(param) = self.params.next().filter(|p| !p.is_empty()) {
                         Ok(ChannelModeChange::UserLimit(Some(param)))
                     } else {
                         Err(Error::MissingModeParam)
@@ -230,27 +230,27 @@ impl<'a, I> Iterator for ChannelQuery<'a, I>
                 } else {
                     Ok(ChannelModeChange::UserLimit(None))
                 },
-                b'b' => if let Some(param) = self.params.next() {
+                b'b' => if let Some(param) = self.params.next().filter(|p| !p.is_empty()) {
                     Ok(ChannelModeChange::ChangeBan(value, param))
                 } else {
                     Ok(ChannelModeChange::GetBans)
                 },
-                b'e' => if let Some(param) = self.params.next() {
+                b'e' => if let Some(param) = self.params.next().filter(|p| !p.is_empty()) {
                     Ok(ChannelModeChange::ChangeException(value, param))
                 } else {
                     Ok(ChannelModeChange::GetExceptions)
                 },
-                b'I' => if let Some(param) = self.params.next() {
+                b'I' => if let Some(param) = self.params.next().filter(|p| !p.is_empty()) {
                     Ok(ChannelModeChange::ChangeInvitation(value, param))
                 } else {
                     Ok(ChannelModeChange::GetInvitations)
                 },
-                b'o' => if let Some(param) = self.params.next() {
+                b'o' => if let Some(param) = self.params.next().filter(|p| !p.is_empty()) {
                     Ok(ChannelModeChange::ChangeOperator(value, param))
                 } else {
                     Err(Error::MissingModeParam)
                 },
-                b'v' => if let Some(param) = self.params.next() {
+                b'v' => if let Some(param) = self.params.next().filter(|p| !p.is_empty()) {
                     Ok(ChannelModeChange::ChangeVoice(value, param))
                 } else {
                     Err(Error::MissingModeParam)
@@ -258,7 +258,7 @@ impl<'a, I> Iterator for ChannelQuery<'a, I>
 
                 #[cfg(feature = "irdille")]
                 b'P' => if value {
-                    if let Some(param) = self.params.next() {
+                    if let Some(param) = self.params.next().filter(|p| !p.is_empty()) {
                         Ok(ChannelModeChange::MsgModifier(Some(param)))
                     } else {
                         Err(Error::MissingModeParam)
