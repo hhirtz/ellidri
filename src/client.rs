@@ -151,7 +151,7 @@ impl Client {
         self.state
     }
 
-    pub fn modes(&self, mut out: MessageBuffer) {
+    pub fn modes(&self, mut out: MessageBuffer<'_>) {
         let modes = out.raw_param();
         modes.push('+');
         if self.away { modes.push('a'); }

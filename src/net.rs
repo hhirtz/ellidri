@@ -114,7 +114,7 @@ fn handle<S>(conn: S, peer_addr: SocketAddr, shared: State) -> impl Future<Item=
 }
 
 /// Handles an IRC message.
-fn handle_message(msg: Message, peer_addr: SocketAddr, shared: State)
+fn handle_message(msg: Message<'_>, peer_addr: SocketAddr, shared: State)
                   -> Result<(), io::Error>
 {
     log::trace!("{} -> us: {}", peer_addr, msg);

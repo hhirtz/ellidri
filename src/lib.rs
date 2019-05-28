@@ -15,7 +15,7 @@
 //! ellidri ellidri.toml
 //! ```
 
-#![warn(clippy::all)]
+#![warn(clippy::all, rust_2018_idioms)]
 
 use std::{env, fs, path, process};
 use std::collections::HashMap;

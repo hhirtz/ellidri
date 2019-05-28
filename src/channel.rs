@@ -85,7 +85,7 @@ impl Channel {
         self.members.insert(addr, modes);
     }
 
-    pub fn list_entry(&self, msg: MessageBuffer) {
+    pub fn list_entry(&self, msg: MessageBuffer<'_>) {
         msg.param(self.members.len().to_string())
             .trailing_param(self.topic.as_ref().map(|s| s.as_ref()).unwrap_or(""));
     }
@@ -108,7 +108,7 @@ impl Channel {
         }
     }
 
-    pub fn modes(&self, mut out: MessageBuffer, full_info: bool) {
+    pub fn modes(&self, mut out: MessageBuffer<'_>, full_info: bool) {
         let modes = out.raw_param();
         modes.push('+');
         if self.anonymous { modes.push('a'); }
@@ -137,7 +137,7 @@ impl Channel {
         out.build();
     }
 
-    pub fn apply_mode_change<'a, F>(&mut self, change: modes::ChannelModeChange,
+    pub fn apply_mode_change<'a, F>(&mut self, change: modes::ChannelModeChange<'_>,
                                     nick_of: F) -> Result<bool, Reply>
         where F: Fn(&SocketAddr) -> &'a str
     {

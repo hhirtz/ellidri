@@ -94,7 +94,8 @@ impl State {
     }
 
     /// Handles a "MODE" message.
-    pub fn cmd_mode(&self, addr: SocketAddr, target: &str, modes: Option<&str>, modeparams: Params)
+    pub fn cmd_mode(&self, addr: SocketAddr, target: &str,
+                    modes: Option<&str>, modeparams: Params<'_>)
     {
         self.0.write().unwrap().apply_cmd_mode(addr, target, modes, modeparams);
     }
@@ -385,7 +386,7 @@ impl StateInner {
     }
 
     fn apply_cmd_mode_chan_set(&mut self, addr: SocketAddr, target: &str,
-                               modes: &str, modeparams: Params)
+                               modes: &str, modeparams: Params<'_>)
     {
         log::debug!("{}: settings modes of {:?} to {:?} (params eluded)",
                     addr, target, modes);
@@ -532,7 +533,7 @@ impl StateInner {
 
     /// Applies a "MODE" command issued by the given client.
     pub fn apply_cmd_mode(&mut self, addr: SocketAddr, target: &str,
-                          modes: Option<&str>, modeparams: Params)
+                          modes: Option<&str>, modeparams: Params<'_>)
     {
         if is_channel_name(target) {
             if let Some(modes) = modes {

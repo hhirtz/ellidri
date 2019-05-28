@@ -179,7 +179,7 @@ macro_rules! commands {
 
         impl fmt::Display for Command {
             /// Simply writes the output of `Command::as_str`. Used by `Message::new`.
-            fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
                 write!(f, "{}", self.as_str())
             }
         }
@@ -480,7 +480,7 @@ impl<'a> Message<'a> {
     /// assert_eq!(params.next(), Some("Welcome, user"));
     /// assert_eq!(params.next(), None);
     /// ```
-    pub fn params(&self) -> Params {
+    pub fn params(&self) -> Params<'_> {
         Params {
             buf: self.buf[self.first_param_index..].trim_end(),
         }
@@ -520,7 +520,7 @@ impl<'a> Message<'a> {
 
 impl<'a> fmt::Display for Message<'a> {
     /// Displays the message as a correctly formed message. Used for logging.
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.buf.trim_end())
     }
 }
@@ -690,7 +690,7 @@ impl ResponseBuffer {
         self.buf.is_empty()
     }
 
-    pub fn message<C>(&mut self, prefix: &str, command: C) -> MessageBuffer
+    pub fn message<C>(&mut self, prefix: &str, command: C) -> MessageBuffer<'_>
         where C: Into<Command>
     {
         MessageBuffer::with_prefix(&mut self.buf, prefix, command)
@@ -700,7 +700,7 @@ impl ResponseBuffer {
                       end_line: &str, list: I, mut map: F)
         where I: IntoIterator,
               I::Item: AsRef<str>,
-              F: FnMut(MessageBuffer) -> MessageBuffer
+              F: FnMut(MessageBuffer<'_>) -> MessageBuffer<'_>
     {
         for item in list {
             map(self.message(prefix, item_reply))
