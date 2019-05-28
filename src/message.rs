@@ -23,65 +23,67 @@ pub mod rpl {
     /// Used to ease any BrEaKiNg ChAnGe that may happen.
     pub type Reply = &'static str;
 
-    pub const WELCOME: Reply   = "001";
-    pub const YOURHOST: Reply  = "002";
-    pub const CREATED: Reply   = "003";
-    pub const MYINFO: Reply    = "004";
-    pub const ISUPPORT: Reply  = "005";
+    // All reply must have the client's nick as first parameter.
 
-    pub const UMODEIS: Reply       = "221";
-    pub const LUSERCLIENT: Reply   = "251";
-    pub const LUSEROP: Reply       = "252";
-    pub const LUSERUNKNOWN: Reply  = "253";
-    pub const LUSERCHANNELS: Reply = "254";
-    pub const LUSERME: Reply       = "255";
+    pub const WELCOME: Reply   = "001";  // :Welcome message
+    pub const YOURHOST: Reply  = "002";  // :Your host is...
+    pub const CREATED: Reply   = "003";  // :This server was created...
+    pub const MYINFO: Reply    = "004";  // <servername> <version> <umodes> <chan modes> <chan modes with a parameter>
+    pub const ISUPPORT: Reply  = "005";  // 1*13<TOKEN[=value]> :are supported by this server
 
-    pub const LIST: Reply            = "322";
-    pub const LISTEND: Reply         = "323";
-    pub const CHANNELMODEIS: Reply   = "324";
-    pub const NOTOPIC: Reply         = "331";
-    pub const TOPIC: Reply           = "332";
-    pub const INVITING: Reply        = "341";
-    pub const INVITELIST: Reply      = "346";
-    pub const ENDOFINVITELIST: Reply = "347";
-    pub const EXCEPTLIST: Reply      = "348";
-    pub const ENDOFEXCEPTLIST: Reply = "349";
-    pub const NAMREPLY: Reply        = "353";
-    pub const ENDOFNAMES: Reply      = "366";
-    pub const BANLIST: Reply         = "367";
-    pub const ENDOFBANLIST: Reply    = "368";
-    pub const MOTD: Reply            = "372";
-    pub const MOTDSTART: Reply       = "375";
-    pub const ENDOFMOTD: Reply       = "376";
-    pub const YOUREOPER: Reply       = "381";
+    pub const UMODEIS: Reply       = "221";  // <modes>
+    pub const LUSERCLIENT: Reply   = "251";  // :<int> users and <int> services on <int> servers
+    pub const LUSEROP: Reply       = "252";  // <int> :operator(s) online
+    pub const LUSERUNKNOWN: Reply  = "253";  // <int> :unknown connection(s)
+    pub const LUSERCHANNELS: Reply = "254";  // <int> :channels formed
+    pub const LUSERME: Reply       = "255";  // :I have <int> clients and <int> servers
 
-    pub const ERR_NOSUCHNICK: Reply       = "401";
-    pub const ERR_NOSUCHCHANNEL: Reply    = "403";
-    pub const ERR_CANNOTSENDTOCHAN: Reply = "404";
-    pub const ERR_NORECIPIENT: Reply      = "411";
-    pub const ERR_NOTEXTTOSEND: Reply     = "412";
-    pub const ERR_UNKNOWNCOMMAND: Reply   = "421";
-    pub const ERR_NOMOTD: Reply           = "422";
-    pub const ERR_NONICKNAMEGIVEN: Reply  = "431";
-    pub const ERR_ERRONEUSNICKNAME: Reply = "432";
-    pub const ERR_NICKNAMEINUSE: Reply    = "433";
-    pub const ERR_USERNOTINCHANNEL: Reply = "441";
-    pub const ERR_NOTONCHANNEL: Reply     = "442";
-    pub const ERR_NOTREGISTERED: Reply    = "451";
-    pub const ERR_NEEDMOREPARAMS: Reply   = "461";
-    pub const ERR_ALREADYREGISTRED: Reply = "462";
-    pub const ERR_PASSWDMISMATCH: Reply   = "464";
-    pub const ERR_YOUREBANNEDCREEP: Reply = "465";
-    pub const ERR_KEYSET: Reply           = "467";
-    pub const ERR_CHANNELISFULL: Reply    = "471";
-    pub const ERR_UNKNOWNMODE: Reply      = "472";
-    pub const ERR_INVITEONLYCHAN: Reply   = "473";
-    pub const ERR_BANNEDFROMCHAN: Reply   = "474";
-    pub const ERR_BADCHANKEY: Reply       = "475";
-    pub const ERR_CHANOPRIVSNEEDED: Reply = "482";
+    pub const LIST: Reply            = "322";  // <channel> <# of visible members> <topic>
+    pub const LISTEND: Reply         = "323";  // :End of list
+    pub const CHANNELMODEIS: Reply   = "324";  // <channel> <modes> <modeparams>
+    pub const NOTOPIC: Reply         = "331";  // <channel> :No topic set
+    pub const TOPIC: Reply           = "332";  // <channel> <topic>
+    pub const INVITING: Reply        = "341";  // <channel> <nick>
+    pub const INVITELIST: Reply      = "346";  // <channel> <invite mask>
+    pub const ENDOFINVITELIST: Reply = "347";  // <channel> :End of invite list
+    pub const EXCEPTLIST: Reply      = "348";  // <channel> <exception mask>
+    pub const ENDOFEXCEPTLIST: Reply = "349";  // <channel> :End of exception list
+    pub const NAMREPLY: Reply        = "353";  // <=/*/@> <channel> :1*(@/ /+user)
+    pub const ENDOFNAMES: Reply      = "366";  // <channel> :End of names list
+    pub const BANLIST: Reply         = "367";  // <channel> <ban mask>
+    pub const ENDOFBANLIST: Reply    = "368";  // <channel> :End of ban list
+    pub const MOTD: Reply            = "372";  // :- <text>
+    pub const MOTDSTART: Reply       = "375";  // :- <servername> Message of the day -
+    pub const ENDOFMOTD: Reply       = "376";  // :End of MOTD command
+    pub const YOUREOPER: Reply       = "381";  // :You are now an operator
 
-    pub const ERR_UMODEUNKNOWNFLAG: Reply = "501";
-    pub const ERR_USERSDONTMATCH: Reply   = "502";
+    pub const ERR_NOSUCHNICK: Reply       = "401";  // <nick> :No such nick/channel
+    pub const ERR_NOSUCHCHANNEL: Reply    = "403";  // <channel> :No such channel
+    pub const ERR_CANNOTSENDTOCHAN: Reply = "404";  // <channel> :Cannot send to channel
+    pub const ERR_NORECIPIENT: Reply      = "411";  // :No recipient given
+    pub const ERR_NOTEXTTOSEND: Reply     = "412";  // :No text to send
+    pub const ERR_UNKNOWNCOMMAND: Reply   = "421";  // <command> :Unknown command
+    pub const ERR_NOMOTD: Reply           = "422";  // :MOTD file missing
+    pub const ERR_NONICKNAMEGIVEN: Reply  = "431";  // :No nickname given
+    pub const ERR_ERRONEUSNICKNAME: Reply = "432";  // <nick> :Erroneous nickname
+    pub const ERR_NICKNAMEINUSE: Reply    = "433";  // <nick> :Nickname in use
+    pub const ERR_USERNOTINCHANNEL: Reply = "441";  // <nick> <channel> :User not in channel
+    pub const ERR_NOTONCHANNEL: Reply     = "442";  // <channel> :You're not on that channel
+    pub const ERR_NOTREGISTERED: Reply    = "451";  // :You have not registered
+    pub const ERR_NEEDMOREPARAMS: Reply   = "461";  // <command> :Not enough parameters
+    pub const ERR_ALREADYREGISTRED: Reply = "462";  // :Already registered
+    pub const ERR_PASSWDMISMATCH: Reply   = "464";  // :Password incorrect
+    pub const ERR_YOUREBANNEDCREEP: Reply = "465";  // :You're banned from this server
+    pub const ERR_KEYSET: Reply           = "467";  // <channel> :Channel key already set
+    pub const ERR_CHANNELISFULL: Reply    = "471";  // <channel> :Cannot join channel (+l)
+    pub const ERR_UNKNOWNMODE: Reply      = "472";  // <char> :Don't know this mode for <channel>
+    pub const ERR_INVITEONLYCHAN: Reply   = "473";  // <channel> :Cannot join channel (+I)
+    pub const ERR_BANNEDFROMCHAN: Reply   = "474";  // <channel> :Cannot join channel (+b)
+    pub const ERR_BADCHANKEY: Reply       = "475";  // <channel> :Cannot join channel (+k)
+    pub const ERR_CHANOPRIVSNEEDED: Reply = "482";  // <channel> :You're not an operator
+
+    pub const ERR_UMODEUNKNOWNFLAG: Reply = "501";  // :Unknown mode flag
+    pub const ERR_USERSDONTMATCH: Reply   = "502";  // :Can't change mode for other users
 
     #[cfg(feature = "irdille")] pub const IRDILLE_MODIFIEDPRIVMSG: Reply = "802";
 }
