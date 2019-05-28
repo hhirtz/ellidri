@@ -41,6 +41,7 @@ pub mod rpl {
     pub const CHANNELMODEIS: Reply   = "324";
     pub const NOTOPIC: Reply         = "331";
     pub const TOPIC: Reply           = "332";
+    pub const INVITING: Reply        = "341";
     pub const INVITELIST: Reply      = "346";
     pub const ENDOFINVITELIST: Reply = "347";
     pub const EXCEPTLIST: Reply      = "348";
@@ -195,6 +196,7 @@ macro_rules! commands {
 }
 
 commands! {
+    Invite => 2,
     Join => 1,
     List => 0,
     Lusers => 0,

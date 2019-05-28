@@ -76,6 +76,13 @@ impl State {
     }
 
     /// Handles a "JOIN" message.
+    pub fn cmd_invite(&self, addr: SocketAddr, nick: &str, channel: &str) {
+        if self.0.read().unwrap().check_cmd_invite(addr, nick, channel) {
+            self.0.write().unwrap().apply_cmd_invite(addr, nick, channel);
+        }
+    }
+
+    /// Handles a "JOIN" message.
     pub fn cmd_join(&self, addr: SocketAddr, targets: &str, keys: Option<&str>) {
         let mut keys = keys.unwrap_or("").split(',');
         for target in targets.split(',') {
@@ -245,6 +252,56 @@ impl StateInner {
         });
     }
 
+    pub fn check_cmd_invite(&self, addr: SocketAddr, nick: &str, channel: &str) -> bool {
+        if !self.clients.values().any(|c| c.nick() == nick) {
+            self.send_reply(addr, rpl::ERR_NOSUCHNICK, &[nick, lines::NO_SUCH_NICK]);
+            return false;
+        }
+        if let Some(chan) = self.channels.get(<&UniCase<str>>::from(channel)) {
+            if let Some(ref modes) = chan.members.get(&addr) {
+                if !chan.invite_only || modes.operator {
+                    true
+                } else {
+                    self.send_reply(addr, rpl::ERR_CHANOPRIVSNEEDED,
+                                    &[channel, lines::CHAN_O_PRIVS_NEEDED]);
+                    false
+                }
+            } else {
+                self.send_reply(addr, rpl::ERR_NOTONCHANNEL,
+                                &[channel, lines::NOT_ON_CHANNEL_TOPIC]);
+                false
+            }
+        } else {
+            true
+        }
+    }
+
+    pub fn apply_cmd_invite(&mut self, addr: SocketAddr, nick: &str, channel: &str) {
+        let target_addr = *self.clients.iter().find(|(_, c)| c.nick() == nick).unwrap().0;
+        let chan = self.channels.get_mut(<&UniCase<str>>::from(channel));
+        let invited = if let Some(chan) = chan {
+            chan.invites.insert(target_addr)
+        } else {
+            true
+        };
+        if invited {
+            let client = &self.clients[&addr];
+            let mut response = ResponseBuffer::new();
+            response.message(&self.domain, rpl::INVITING)
+                .param(client.nick())
+                .param(channel)
+                .param(nick)
+                .build();
+            client.send(response.build());
+            let mut target_res = ResponseBuffer::new();
+            target_res.message(client.full_name(), Command::Invite)
+                .param(nick)
+                .param(channel)
+                .build();
+            self.clients[&target_addr].send(target_res.build());
+        }
+    }
+
     /// Whether or not a "JOIN" message with the given parameters can be issued by the given
     /// client.
     pub fn check_cmd_join(&self, addr: SocketAddr, target: &str, key: &str) -> bool {
@@ -268,7 +325,7 @@ impl StateInner {
                                 &[target, lines::CHANNEL_IS_FULL]);
                 return false;
             }
-            if !chan.is_invited(nick) {
+            if !chan.is_invited(addr, nick) {
                 log::debug!("{}: Can't join {:?}: not invited", addr, target);
                 self.send_reply(addr, rpl::ERR_INVITEONLYCHAN,
                                 &[target, lines::INVITE_ONLY_CHAN]);

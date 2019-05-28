@@ -157,6 +157,7 @@ fn handle_message(msg: Message<'_>, peer_addr: SocketAddr, shared: State)
 
     let mut ps = msg.params();
     match command {
+        Command::Invite => shared.cmd_invite(peer_addr, ps.next().unwrap(), ps.next().unwrap()),
         Command::Join => shared.cmd_join(peer_addr, ps.next().unwrap(), ps.next()),
         Command::List => shared.cmd_list(peer_addr, ps.next()),
         Command::Lusers => shared.cmd_lusers(peer_addr),

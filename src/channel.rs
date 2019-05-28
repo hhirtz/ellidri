@@ -36,6 +36,9 @@ pub struct Channel {
     /// channel mode.
     pub members: HashMap<SocketAddr, MemberModes>,
 
+    /// Set of invited clients (via INVITE).
+    pub invites: HashSet<SocketAddr>,
+
     /// The topic.
     pub topic: Option<String>,
 
@@ -83,6 +86,7 @@ impl Channel {
             MemberModes::default()
         };
         self.members.insert(addr, modes);
+        self.invites.remove(&addr);
     }
 
     pub fn list_entry(&self, msg: MessageBuffer<'_>) {
@@ -96,8 +100,8 @@ impl Channel {
             && !self.invitation_mask.contains(nick)
     }
 
-    pub fn is_invited(&self, nick: &str) -> bool {
-        !self.invite_only || self.invitation_mask.contains(nick)
+    pub fn is_invited(&self, addr: SocketAddr, nick: &str) -> bool {
+        !self.invite_only || self.invites.contains(&addr) || self.invitation_mask.contains(nick)
     }
 
     pub fn can_talk(&self, addr: SocketAddr) -> bool {

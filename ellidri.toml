@@ -46,7 +46,7 @@ domain = "ellidri.localdomain"
 #log_level = "debug"
 
 # The message of the day.
-# Type: String
+# Type: String   (default: unset)
 #
 # If not set, the server will send an error to new clients and when they issue
 # an "MOTD" command.
@@ -57,15 +57,14 @@ domain = "ellidri.localdomain"
 #"""
 
 # The list of server operators credentials.
-# Type: Array of [name: String, password: String]
+# Type: Array of [name: String, password: String]   (default: empty array)
 #
-# The default value is an empty array.
 # If a user sends a "OPER <name> <password>" command and the <name>, <password>
 # tuple is included in the array, this user will be given the "+o" mode and
 # will have access to priviledged commands.
-opers = [
-    ["root", "P455W04D"]
-]
+#opers = [
+#    ["root", "P455W04D"]
+#]
 
 # The number of threads used by ellidri.
 # Type: Number
