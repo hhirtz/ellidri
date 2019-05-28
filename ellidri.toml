@@ -27,6 +27,7 @@ domain = "ellidri.localdomain"
 
 # Modes that are set automatically when channels are created.
 # Type: String
+#
 # It must be a valid <modes> parameter of the MODE command. For the complete
 # list of modes, see the following link:
 # https://tools.ietf.org/html/rfc2811.html#section-4
@@ -35,6 +36,7 @@ domain = "ellidri.localdomain"
 
 # The log filter.
 # Type: String
+#
 # Valid values are:
 # - "trace": report incoming and outgoing messages.
 # - "debug": report clients actions (default for dev builds).
@@ -45,6 +47,7 @@ domain = "ellidri.localdomain"
 
 # The message of the day.
 # Type: String
+#
 # If not set, the server will send an error to new clients and when they issue
 # an "MOTD" command.
 #motd = """
@@ -53,7 +56,19 @@ domain = "ellidri.localdomain"
 #Empty lines are not ignored.
 #"""
 
+# The list of server operators credentials.
+# Type: Array of [name: String, password: String]
+#
+# The default value is an empty array.
+# If a user sends a "OPER <name> <password>" command and the <name>, <password>
+# tuple is included in the array, this user will be given the "+o" mode and
+# will have access to priviledged commands.
+opers = [
+    ["root", "P455W04D"]
+]
+
 # The number of threads used by ellidri.
 # Type: Number
+#
 # It must be between 1 and 32768.
 #worker_threads = 1

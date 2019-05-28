@@ -105,7 +105,7 @@ pub fn start() {
 
     log::warn!("Let's get started senpai!");
 
-    let shared = State::new(c.domain, c.motd, c.default_chan_mode);
+    let shared = State::new(c.srv);
     let mut runtime = tokio::runtime::Builder::new()
         .core_threads(c.worker_threads)
         // TODO panic_handler

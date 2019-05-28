@@ -76,6 +76,9 @@ pub const NO_SUCH_NICK: &str =
 pub const NO_SUCH_CHANNEL: &str =
 "Do you see this shit, motherfucker? Try and say that one more time.";
 
+pub const PASSWORD_MISMATCH: &str =
+"TODO";
+
 pub const RATELIMIT: &str =
 "Fucking creep, stop spamming.";
 
@@ -90,6 +93,9 @@ pub const USER_NOT_IN_CHANNEL: &str =
 "TODO";
 
 pub const USERS_DONT_MATCH: &str =
+"TODO";
+
+pub const YOURE_OPER: &str =
 "TODO";
 
 // Welcome messages

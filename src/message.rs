@@ -52,6 +52,7 @@ pub mod rpl {
     pub const MOTD: Reply            = "372";
     pub const MOTDSTART: Reply       = "375";
     pub const ENDOFMOTD: Reply       = "376";
+    pub const YOUREOPER: Reply       = "381";
 
     pub const ERR_NOSUCHNICK: Reply       = "401";
     pub const ERR_NOSUCHCHANNEL: Reply    = "403";
@@ -68,6 +69,7 @@ pub mod rpl {
     pub const ERR_NOTREGISTERED: Reply    = "451";
     pub const ERR_NEEDMOREPARAMS: Reply   = "461";
     pub const ERR_ALREADYREGISTRED: Reply = "462";
+    pub const ERR_PASSWDMISMATCH: Reply   = "464";
     pub const ERR_YOUREBANNEDCREEP: Reply = "465";
     pub const ERR_KEYSET: Reply           = "467";
     pub const ERR_CHANNELISFULL: Reply    = "471";
@@ -201,6 +203,7 @@ commands! {
     Names => 0,
     Nick => 1,
     Notice => 2,
+    Oper => 2,
     Part => 1,
     Ping => 1,
     Pong => 1,

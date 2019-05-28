@@ -10,6 +10,7 @@ use crate::misc::UniCase;
 
 use crate::channel::Channel;
 use crate::client::Client;
+use crate::config::StateConfig;
 use crate::lines;
 use crate::message::{Command, Message, MessageBuilder, Params, Reply, rpl, ResponseBuffer};
 use crate::modes;
@@ -35,9 +36,8 @@ impl State {
     /// # TODO
     ///
     /// Make it accept a "config" struct, or use a builder pattern.
-    pub fn new(prefix: String, motd: Option<String>, default_chan_mode: String) -> State
-    {
-        let inner = StateInner::new(prefix, motd, default_chan_mode);
+    pub fn new(config: StateConfig) -> State {
+        let inner = StateInner::new(config);
         State(Arc::new(RwLock::new(inner)))
     }
 
@@ -126,6 +126,13 @@ impl State {
     }
 
     /// Handles a "PART" message.
+    pub fn cmd_oper(&self, addr: SocketAddr, name: &str, password: &str) {
+        if self.0.read().unwrap().check_cmd_oper(addr, name, password) {
+            self.0.write().unwrap().apply_cmd_oper(addr);
+        }
+    }
+
+    /// Handles a "PART" message.
     pub fn cmd_part(&self, addr: SocketAddr, targets: &str, reason: Option<&str>) {
         for target in targets.split(',') {
             if self.0.read().unwrap().check_cmd_part(addr, target, reason) {
@@ -180,7 +187,7 @@ impl State {
 struct StateInner {
     /// The domain of the server. This string is used as a prefix for most replies and commands
     /// sent to clients.
-    prefix: String,
+    domain: String,
 
     /// The set of clients, identified by their socket address.
     clients: HashMap<SocketAddr, Client>,
@@ -197,18 +204,23 @@ struct StateInner {
 
     /// Modes applied at the creation of new channels.
     default_chan_mode: String,
+
+    opers: Vec<(String, String)>,
+    oper_hosts: Vec<String>,
 }
 
 impl StateInner {
     /// Creates a new shared state. See `State::new`.
-    pub fn new(prefix: String, motd: Option<String>, default_chan_mode: String) -> StateInner {
+    pub fn new(config: StateConfig) -> StateInner {
         StateInner {
-            prefix,
+            domain: config.domain,
             clients: HashMap::new(),
             channels: HashMap::new(),
             created_at: Utc::now(),
-            motd,
-            default_chan_mode,
+            motd: config.motd,
+            default_chan_mode: config.default_chan_mode,
+            opers: config.opers,
+            oper_hosts: config.oper_hosts,
         }
     }
 
@@ -300,7 +312,7 @@ impl StateInner {
         if targets.is_empty() {
             for (name, channel) in self.channels.iter() {
                 if channel.secret && !channel.members.contains_key(&addr) { continue; }
-                let msg = response.message(&self.prefix, rpl::LIST)
+                let msg = response.message(&self.domain, rpl::LIST)
                     .param(client.nick())
                     .param(name);
                 channel.list_entry(msg);
@@ -309,14 +321,14 @@ impl StateInner {
             for name in targets.split(',') {
                 if let Some(channel) = self.channels.get(<&UniCase<str>>::from(name)) {
                     if channel.secret && !channel.members.contains_key(&addr) { continue; }
-                    let msg = response.message(&self.prefix, rpl::LIST)
+                    let msg = response.message(&self.domain, rpl::LIST)
                         .param(client.nick())
                         .param(name);
                     channel.list_entry(msg);
                 }
             }
         }
-        response.message(&self.prefix, rpl::LISTEND)
+        response.message(&self.domain, rpl::LISTEND)
             .param(client.nick())
             .trailing_param(lines::END_OF_LIST);
         client.send(response.build());
@@ -327,18 +339,18 @@ impl StateInner {
         let client = &self.clients[&addr];
         let mut response = ResponseBuffer::new();
         let cs = self.clients.len();
-        response.message(&self.prefix, rpl::LUSERCLIENT)
+        response.message(&self.domain, rpl::LUSERCLIENT)
             .param(client.nick())
             .trailing_param(format!("There are {} shitheads and 0 services on 1 server", cs));
         // TODO LUSEROP
         // TODO LUSERUNKNOWN
         if !self.channels.is_empty() {
-            response.message(&self.prefix, rpl::LUSERCHANNELS)
+            response.message(&self.domain, rpl::LUSERCHANNELS)
                 .param(client.nick())
                 .param(self.channels.values().filter(|c| !c.secret).count().to_string())
                 .trailing_param(lines::LUSER_CHANNELS);
         }
-        response.message(&self.prefix, rpl::LUSERME)
+        response.message(&self.domain, rpl::LUSERME)
             .param(client.nick())
             .trailing_param(format!("I have {} shitheads and 0 servers", cs));
         client.send(response.build());
@@ -350,7 +362,7 @@ impl StateInner {
         if let Some(chan) = self.channels.get(<&UniCase<str>>::from(target)) {
             let client = &self.clients[&addr];
             let mut response = ResponseBuffer::new();
-            let msg = response.message(&self.prefix, rpl::CHANNELMODEIS)
+            let msg = response.message(&self.domain, rpl::CHANNELMODEIS)
                 .param(client.nick())
                 .param(target);
             chan.modes(msg, chan.members.contains_key(&addr));
@@ -402,17 +414,17 @@ impl StateInner {
         let clients = &self.clients;
         for maybe_change in modes::ChannelQuery::new(modes, modeparams) { match maybe_change {
             Ok(modes::ChannelModeChange::GetBans) => {
-                response.list(&self.prefix, rpl::BANLIST, rpl::ENDOFBANLIST,
+                response.list(&self.domain, rpl::BANLIST, rpl::ENDOFBANLIST,
                               lines::END_OF_BAN_LIST, &chan.ban_mask,
                               |msg| msg.param(clients[&addr].nick()).param(target));
             }
             Ok(modes::ChannelModeChange::GetExceptions) => {
-                response.list(&self.prefix, rpl::EXCEPTLIST, rpl::ENDOFEXCEPTLIST,
+                response.list(&self.domain, rpl::EXCEPTLIST, rpl::ENDOFEXCEPTLIST,
                               lines::END_OF_EXCEPT_LIST, &chan.exception_mask,
                               |msg| msg.param(clients[&addr].nick()).param(target));
             }
             Ok(modes::ChannelModeChange::GetInvitations) => {
-                response.list(&self.prefix, rpl::INVITELIST, rpl::ENDOFINVITELIST,
+                response.list(&self.domain, rpl::INVITELIST, rpl::ENDOFINVITELIST,
                               lines::END_OF_INVITE_LIST, &chan.invitation_mask,
                               |msg| msg.param(clients[&addr].nick()).param(target));
             }
@@ -429,13 +441,13 @@ impl StateInner {
                 }
                 Ok(false) => {}
                 Err(rpl::ERR_USERNOTINCHANNEL) => {
-                    response.message(&self.prefix, rpl::ERR_USERNOTINCHANNEL)
+                    response.message(&self.domain, rpl::ERR_USERNOTINCHANNEL)
                         .param(self.clients[&addr].nick())
                         .param(change.param().unwrap())
                         .trailing_param(lines::USER_NOT_IN_CHANNEL);
                 }
                 Err(rpl::ERR_KEYSET) => {
-                    response.message(&self.prefix, rpl::ERR_KEYSET)
+                    response.message(&self.domain, rpl::ERR_KEYSET)
                         .param(self.clients[&addr].nick())
                         .param(target)
                         .trailing_param(lines::KEY_SET);
@@ -443,7 +455,7 @@ impl StateInner {
                 Err(_) => {}
             }
             Err(modes::Error::UnknownMode(mode)) => {
-                response.message(&self.prefix, rpl::ERR_UNKNOWNMODE)
+                response.message(&self.domain, rpl::ERR_UNKNOWNMODE)
                     .param(self.clients[&addr].nick())
                     .param(mode.to_string())
                     .trailing_param(lines::UNKNOWN_MODE);
@@ -498,7 +510,7 @@ impl StateInner {
                 applied_modes.push(change.symbol());
             }
             Err(modes::Error::UnknownMode(mode)) => {
-                response.message(&self.prefix, rpl::ERR_UMODEUNKNOWNFLAG)
+                response.message(&self.domain, rpl::ERR_UMODEUNKNOWNFLAG)
                     .param(client.nick())
                     .param(mode.to_string())
                     .trailing_param(lines::UNKNOWN_MODE);
@@ -525,7 +537,7 @@ impl StateInner {
         log::debug!("{}: getting user modes", addr);
         let client = &self.clients[&addr];
         let mut response = ResponseBuffer::new();
-        let msg = response.message(&self.prefix, rpl::UMODEIS)
+        let msg = response.message(&self.domain, rpl::UMODEIS)
             .param(client.nick());
         client.modes(msg);
         client.send(response.build());
@@ -561,7 +573,7 @@ impl StateInner {
     pub fn apply_cmd_motd(&self, addr: SocketAddr) {
         if let Some(ref motd) = self.motd {
             log::debug!("{}: Sending motd", addr);
-            let m = format!("- {} Senpai's message of the day -", self.prefix);
+            let m = format!("- {} Senpai's message of the day -", self.domain);
             self.send_reply(addr, rpl::MOTDSTART, &[&m]);
             for line in motd.lines() {
                 let m = format!("- {}", line);
@@ -643,6 +655,28 @@ impl StateInner {
         } else {
             self.clients.values().find(|c| c.nick() == target).unwrap().send(msg);
         }
+    }
+
+    pub fn check_cmd_oper(&self, addr: SocketAddr, name: &str, password: &str) -> bool {
+        // TODO oper_hosts
+        if !self.opers.iter().any(|(n, p)| n == name && p == password) {
+            self.send_reply(addr, rpl::ERR_PASSWDMISMATCH, &[lines::PASSWORD_MISMATCH]);
+            return false;
+        }
+        true
+    }
+
+    pub fn apply_cmd_oper(&mut self, addr: SocketAddr) {
+        log::debug!("{}: Operator", addr);
+        let client = self.clients.get_mut(&addr).unwrap();
+        client.operator = true;
+        let mut response = ResponseBuffer::new();
+        response.message(&self.domain, Command::Mode).param(client.nick()).param("+o").build();
+        response.message(&self.domain, rpl::YOUREOPER)
+            .param(client.nick())
+            .param(lines::YOURE_OPER)
+            .build();
+        client.send(response.build());
     }
 
     /// Whether or not a "PART" message with the given parameters can be issued by the given
@@ -845,7 +879,7 @@ impl StateInner {
     /// Creates a message from the given command and parameters, and sends it to the given client.
     pub fn send_command(&self, addr: SocketAddr, cmd: Command, params: &[&str]) {
         if let Some(client) = self.clients.get(&addr) {
-            let mut msg = Message::with_prefix(&self.prefix, cmd);
+            let mut msg = Message::with_prefix(&self.domain, cmd);
             let msg = if !params.is_empty() {
                 for p in &params[..params.len() - 1] {
                     msg = msg.param(p);
@@ -863,7 +897,7 @@ impl StateInner {
     /// It also adds the client's nick as the first parameter, as it is needed for server replies.
     pub fn send_reply(&self, addr: SocketAddr, reply: Reply, params: &[&str]) {
         if let Some(client) = self.clients.get(&addr) {
-            let mut msg = Message::with_prefix(&self.prefix, Command::Reply(reply))
+            let mut msg = Message::with_prefix(&self.domain, Command::Reply(reply))
                 .param(client.nick());
             let msg = if !params.is_empty() {
                 for p in &params[..params.len() - 1] {
@@ -884,7 +918,7 @@ impl StateInner {
             let client = &self.clients[&addr];
             let mut response = ResponseBuffer::new();
             if !chan.quiet && !chan.members.is_empty() {
-                let mut message = response.message(&self.prefix, rpl::NAMREPLY)
+                let mut message = response.message(&self.domain, rpl::NAMREPLY)
                     .param(client.nick())
                     .param(chan.symbol())
                     .param(chan_name);
@@ -901,7 +935,7 @@ impl StateInner {
                 }
                 message.build();
             } else if chan.quiet && chan.members.contains_key(&addr) {
-                let mut message = response.message(&self.prefix, rpl::NAMREPLY)
+                let mut message = response.message(&self.domain, rpl::NAMREPLY)
                     .param(client.nick())
                     .param(chan.symbol())
                     .param(chan_name);
@@ -910,7 +944,7 @@ impl StateInner {
                 trailing.push_str(client.nick());
                 message.build();
             }
-            response.message(&self.prefix, rpl::ENDOFNAMES)
+            response.message(&self.domain, rpl::ENDOFNAMES)
                 .param(client.nick())
                 .param(chan_name)
                 .trailing_param(lines::END_OF_NAMES);
@@ -932,27 +966,27 @@ impl StateInner {
     fn send_welcome(&self, addr: SocketAddr) {
         let client = &self.clients[&addr];
         let mut response = ResponseBuffer::new();
-        response.message(&self.prefix, rpl::WELCOME)
+        response.message(&self.domain, rpl::WELCOME)
             .param(client.nick())
             .trailing_param(lines::WELCOME);
-        response.message(&self.prefix, rpl::YOURHOST)
+        response.message(&self.domain, rpl::YOURHOST)
             .param(client.nick())
             .trailing_param(lines::YOUR_HOST);
-        let mut msg = response.message(&self.prefix, rpl::CREATED)
+        let mut msg = response.message(&self.domain, rpl::CREATED)
             .param(client.nick());
         let trailing = msg.raw_trailing_param();
         trailing.push_str("We've been together since ");
         trailing.push_str(&self.created_at.to_rfc2822());
         msg.build();
-        response.message(&self.prefix, rpl::MYINFO)
+        response.message(&self.domain, rpl::MYINFO)
             .param(client.nick())
-            .param(&self.prefix)
+            .param(&self.domain)
             .param(concat!(env!("CARGO_PKG_NAME"), "-", env!("CARGO_PKG_VERSION")))
             .param(modes::USER_MODES)
             .param(modes::SIMPLE_CHAN_MODES)
             .param(modes::EXTENDED_CHAN_MODES)
             .build();
-        response.message(&self.prefix, rpl::ISUPPORT)
+        response.message(&self.domain, rpl::ISUPPORT)
             .param(client.nick())
             .param("CASEMAPPING=ascii")
             .param(format!("CHANLEN={}", MAX_CHANNEL_NAME_LENGTH))

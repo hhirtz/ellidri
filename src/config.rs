@@ -12,6 +12,44 @@ use std::{fmt, fs, net, path, process};
 
 use crate::modes::is_channel_mode_string;
 
+/// Default default chan modes.
+fn default_chan_modes() -> String {
+    String::from("+nt")
+}
+
+fn oper_hosts() -> Vec<String> {
+    vec![String::from("*")]
+}
+
+/// IRC-related data. Used to initialize the shared `State`.
+#[derive(Deserialize)]
+pub struct StateConfig {
+    /// The domain of the irc server. Sent to clients in most IRC messages.
+    pub domain: String,
+
+    /// These modes are set when a channel is created.
+    #[serde(default = "default_chan_modes")]
+    pub default_chan_mode: String,
+
+    /// The message of the day.
+    ///
+    /// It can span on multiple lines by using three double-quotes (""") at the
+    /// beginning and at the end. Empty lines are not ignored, but it is trimmed
+    /// (it seems).
+    pub motd: Option<String>,
+
+    /// The list of credentials (name, password) for server operators.
+    #[serde(default = "Vec::new")]
+    pub opers: Vec<(String, String)>,
+
+    /// Restrict clients on the given hosts to have operator rights.
+    ///
+    /// Any client on a host that doesn't belong to this list will have all its OPER requests
+    /// rejected.
+    #[serde(default = "oper_hosts")]
+    pub oper_hosts: Vec<String>,
+}
+
 /// Options specific to TLS connections.
 #[derive(Deserialize)]
 pub struct TlsOptions {
@@ -38,11 +76,6 @@ fn bind_to_address() -> Vec<BindToAddress> {
     }]
 }
 
-/// Default default chan modes.
-fn default_chan_modes() -> String {
-    String::from("+nt")
-}
-
 /// Default number of threads spawned by the server.
 fn worker_threads() -> usize {
     1
@@ -52,18 +85,11 @@ fn worker_threads() -> usize {
 /// file.
 #[derive(Deserialize)]
 pub struct Config {
-    /// The domain of the irc server. Sent to clients in most IRC messages.
-    pub domain: String,
-
     /// The IP and TCP ports to which to bind.
     ///
     /// It is set to *:6667 (clear-text) by default.
     #[serde(default = "bind_to_address")]
     pub bind_to_address: Vec<BindToAddress>,
-
-    /// These modes are set when a channel is created.
-    #[serde(default = "default_chan_modes")]
-    pub default_chan_mode: String,
 
     /// The optional log level.
     ///
@@ -75,18 +101,15 @@ pub struct Config {
     /// - "error": report critical errors/bugs in the program.
     pub log_level: Option<String>,
 
-    /// The message of the day.
-    ///
-    /// It can span on multiple lines by using three double-quotes (""") at the
-    /// beginning and at the end. Empty lines are not ignored, but it is trimmed
-    /// (it seems).
-    pub motd: Option<String>,
-
     /// The number of threads spawned by tokio.
     ///
     /// Must be between 1 and 32,768. It is set to 1 by default.
     #[serde(default = "worker_threads")]
     pub worker_threads: usize,
+
+    /// IRC-related data.
+    #[serde(flatten)]
+    pub srv: StateConfig,
 }
 
 fn invalid_config<T, E>(err: E) -> T
@@ -126,11 +149,11 @@ pub fn from_file<P>(path: P) -> Config
             invalid_config(r#"log_level must be "trace", "debug", "info", "warn" or "error"."#)
         }
     }
-    if !is_channel_mode_string(&config.default_chan_mode) {
-        invalid_config("Bad default_chan_mode")
-    }
     if config.bind_to_address.is_empty() {
         invalid_config("No address to bind to")
+    }
+    if !is_channel_mode_string(&config.srv.default_chan_mode) {
+        invalid_config("Bad default_chan_mode")
     }
     config
 }
