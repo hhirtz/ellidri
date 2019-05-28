@@ -43,6 +43,7 @@ impl<'a> Iterator for SimpleQuery<'a> {
 pub enum Error {
     UnknownMode(char),
     MissingModeParam,
+    UnsettableMode
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -97,6 +98,7 @@ impl<'a> Iterator for UserQuery<'a> {
                 b'i' => Ok(UserModeChange::Invisible(value)),
                 b'w' => Ok(UserModeChange::Wallops(value)),
                 b's' => Ok(UserModeChange::ServerNotices(value)),
+                other if USER_MODES.contains(other as char) => Err(Error::UnsettableMode),
                 other => Err(Error::UnknownMode(other as char)),
             }
         })
