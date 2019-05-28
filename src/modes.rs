@@ -47,10 +47,29 @@ pub enum Error {
 
 pub type Result<T> = std::result::Result<T, Error>;
 
+#[derive(Clone, Copy, Debug)]
 pub enum UserModeChange {
     Invisible(bool),
     Wallops(bool),
     ServerNotices(bool),
+}
+
+impl UserModeChange {
+    pub fn value(self) -> bool {
+        use UserModeChange::*;
+        match self {
+            Invisible(v) | Wallops(v) | ServerNotices(v) => v,
+        }
+    }
+
+    pub fn symbol(self) -> char {
+        use UserModeChange::*;
+        match self {
+            Invisible(_) => 'i',
+            Wallops(_) => 'w',
+            ServerNotices(_) => 's',
+        }
+    }
 }
 
 pub struct UserQuery<'a> {
@@ -58,7 +77,8 @@ pub struct UserQuery<'a> {
 }
 
 impl<'a> UserQuery<'a> {
-    pub fn new(modes: &'a [u8]) -> UserQuery<'a> {
+    pub fn new(modes: &'a str) -> UserQuery<'a> {
+        let modes = modes.as_bytes();
         UserQuery {
             inner: SimpleQuery {
                 modes,

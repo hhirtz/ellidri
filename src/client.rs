@@ -1,10 +1,8 @@
 //! Client management and connection state.
 
 use crate::message::{Command, MessageBuffer, Reply, rpl};
+use crate::modes;
 use crate::state::{MessageQueue, MessageQueueItem};
-
-pub const USER_MODES: &[u8] = b"aiwros";
-pub const SETTABLE_USER_MODES: &[u8] = b"iws";
 
 const FULL_NAME_LENGTH: usize = 63;
 
@@ -165,13 +163,24 @@ impl Client {
         out.build();
     }
 
-    pub fn set_mode(&mut self, mode: u8, value: bool) {
-        match mode {
-            b'i' => { self.invisible = value; },
-            b'w' => { self.wallops = value; },
-            b's' => { self.server_notices = value; },
-            _ => {},
+    pub fn apply_mode_change(&mut self, change: modes::UserModeChange) -> bool {
+        use modes::UserModeChange::*;
+        let applied;
+        match change {
+            Invisible(value) => {
+                applied = self.invisible != value;
+                self.invisible = value;
+            },
+            Wallops(value) => {
+                applied = self.wallops != value;
+                self.wallops = value;
+            },
+            ServerNotices(value) => {
+                applied = self.server_notices != value;
+                self.server_notices = value;
+            },
         }
+        applied
     }
 }
 

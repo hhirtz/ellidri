@@ -25,15 +25,15 @@ use futures::Future;
 use crate::config::BindToAddress;
 use crate::state::State;
 
-pub mod channel;
-pub mod client;
-pub mod config;
-pub mod lines;
-pub mod message;
-pub mod misc;
-pub mod modes;
-pub mod net;
-pub mod state;
+mod channel;
+mod client;
+mod config;
+mod lines;
+mod message;
+mod misc;
+mod modes;
+mod net;
+mod state;
 
 /// Read the file at `path`, parse the identity and builds a TlsAcceptor object.
 fn build_acceptor(path: &path::Path) -> tokio_tls::TlsAcceptor {

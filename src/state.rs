@@ -9,7 +9,7 @@ use futures::sync::mpsc;
 use crate::misc::UniCase;
 
 use crate::channel::Channel;
-use crate::client::{Client, SETTABLE_USER_MODES, USER_MODES};
+use crate::client::Client;
 use crate::lines;
 use crate::message::{Command, Message, MessageBuilder, Params, Reply, rpl, ResponseBuffer};
 use crate::modes;
@@ -488,36 +488,30 @@ impl StateInner {
             return;
         }
         let client = self.clients.get_mut(&addr).unwrap();
-        let bmodes = modes.as_bytes();
+        let mut response = ResponseBuffer::new();
         let mut applied_modes = String::new();
-        let mut mode_value = true;
-        if bmodes[0] != b'+' && bmodes[0] != b'-' {
-            applied_modes.push('+');
-        }
-        for &mode in bmodes {
-            if mode == b'+' {
-                mode_value = true;
-                applied_modes.push('+');
-            } else if mode == b'-' {
-                mode_value = false;
-                applied_modes.push('-');
-            } else if SETTABLE_USER_MODES.contains(&mode) {
-                client.set_mode(mode, mode_value);
-                applied_modes.push(mode as char);
-            } else if !USER_MODES.contains(&mode) {
-                let msg = Message::with_prefix(&self.prefix,
-                                               Command::Reply(rpl::ERR_UMODEUNKNOWNFLAG))
-                    .param(client.nick())
-                    .trailing_param(lines::UNKNOWN_MODE)
-                    .into_bytes();
-                client.send(msg);
+        for maybe_change in modes::UserQuery::new(modes) { match maybe_change {
+            Ok(change) => if client.apply_mode_change(change) {
+                log::debug!("  - Applied {:?}", change);
+                applied_modes.push(if change.value() {'+'} else {'-'});
+                applied_modes.push(change.symbol());
             }
+            Err(modes::Error::UnknownMode(mode)) => {
+                response.message(&self.prefix, rpl::ERR_UMODEUNKNOWNFLAG)
+                    .param(client.nick())
+                    .param(mode.to_string())
+                    .trailing_param(lines::UNKNOWN_MODE);
+            }
+            Err(_) => {}
+        } }
+        if !applied_modes.is_empty() {
+            response.message(client.full_name(), Command::Mode)
+                .param(target)
+                .trailing_param(applied_modes);
         }
-        let msg = Message::with_prefix(client.full_name(), Command::Mode)
-            .param(target)
-            .trailing_param(applied_modes)
-            .into_bytes();
-        client.send(msg);
+        if !response.is_empty() {
+            client.send(response.build());
+        }
     }
 
     /// Check if the given `client` can get the mode of the given `target_user`.

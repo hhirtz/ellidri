@@ -85,11 +85,6 @@ impl Channel {
         self.members.insert(addr, modes);
     }
 
-    /// Removes a member.
-    pub fn remove_member(&mut self, addr: SocketAddr) {
-        self.members.remove(&addr);
-    }
-
     pub fn list_entry(&self, msg: MessageBuffer) {
         msg.param(self.members.len().to_string())
             .trailing_param(self.topic.as_ref().map(|s| s.as_ref()).unwrap_or(""));
