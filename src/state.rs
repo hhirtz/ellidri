@@ -709,8 +709,9 @@ impl StateInner {
             #[cfg(feature = "irdille")] {
                 let mut content = String::from(content);
                 let mut modified = false;
+                let rand = rand::random::<f64>();
                 for (proba, regex, repl) in &chan.msg_modifier {
-                    if rand::random::<f64>() < *proba {
+                    if rand < *proba {
                         content = regex.replace_all(&content, repl.as_str()).into();
                         modified = true;
                     }
