@@ -279,7 +279,7 @@ impl<'a> Iterator for Params<'a> {
     }
 }
 
-impl<'a> iter::FusedIterator for Params<'a> {}
+impl iter::FusedIterator for Params<'_> {}
 
 /// Represents an IRC message, with its prefix (source), command and parameters.
 ///
@@ -525,7 +525,7 @@ impl<'a> Message<'a> {
     }
 }
 
-impl<'a> fmt::Display for Message<'a> {
+impl fmt::Display for Message<'_> {
     /// Displays the message as a correctly formed message. Used for logging.
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.buf.trim_end())

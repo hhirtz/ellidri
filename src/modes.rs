@@ -19,7 +19,7 @@ struct SimpleQuery<'a> {
     value: bool,
 }
 
-impl<'a> Iterator for SimpleQuery<'a> {
+impl Iterator for SimpleQuery<'_> {
     type Item = (bool, u8);
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -89,7 +89,7 @@ impl<'a> UserQuery<'a> {
     }
 }
 
-impl<'a> Iterator for UserQuery<'a> {
+impl Iterator for UserQuery<'_> {
     type Item = Result<UserModeChange>;
 
     fn next(&mut self) -> Option<Self::Item> {
