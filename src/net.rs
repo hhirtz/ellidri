@@ -175,6 +175,7 @@ fn handle_message(msg: Message<'_>, peer_addr: SocketAddr, shared: State)
             shared.cmd_quit(peer_addr, ps.next());
             return Err(io::Error::new(io::ErrorKind::Other, "but I just wanted to quit..."));
         },
+        Command::Time => shared.cmd_time(peer_addr),
         Command::Topic => shared.cmd_topic(peer_addr, ps.next().unwrap(), ps.next()),
         Command::User => {
             let user = ps.next().unwrap();

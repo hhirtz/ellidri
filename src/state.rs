@@ -4,7 +4,7 @@ use std::collections::{HashMap, HashSet};
 use std::net::SocketAddr;
 use std::sync::{Arc, RwLock};
 
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Local};
 use futures::sync::mpsc;
 use crate::misc::UniCase;
 
@@ -162,6 +162,10 @@ impl State {
         self.0.write().unwrap().apply_cmd_quit(addr, reason);
     }
 
+    pub fn cmd_time(&self, addr: SocketAddr) {
+        self.0.read().unwrap().apply_cmd_time(addr);
+    }
+
     /// Handles a "TOPIC" message.
     pub fn cmd_topic(&self, addr: SocketAddr, target: &str, topic: Option<&str>) {
         if let Some(topic) = topic {
@@ -209,7 +213,7 @@ struct StateInner {
 
     /// The UTC local time when the `StateInner` instance is created. It is sent to the client when
     /// they register (in a "003 RPL_CREATED" reply, as per the RFC).
-    created_at: DateTime<Utc>,
+    created_at: DateTime<Local>,
 
     /// The message of the day.
     motd: Option<String>,
@@ -228,7 +232,7 @@ impl StateInner {
             domain: config.domain,
             clients: HashMap::new(),
             channels: HashMap::new(),
-            created_at: Utc::now(),
+            created_at: Local::now(),
             motd: config.motd,
             default_chan_mode: config.default_chan_mode,
             opers: config.opers,
@@ -852,6 +856,12 @@ impl StateInner {
         self.clients.get_mut(&addr).unwrap().set_quit_message(reason);
     }
 
+    pub fn apply_cmd_time(&self, addr: SocketAddr) {
+        log::debug!("{}: time", addr);
+        let time = Local::now().to_rfc2822();
+        self.send_reply(addr, rpl::TIME, &[&self.domain, &time]);
+    }
+
     /// Whether or not a "TOPIC" message with the two given parameters can be issued by the given
     /// client.
     ///
@@ -924,6 +934,7 @@ impl StateInner {
     }
 
     pub fn apply_cmd_version(&self, addr: SocketAddr) {
+        log::debug!("{}: version", addr);
         let client = &self.clients[&addr];
         let mut response = ResponseBuffer::new();
         response.message(&self.domain, rpl::VERSION)

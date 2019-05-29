@@ -57,6 +57,7 @@ pub mod rpl {
     pub const MOTDSTART: Reply       = "375";  // :- <servername> Message of the day -
     pub const ENDOFMOTD: Reply       = "376";  // :End of MOTD command
     pub const YOUREOPER: Reply       = "381";  // :You are now an operator
+    pub const TIME: Reply            = "391";  // <servername> :<time in whatever format>
 
     pub const ERR_NOSUCHNICK: Reply       = "401";  // <nick> :No such nick/channel
     pub const ERR_NOSUCHCHANNEL: Reply    = "403";  // <channel> :No such channel
@@ -214,6 +215,7 @@ commands! {
     Pong => 1,
     PrivMsg => 2,
     Quit => 0,
+    Time => 0,
     Topic => 1,
     User => 4,
     Version => 0,
