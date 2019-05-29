@@ -48,6 +48,7 @@ pub mod rpl {
     pub const ENDOFINVITELIST: Reply = "347";  // <channel> :End of invite list
     pub const EXCEPTLIST: Reply      = "348";  // <channel> <exception mask>
     pub const ENDOFEXCEPTLIST: Reply = "349";  // <channel> :End of exception list
+    pub const VERSION: Reply         = "351";  // <version> <servername> :<comments>
     pub const NAMREPLY: Reply        = "353";  // <=/*/@> <channel> :1*(@/ /+user)
     pub const ENDOFNAMES: Reply      = "366";  // <channel> :End of names list
     pub const BANLIST: Reply         = "367";  // <channel> <ban mask>
@@ -215,6 +216,7 @@ commands! {
     Quit => 0,
     Topic => 1,
     User => 4,
+    Version => 0,
 }
 
 /// For the given `word`, that is part of the given `buf`, returns the matching `Command`, or the

@@ -15,6 +15,7 @@ use crate::lines;
 use crate::message::{Command, Message, MessageBuilder, Params, Reply, rpl, ResponseBuffer};
 use crate::modes;
 
+const SERVER_VERSION: &str = concat!(env!("CARGO_PKG_NAME"), "-", env!("CARGO_PKG_VERSION"));
 const MAX_CHANNEL_NAME_LENGTH: usize = 50;
 const MAX_NICKNAME_LENGTH: usize = 9;
 
@@ -177,6 +178,10 @@ impl State {
                     invisible: bool, wallops: bool)
     {
         self.0.write().unwrap().apply_cmd_user(addr, user, real, invisible, wallops);
+    }
+
+    pub fn cmd_version(&self, addr: SocketAddr) {
+        self.0.read().unwrap().apply_cmd_version(addr);
     }
 }
 
@@ -918,6 +923,18 @@ impl StateInner {
         }
     }
 
+    pub fn apply_cmd_version(&self, addr: SocketAddr) {
+        let client = &self.clients[&addr];
+        let mut response = ResponseBuffer::new();
+        response.message(&self.domain, rpl::VERSION)
+            .param(client.nick())
+            .param(SERVER_VERSION)
+            .param(&self.domain)
+            .build();
+        self.send_i_support(&mut response, client.nick());
+        client.send(response.build());
+    }
+
     /// Sends the given message to all users in the given channel.
     pub fn broadcast(&self, target: &str, msg: MessageQueueItem) {
         let chan = &self.channels[<&UniCase<str>>::from(target)];
@@ -966,6 +983,19 @@ impl StateInner {
             };
             client.send(msg.into_bytes());
         }
+    }
+
+    fn send_i_support(&self, response: &mut ResponseBuffer, nick: &str) {
+        response.message(&self.domain, rpl::ISUPPORT)
+            .param(nick)
+            .param("CASEMAPPING=ascii")
+            .param(format!("CHANLEN={}", MAX_CHANNEL_NAME_LENGTH))
+            .param(modes::CHANMODES)
+            .param("EXCEPTS")
+            .param("INVEX")
+            .param("MODES")
+            .param(format!("NICKLEN={}", MAX_NICKNAME_LENGTH))
+            .trailing_param(lines::I_SUPPORT);
     }
 
     /// Sends the list of nicknames in the channel `chan_name` to the given client.
@@ -1038,21 +1068,12 @@ impl StateInner {
         response.message(&self.domain, rpl::MYINFO)
             .param(client.nick())
             .param(&self.domain)
-            .param(concat!(env!("CARGO_PKG_NAME"), "-", env!("CARGO_PKG_VERSION")))
+            .param(SERVER_VERSION)
             .param(modes::USER_MODES)
             .param(modes::SIMPLE_CHAN_MODES)
             .param(modes::EXTENDED_CHAN_MODES)
             .build();
-        response.message(&self.domain, rpl::ISUPPORT)
-            .param(client.nick())
-            .param("CASEMAPPING=ascii")
-            .param(format!("CHANLEN={}", MAX_CHANNEL_NAME_LENGTH))
-            .param(modes::CHANMODES)
-            .param("EXCEPTS")
-            .param("INVEX")
-            .param("MODES")
-            .param(format!("NICKLEN={}", MAX_NICKNAME_LENGTH))
-            .trailing_param(lines::I_SUPPORT);
+        self.send_i_support(&mut response, client.nick());
         client.send(response.build());
         self.apply_cmd_lusers(addr);
         self.apply_cmd_motd(addr);

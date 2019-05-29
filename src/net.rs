@@ -184,6 +184,7 @@ fn handle_message(msg: Message<'_>, peer_addr: SocketAddr, shared: State)
             let real = ps.next().unwrap();
             shared.cmd_user(peer_addr, user, real, mode & 8 != 0, mode & 4 != 0);
         },
+        Command::Version => shared.cmd_version(peer_addr),
         // Message::parse doesn't return a message with a Command::Reply.
         Command::Reply(_) => unreachable!(),
     }
