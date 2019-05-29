@@ -37,6 +37,10 @@ pub mod rpl {
     pub const LUSERUNKNOWN: Reply  = "253";  // <int> :unknown connection(s)
     pub const LUSERCHANNELS: Reply = "254";  // <int> :channels formed
     pub const LUSERME: Reply       = "255";  // :I have <int> clients and <int> servers
+    pub const ADMINME: Reply       = "256";  // <server> :Admin info
+    pub const ADMINLOC1: Reply     = "257";  // :<info>
+    pub const ADMINLOC2: Reply     = "258";  // :<info>
+    pub const ADMINMAIL: Reply     = "259";  // :<info>
 
     pub const LIST: Reply            = "322";  // <channel> <# of visible members> <topic>
     pub const LISTEND: Reply         = "323";  // :End of list
@@ -200,6 +204,7 @@ macro_rules! commands {
 }
 
 commands! {
+    Admin => 0,
     Invite => 2,
     Join => 1,
     List => 0,

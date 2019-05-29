@@ -10,7 +10,7 @@ use crate::misc::UniCase;
 
 use crate::channel::Channel;
 use crate::client::Client;
-use crate::config::StateConfig;
+use crate::config::{AdminInfo, StateConfig};
 use crate::lines;
 use crate::message::{Command, Message, MessageBuilder, Params, Reply, rpl, ResponseBuffer};
 use crate::modes;
@@ -74,6 +74,10 @@ impl State {
     /// "NICK" and an "USER" message, it cannot send a "JOIN" message.
     pub fn can_issue_command(&self, addr: SocketAddr, cmd: Command) -> bool {
         self.0.read().unwrap().clients[&addr].can_issue_command(cmd)
+    }
+
+    pub fn cmd_admin(&self, addr: SocketAddr) {
+        self.0.read().unwrap().apply_cmd_admin(addr);
     }
 
     /// Handles a "JOIN" message.
@@ -205,6 +209,9 @@ struct StateInner {
     /// sent to clients.
     domain: String,
 
+    /// Information about the administrators of the server. Sent as a reply to the ADMIN command.
+    admin: AdminInfo,
+
     /// The set of clients, identified by their socket address.
     clients: HashMap<SocketAddr, Client>,
 
@@ -230,6 +237,7 @@ impl StateInner {
     pub fn new(config: StateConfig) -> StateInner {
         StateInner {
             domain: config.domain,
+            admin: config.admin,
             clients: HashMap::new(),
             channels: HashMap::new(),
             created_at: Local::now(),
@@ -259,6 +267,26 @@ impl StateInner {
             chan.members.remove(&addr);
             !chan.members.is_empty()
         });
+    }
+
+    pub fn apply_cmd_admin(&self, addr: SocketAddr) {
+        log::debug!("{}: Request admin", addr);
+        let client = &self.clients[&addr];
+        let mut response = ResponseBuffer::new();
+        response.message(&self.domain, rpl::ADMINME)
+            .param(client.nick())
+            .param(&self.domain)
+            .trailing_param(lines::ADMIN_ME);
+        response.message(&self.domain, rpl::ADMINLOC1)
+            .param(client.nick())
+            .trailing_param(&self.admin.location);
+        response.message(&self.domain, rpl::ADMINLOC2)
+            .param(client.nick())
+            .trailing_param(&self.admin.org_name);
+        response.message(&self.domain, rpl::ADMINMAIL)
+            .param(client.nick())
+            .trailing_param(&self.admin.mail);
+        client.send(response.build());
     }
 
     pub fn check_cmd_invite(&self, addr: SocketAddr, nick: &str, channel: &str) -> bool {
@@ -401,7 +429,7 @@ impl StateInner {
     }
 
     pub fn apply_cmd_lusers(&self, addr: SocketAddr) {
-        log::debug!("{}: lusers", addr);
+        log::debug!("{}: Request lusers", addr);
         let client = &self.clients[&addr];
         let mut response = ResponseBuffer::new();
         let cs = self.clients.len();
@@ -654,6 +682,7 @@ impl StateInner {
 
     /// Applies a "NAMES" command issues by the given client.
     pub fn apply_cmd_names(&self, addr: SocketAddr, targets: &str) {
+        log::debug!("{}: Request names of {:?}", addr, targets);
         if targets.is_empty() || targets == "*" {
             self.send_reply(addr, rpl::ENDOFNAMES, &["*", lines::END_OF_NAMES]);
         } else {
@@ -857,7 +886,7 @@ impl StateInner {
     }
 
     pub fn apply_cmd_time(&self, addr: SocketAddr) {
-        log::debug!("{}: time", addr);
+        log::debug!("{}: Request time", addr);
         let time = Local::now().to_rfc2822();
         self.send_reply(addr, rpl::TIME, &[&self.domain, &time]);
     }
@@ -934,7 +963,7 @@ impl StateInner {
     }
 
     pub fn apply_cmd_version(&self, addr: SocketAddr) {
-        log::debug!("{}: version", addr);
+        log::debug!("{}: Request version", addr);
         let client = &self.clients[&addr];
         let mut response = ResponseBuffer::new();
         response.message(&self.domain, rpl::VERSION)

@@ -9,6 +9,19 @@
 # It must be a valid domain name.
 domain = "ellidri.localdomain"
 
+# Administrative information about you.
+# Type: { org_name: String, location: String, mail: String }
+#
+# The following information will be available to IRC clients via the ADMIN
+# command. Each field does not have to follow a specific format, however it is
+# expected that they give relevant information (e.g. don't swap location and
+# mail). If you do not have a mail address, it's fine to put something else in
+# the "mail" field.
+[admin]
+org_name = "Whoever runs this server"
+location = "Located at <city,state,country>"
+mail = "Contact us: admin@ellidri.localdomain"
+
 # OPTIONAL VALUES
 
 # The IPs and TCP ports to which to bind.

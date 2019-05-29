@@ -1,3 +1,6 @@
+pub const ADMIN_ME: &str =
+"TODO";
+
 pub const BAD_CHAN_KEY: &str =
 "TODO";
 

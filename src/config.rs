@@ -12,6 +12,18 @@ use std::{fmt, fs, net, path, process};
 
 use crate::modes::is_channel_mode_string;
 
+#[derive(Deserialize)]
+pub struct AdminInfo {
+    /// This should be the name or details about the organization running the server.
+    pub org_name: String,
+
+    /// This should tell where the organization is located (city, state, country).
+    pub location: String,
+
+    /// This should be a valid mail address of the organization.
+    pub mail: String,
+}
+
 /// Default default chan modes.
 fn default_chan_modes() -> String {
     String::from("+nt")
@@ -26,6 +38,9 @@ fn oper_hosts() -> Vec<String> {
 pub struct StateConfig {
     /// The domain of the irc server. Sent to clients in most IRC messages.
     pub domain: String,
+
+    /// Information about the administrators of the IRC server.
+    pub admin: AdminInfo,
 
     /// These modes are set when a channel is created.
     #[serde(default = "default_chan_modes")]
