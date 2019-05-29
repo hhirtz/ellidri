@@ -15,6 +15,7 @@ use crate::lines;
 use crate::message::{Command, Message, MessageBuilder, Params, Reply, rpl, ResponseBuffer};
 use crate::modes;
 
+const SERVER_INFO: &str = include_str!("info.txt");
 const SERVER_VERSION: &str = concat!(env!("CARGO_PKG_NAME"), "-", env!("CARGO_PKG_VERSION"));
 const MAX_CHANNEL_NAME_LENGTH: usize = 50;
 const MAX_NICKNAME_LENGTH: usize = 9;
@@ -78,6 +79,10 @@ impl State {
 
     pub fn cmd_admin(&self, addr: SocketAddr) {
         self.0.read().unwrap().apply_cmd_admin(addr);
+    }
+
+    pub fn cmd_info(&self, addr: SocketAddr) {
+        self.0.read().unwrap().apply_cmd_info(addr);
     }
 
     /// Handles a "JOIN" message.
@@ -286,6 +291,20 @@ impl StateInner {
         response.message(&self.domain, rpl::ADMINMAIL)
             .param(client.nick())
             .trailing_param(&self.admin.mail);
+        client.send(response.build());
+    }
+
+    pub fn apply_cmd_info(&self, addr: SocketAddr) {
+        let client = &self.clients[&addr];
+        let mut response = ResponseBuffer::new();
+        for line in SERVER_INFO.lines() {
+            response.message(&self.domain, rpl::INFO)
+                .param(client.nick())
+                .trailing_param(line);
+        }
+        response.message(&self.domain, rpl::ENDOFINFO)
+            .param(client.nick())
+            .trailing_param(lines::END_OF_INFO);
         client.send(response.build());
     }
 

@@ -22,6 +22,9 @@ pub const END_OF_BAN_LIST: &str =
 pub const END_OF_EXCEPT_LIST: &str =
 "TODO";
 
+pub const END_OF_INFO: &str =
+"TODO";
+
 pub const END_OF_INVITE_LIST: &str =
 "TODO";
 

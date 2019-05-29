@@ -57,7 +57,9 @@ pub mod rpl {
     pub const ENDOFNAMES: Reply      = "366";  // <channel> :End of names list
     pub const BANLIST: Reply         = "367";  // <channel> <ban mask>
     pub const ENDOFBANLIST: Reply    = "368";  // <channel> :End of ban list
+    pub const INFO: Reply            = "371";  // :<info>
     pub const MOTD: Reply            = "372";  // :- <text>
+    pub const ENDOFINFO: Reply       = "374";  // :End of INFO
     pub const MOTDSTART: Reply       = "375";  // :- <servername> Message of the day -
     pub const ENDOFMOTD: Reply       = "376";  // :End of MOTD command
     pub const YOUREOPER: Reply       = "381";  // :You are now an operator
@@ -205,6 +207,7 @@ macro_rules! commands {
 
 commands! {
     Admin => 0,
+    Info => 0,
     Invite => 2,
     Join => 1,
     List => 0,
