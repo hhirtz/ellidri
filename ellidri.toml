@@ -2,27 +2,7 @@
 # All commented settings are optional, showing their default value.
 # Follow the TOML format: https://github.com/toml-lang/toml#toml
 
-# REQUIRED VALUES
-
-# The IRC server domain.
-# Type: String
-# It must be a valid domain name.
-domain = "ellidri.localdomain"
-
-# Administrative information about you.
-# Type: { org_name: String, location: String, mail: String }
-#
-# The following information will be available to IRC clients via the ADMIN
-# command. Each field does not have to follow a specific format, however it is
-# expected that they give relevant information (e.g. don't swap location and
-# mail). If you do not have a mail address, it's fine to put something else in
-# the "mail" field.
-[admin]
-org_name = "Whoever runs this server"
-location = "Located at <city,state,country>"
-mail = "Contact us: admin@ellidri.localdomain"
-
-# OPTIONAL VALUES
+# NETWORK SETTINGS
 
 # The IPs and TCP ports to which to bind.
 # Type: Array of { addr: String, [tls_identity: String] }
@@ -38,15 +18,6 @@ mail = "Contact us: admin@ellidri.localdomain"
 #    { addr = "0.0.0.0:6667" },
 #]
 
-# Modes that are set automatically when channels are created.
-# Type: String
-#
-# It must be a valid <modes> parameter of the MODE command. For the complete
-# list of modes, see the following link:
-# https://tools.ietf.org/html/rfc2811.html#section-4
-# The '+' is optional.
-#default_chan_mode = "+nt"
-
 # The log filter.
 # Type: String
 #
@@ -57,6 +28,19 @@ mail = "Contact us: admin@ellidri.localdomain"
 # - "warn": report warnings.
 # - "error": report critical errors/bugs in the program.
 #log_level = "debug"
+
+# The number of threads used by ellidri.
+# Type: Number
+#
+# It must be between 1 and 32768.
+#worker_threads = 1
+
+# IRC SETTINGS
+
+# The IRC server domain.
+# Type: String
+# It must be a valid domain name.
+domain = "ellidri.localdomain"
 
 # The message of the day.
 # Type: String   (default: unset)
@@ -79,8 +63,24 @@ mail = "Contact us: admin@ellidri.localdomain"
 #    ["root", "P455W04D"]
 #]
 
-# The number of threads used by ellidri.
-# Type: Number
+# Modes that are set automatically when channels are created.
+# Type: String
 #
-# It must be between 1 and 32768.
-#worker_threads = 1
+# It must be a valid <modes> parameter of the MODE command. For the complete
+# list of modes, see the following link:
+# https://tools.ietf.org/html/rfc2811.html#section-4
+# The '+' is optional.
+#default_chan_mode = "+nt"
+
+# Administrative information about you.
+# Type: { org_name: String, location: String, mail: String }
+#
+# The following information will be available to IRC clients via the ADMIN
+# command. Each field does not have to follow a specific format, however it is
+# expected that they give relevant information (e.g. don't swap location and
+# mail). If you do not have a mail address, it's fine to put something else in
+# the "mail" field.
+[admin]
+org_name = "Whoever runs this server"
+location = "Located at <city,state,country>"
+mail = "Contact us: admin@ellidri.localdomain"
