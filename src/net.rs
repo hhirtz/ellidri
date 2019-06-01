@@ -16,9 +16,7 @@ use crate::state::State;
 pub fn listen(addr: SocketAddr, shared: State) -> impl Future<Item=(), Error=()> {
     TcpListener::bind(&addr).expect("Failed to bind to address")
         .incoming()
-        .map_err(|err| {
-            log::info!("I'm seeing thing senpai, someone just {}. Or is it that I'm getting too old?? No way!", err);
-        })
+        .map_err(lines::print_accept_error)
         .for_each(move |conn| {
             let peer_addr = conn.peer_addr().map_err(|_| ())?;
             tokio::spawn(handle(conn, peer_addr, shared.clone()));
@@ -32,16 +30,12 @@ pub fn listen_tls(addr: SocketAddr, shared: State, acceptor: TlsAcceptor)
 {
     TcpListener::bind(&addr).expect("Failed to bind to address")
         .incoming()
-        .map_err(|err| {
-            log::info!("I'm seeing thing senpai, someone just {}. Or is it that I'm getting too old?? No way!", err);
-        })
+        .map_err(lines::print_accept_error)
         .for_each(move |conn| {
             let peer_addr = conn.peer_addr().map_err(|_| ())?;
             let shared = shared.clone();
             let tls_accept = acceptor.accept(conn)
-                .map_err(move |err| {
-                    log::info!("Senpai! Some weird {} didn't know how to speak TLS! Like, who would have {} anyway", peer_addr, err);
-                })
+                .map_err(move |err| lines::print_tls_error(err, peer_addr))
                 .and_then(move |tls_conn| {
                     tokio::spawn(handle(tls_conn, peer_addr, shared));
                     Ok(())
@@ -92,8 +86,8 @@ fn handle<S>(conn: S, peer_addr: SocketAddr, shared: State) -> impl Future<Item=
                     },
                 })
                 .map_err(move |err| match err.kind() {
-                    io::ErrorKind::BrokenPipe => broken_pipe(err, peer_addr),
-                    _ => invalid_data(err, peer_addr),
+                    io::ErrorKind::BrokenPipe => lines::print_broken_pipe_error(err, peer_addr),
+                    _ => lines::print_invalid_data_error(err, peer_addr),
                 })
         })
         .map(|_| ());
@@ -103,7 +97,7 @@ fn handle<S>(conn: S, peer_addr: SocketAddr, shared: State) -> impl Future<Item=
             //log::trace!("us -> {}: {}", peer_addr, msg);
             io::write_all(writer, msg)
                 .map(|(writer, _)| writer)
-                .map_err(move |err| broken_pipe(err, peer_addr))
+                .map_err(move |err| lines::print_broken_pipe_error(err, peer_addr))
         })
         .map(|_| ());
 
@@ -193,18 +187,4 @@ fn handle_message(msg: Message<'_>, peer_addr: SocketAddr, shared: State)
         Command::Reply(_) => unreachable!(),
     }
     Ok(())
-}
-
-// Logging error messages.
-
-fn broken_pipe(err: io::Error, peer_addr: SocketAddr) {
-    log::info!("{} left!! I'm so sad... *sob* They said {}, meanie...", peer_addr, err);
-}
-
-fn invalid_data(err: io::Error, peer_addr: SocketAddr) {
-    log::info!("Some people came, I didn't understand what they were saying...
-But they're gone now, we're alone together senpai!! :3
-            *grabs knife*          (*0w0)
-(You hear someone whisper) {}
-Connection with {} has been terminated! <3", err, peer_addr);
 }

@@ -1,3 +1,7 @@
+use std::{fmt, net};
+
+use crate::message::MessageBuffer;
+
 pub const ADMIN_ME: &str =
 "TODO";
 
@@ -114,3 +118,62 @@ pub const YOUR_HOST: &str =
 
 pub const I_SUPPORT: &str =
 "are allowed by senpai";
+
+// lines with parameters
+
+pub fn created(mut r: MessageBuffer<'_>, since: &chrono::DateTime<chrono::Local>) {
+    let trailing = r.raw_trailing_param();
+    trailing.push_str("We've been together since ");
+    trailing.push_str(&since.to_rfc2822());
+    r.build();
+}
+
+pub fn luser_client(mut r: MessageBuffer<'_>, num_clients: usize) {
+    let trailing = r.raw_trailing_param();
+    trailing.push_str("There are ");
+    trailing.push_str(&num_clients.to_string());
+    trailing.push_str(" shitheads on 1 server");
+    r.build();
+}
+
+pub fn luser_me(mut r: MessageBuffer<'_>, num_clients: usize) {
+    let trailing = r.raw_trailing_param();
+    trailing.push_str("I have ");
+    trailing.push_str(&num_clients.to_string());
+    trailing.push_str(" shitheads and 0 servers");
+    r.build();
+}
+
+// src/net.rs
+
+pub fn print_accept_error<E>(err: E)
+    where E: fmt::Display
+{
+    log::info!(
+        "I'm seeing thing senpai, someone just {}. Or is it that I'm getting too old?? No way!",
+        err);
+}
+
+pub fn print_tls_error<E>(err: E, addr: net::SocketAddr)
+    where E: fmt::Display
+{
+    log::info!(
+        "Senpai! Some weird {} didn't know how to speak TLS! Like, who would have {} anyway",
+        addr, err);
+}
+
+pub fn print_broken_pipe_error<E>(err: E, addr: net::SocketAddr)
+    where E: fmt::Display
+{
+    log::info!("{} left!! I'm so sad... *sob* They said {}, meanie...", addr, err);
+}
+
+pub fn print_invalid_data_error<E>(err: E, addr: net::SocketAddr)
+    where E: fmt::Display
+{
+    log::info!("Some people came, I didn't understand what they were saying...
+But they're gone now, we're alone together senpai!! :3
+            *grabs knife*          (*0w0)
+(You hear someone whisper) {}
+Connection with {} has been terminated! <3", err, addr);
+}

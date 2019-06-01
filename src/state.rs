@@ -460,9 +460,8 @@ impl StateInner {
         let client = &self.clients[&addr];
         let mut response = ResponseBuffer::new();
         let cs = self.clients.len();
-        response.message(&self.domain, rpl::LUSERCLIENT)
-            .param(client.nick())
-            .trailing_param(format!("There are {} shitheads and 0 services on 1 server", cs));
+        lines::luser_client(response.message(&self.domain, rpl::LUSERCLIENT)
+            .param(client.nick()), cs);
         // TODO LUSEROP
         // TODO LUSERUNKNOWN
         if !self.channels.is_empty() {
@@ -471,9 +470,7 @@ impl StateInner {
                 .param(self.channels.values().filter(|c| !c.secret).count().to_string())
                 .trailing_param(lines::LUSER_CHANNELS);
         }
-        response.message(&self.domain, rpl::LUSERME)
-            .param(client.nick())
-            .trailing_param(format!("I have {} shitheads and 0 servers", cs));
+        lines::luser_me(response.message(&self.domain, rpl::LUSERME).param(client.nick()), cs);
         client.send(response.build());
     }
 
@@ -1140,12 +1137,8 @@ impl StateInner {
         response.message(&self.domain, rpl::YOURHOST)
             .param(client.nick())
             .trailing_param(lines::YOUR_HOST);
-        let mut msg = response.message(&self.domain, rpl::CREATED)
-            .param(client.nick());
-        let trailing = msg.raw_trailing_param();
-        trailing.push_str("We've been together since ");
-        trailing.push_str(&self.created_at.to_rfc2822());
-        msg.build();
+        lines::created(response.message(&self.domain, rpl::CREATED)
+            .param(client.nick()), &self.created_at);
         response.message(&self.domain, rpl::MYINFO)
             .param(client.nick())
             .param(&self.domain)
