@@ -40,6 +40,9 @@ pub struct Client {
     /// Set when it issues a "QUIT" message.
     quit_message: Option<String>,
 
+    /// Whether the client has issued a PASS command with the right password.
+    pub has_given_password: bool,
+
     // Modes: https://tools.ietf.org/html/rfc2812.html#section-3.1.5
     pub away: bool,
     pub invisible: bool,
@@ -67,6 +70,7 @@ impl Client {
             host,
             full_name,
             quit_message: None,
+            has_given_password: false,
             away: false,
             invisible: false,
             wallops: false,
@@ -187,7 +191,7 @@ impl Client {
 /// A state machine that represent the connection with a client. It keeps track of what message the
 /// client can send.
 ///
-/// For example, a client that has sent a "NICK" message only cannot send a "JOIN" message.
+/// For example, a client that has only sent a "NICK" message cannot send a "JOIN" message.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum ConnectionState {
     /// The client just connected to the server, and must register. Its registration is kept track
@@ -196,7 +200,7 @@ pub enum ConnectionState {
 
     //CapabilityNegociation(RegistrationState),
 
-    /// The client is registered, and can send any command except "USER".
+    /// The client is registered, and can send any command except "USER" and "PASS".
     Registered,
 }
 
@@ -271,6 +275,7 @@ impl RegistrationState {
     pub fn apply(self, cmd: Command) -> Result<Self, Reply> {
         match cmd {
             Command::Nick => self.apply_nick(),
+            Command::Pass => self.apply_pass(),
             Command::User => self.apply_user(),
             _ => Err(rpl::ERR_NOTREGISTERED),
         }
@@ -291,6 +296,14 @@ impl RegistrationState {
             RegistrationState::NickGiven => Ok(RegistrationState::NickGiven),
             RegistrationState::UserGiven |
             RegistrationState::Registered => Ok(RegistrationState::Registered),
+        }
+    }
+
+    /// Apply a "PASS" message.
+    fn apply_pass(self) -> Result<Self, Reply> {
+        match self {
+            RegistrationState::Stranger => Ok(RegistrationState::Stranger),
+            _ => Err(rpl::ERR_ALREADYREGISTRED),
         }
     }
 

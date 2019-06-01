@@ -42,6 +42,7 @@ pub mod rpl {
     pub const ADMINLOC2: Reply     = "258";  // :<info>
     pub const ADMINMAIL: Reply     = "259";  // :<info>
 
+    pub const ENDOFWHO: Reply        = "315";  // <name> :End of WHO list
     pub const LIST: Reply            = "322";  // <channel> <# of visible members> <topic>
     pub const LISTEND: Reply         = "323";  // :End of list
     pub const CHANNELMODEIS: Reply   = "324";  // <channel> <modes> <modeparams>
@@ -53,6 +54,7 @@ pub mod rpl {
     pub const EXCEPTLIST: Reply      = "348";  // <channel> <exception mask>
     pub const ENDOFEXCEPTLIST: Reply = "349";  // <channel> :End of exception list
     pub const VERSION: Reply         = "351";  // <version> <servername> :<comments>
+    pub const WHOREPLY: Reply        = "352";  // <channel> <user> <host> <server> <nick> "H"/"G" ["*"] [("@"/"+")] :<hopcount> <nick>
     pub const NAMREPLY: Reply        = "353";  // <=/*/@> <channel> :1*(@/ /+user)
     pub const ENDOFNAMES: Reply      = "366";  // <channel> :End of names list
     pub const BANLIST: Reply         = "367";  // <channel> <ban mask>
@@ -219,6 +221,7 @@ commands! {
     Notice => 2,
     Oper => 2,
     Part => 1,
+    Pass => 1,
     Ping => 1,
     Pong => 1,
     PrivMsg => 2,

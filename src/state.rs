@@ -158,6 +158,10 @@ impl State {
         }
     }
 
+    pub fn cmd_pass(&self, addr: SocketAddr, password: &str) {
+        self.0.write().unwrap().apply_cmd_pass(addr, password);
+    }
+
     /// Handles a "PRIVMSG" message.
     pub fn cmd_privmsg(&self, addr: SocketAddr, targets: &str, content: &str) {
         let lock = self.0.read().unwrap();
@@ -230,6 +234,9 @@ struct StateInner {
     /// The message of the day.
     motd: Option<String>,
 
+    /// The global password. Clients need to issue a PASS command with this password to register.
+    password: Option<String>,
+
     /// Modes applied at the creation of new channels.
     default_chan_mode: String,
 
@@ -247,6 +254,7 @@ impl StateInner {
             channels: HashMap::new(),
             created_at: Local::now(),
             motd: config.motd,
+            password: config.password,
             default_chan_mode: config.default_chan_mode,
             opers: config.opers,
             oper_hosts: config.oper_hosts,
@@ -825,6 +833,12 @@ impl StateInner {
         }
     }
 
+    pub fn apply_cmd_pass(&mut self, addr: SocketAddr, pass: &str) {
+        if self.password.as_ref().map_or(false, |p| p == pass) {
+            self.clients.get_mut(&addr).unwrap().has_given_password = true;
+        }
+    }
+
     /// Whether or not a "PRIVMSG" message with the given parameters can be issued by the given
     /// client.
     pub fn check_cmd_privmsg(&self, addr: SocketAddr, target: &str, content: &str) -> bool {
@@ -971,6 +985,14 @@ impl StateInner {
     {
         log::debug!("{}: Register as {}, '{}'", addr, user, real);
         let client = self.clients.get_mut(&addr).unwrap();
+        if self.password.is_some() && !client.has_given_password {
+            let mut response = ResponseBuffer::new();
+            response.message(&self.domain, rpl::ERR_PASSWDMISMATCH)
+                .param(client.nick())
+                .trailing_param(lines::PASSWORD_MISMATCH);
+            client.send(response.build());
+            return;
+        }
         client.set_user_real(user, real);
         client.invisible = invisible;
         client.wallops = wallops;

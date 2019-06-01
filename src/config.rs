@@ -53,6 +53,11 @@ pub struct StateConfig {
     /// (it seems).
     pub motd: Option<String>,
 
+    /// The password of the server.
+    ///
+    /// Only clients that send a PASS command with this password may register.
+    pub password: Option<String>,
+
     /// The list of credentials (name, password) for server operators.
     #[serde(default = "Vec::new")]
     pub opers: Vec<(String, String)>,
