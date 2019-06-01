@@ -29,7 +29,7 @@ mod channel;
 mod client;
 mod config;
 mod lines;
-mod message;
+pub mod message;
 mod misc;
 mod modes;
 mod net;
