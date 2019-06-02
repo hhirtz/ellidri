@@ -1021,11 +1021,20 @@ impl StateInner {
     fn cmd_privmsg_chan(&self, addr: SocketAddr, target: &str, chan: &Channel, content: &str) {
         let mut content = String::from(content);
         let mut modified = false;
-        let rand = rand::random::<f64>();
         for (proba, regex, repl) in &chan.msg_modifier {
-            if rand < *proba {
-                content = regex.replace_all(&content, repl.as_str()).into();
-                modified = true;
+            let mut start = 0;
+            while let Some(next_match) = regex.find_at(&content, start) {
+                let last_len = content.len();
+                let match_start = next_match.start();
+                let match_end = next_match.end();
+                if rand::random::<f64>() < *proba {
+                    let slice = content[match_start..match_end].to_owned();
+                    let s = regex.replace(&slice, repl.as_str());
+                    content.replace_range(match_start..match_end, &s);
+                    modified = true;
+                }
+                let next_len = content.len();
+                start = match_end + next_len - last_len;
             }
         }
         let client = &self.clients[&addr];
