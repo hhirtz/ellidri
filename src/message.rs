@@ -431,12 +431,7 @@ impl<'a> Message<'a> {
             buf.len()
         };
 
-        Ok(Some(Message {
-            buf,
-            prefix,
-            command,
-            first_param_index,
-        }))
+        Ok(Some(Message { buf, prefix, command, first_param_index, }))
     }
 
     /// Returns the source of the message, if any.
@@ -547,22 +542,6 @@ impl fmt::Display for Message<'_> {
     }
 }
 
-const SANITIZED_CHAR: char = '_';
-
-fn sanitize_param(c: char) -> char {
-    match c {
-        w if w.is_whitespace() => SANITIZED_CHAR,
-        c => c,
-    }
-}
-
-fn sanitize_trailing_param(c: char) -> char {
-    match c {
-        '\r' | '\n' => SANITIZED_CHAR,
-        c => c,
-    }
-}
-
 /// Helper to build progressively an IRC message. Use with `Message::with_prefix`.
 pub struct MessageBuilder {
     buf: String,
@@ -615,12 +594,7 @@ impl MessageBuilder {
         if self.first_param_index == 0 {
             self.first_param_index = self.buf.len();
         }
-        if param.starts_with(':') {
-            self.buf.push('_');
-        } else {
-            self.buf.push(param.chars().next().unwrap());
-        }
-        self.buf.extend(param.chars().skip(1).map(sanitize_param));
+        self.buf.push_str(param);
         self
     }
 
@@ -634,7 +608,7 @@ impl MessageBuilder {
         if self.first_param_index == 0 {
             self.first_param_index = self.buf.len();
         }
-        self.buf.extend(trailing.chars().map(sanitize_trailing_param));
+        self.buf.push_str(trailing);
         self.build()
     }
 }
@@ -667,12 +641,7 @@ impl<'a> MessageBuffer<'a> {
             return self;
         }
         self.buf.push(' ');
-        if param.starts_with(':') {
-            self.buf.push('_');
-        } else {
-            self.buf.push(param.chars().next().unwrap());
-        }
-        self.buf.extend(param.chars().skip(1).map(sanitize_param));
+        self.buf.push_str(param);
         self
     }
 
@@ -682,7 +651,7 @@ impl<'a> MessageBuffer<'a> {
         let param = param.as_ref();
         self.buf.push(' ');
         self.buf.push(':');
-        self.buf.extend(param.chars().map(sanitize_trailing_param));
+        self.buf.push_str(param);
         self.build()
     }
 
