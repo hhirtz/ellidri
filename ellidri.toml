@@ -58,7 +58,7 @@ domain = "ellidri.localdomain"
 #
 # If set, only clients that send a PASS command with this password may
 # register.
-password = "CHANGE ME"
+#password = "CHANGE ME"
 
 # The list of server operators credentials.
 # Type: Array of [name: String, password: String]   (default: empty array)
