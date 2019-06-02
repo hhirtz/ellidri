@@ -345,7 +345,9 @@ impl Message<'static> {
     /// assert_eq!(privmsg.as_ref(),
     ///            &b":admin PrivMsg #agora :The server is back up!\r\n"[..]);
     /// ```
-    pub fn with_prefix(prefix: &str, command: Command) -> MessageBuilder {
+    pub fn with_prefix<C>(prefix: &str, command: C) -> MessageBuilder
+        where C: Into<Command>
+    {
         MessageBuilder::with_prefix(prefix, command)
     }
 }
@@ -551,7 +553,10 @@ pub struct MessageBuilder {
 }
 
 impl MessageBuilder {
-    fn with_prefix(prefix: &str, command: Command) -> MessageBuilder {
+    fn with_prefix<C>(prefix: &str, command: C) -> MessageBuilder
+        where C: Into<Command>
+    {
+        let command = command.into();
         let mut buf = String::with_capacity(MAX_MESSAGE_LENGTH);
         buf.push(':');
         buf.push_str(prefix);
