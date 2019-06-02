@@ -1,8 +1,8 @@
 //! Client management and connection state.
 
-use crate::message::{Command, MessageBuffer, Reply, rpl};
+use crate::message::{Command, MessageBuffer, MessageQueueItem, Reply, rpl};
 use crate::modes;
-use crate::state::{MessageQueue, MessageQueueItem};
+use crate::state::MessageQueue;
 
 const FULL_NAME_LENGTH: usize = 63;
 

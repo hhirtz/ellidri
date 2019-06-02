@@ -23,11 +23,12 @@ use std::collections::HashMap;
 use futures::Future;
 
 use crate::config::BindToAddress;
-use crate::state::State;
+pub use crate::message::MessageQueueItem;
+pub use crate::state::State;
 
 mod channel;
 mod client;
-mod config;
+pub mod config;
 mod lines;
 pub mod message;
 mod misc;

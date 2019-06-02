@@ -532,8 +532,8 @@ impl<'a> Message<'a> {
     }
 
     /// Unwraps the underlying string, and clone it if it is not owned.
-    pub fn into_bytes(self) -> Arc<[u8]> {
-        self.buf.into_owned().into_bytes().into()
+    pub fn into_bytes(self) -> MessageQueueItem {
+        MessageQueueItem(self.buf.into_owned().into_bytes().into())
     }
 }
 
@@ -541,6 +541,15 @@ impl fmt::Display for Message<'_> {
     /// Displays the message as a correctly formed message. Used for logging.
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.buf.trim_end())
+    }
+}
+
+#[derive(Clone)]
+pub struct MessageQueueItem(pub Arc<Vec<u8>>);
+
+impl AsRef<[u8]> for MessageQueueItem {
+    fn as_ref(&self) -> &[u8] {
+        self.0.as_ref().as_ref()
     }
 }
 
@@ -707,8 +716,7 @@ impl ResponseBuffer {
             .trailing_param(end_line);
     }
 
-    pub fn build(self) -> Arc<[u8]> {
-        // TODO don't fcking vv clone vv the fucking whole buffer just to have a god damn Arc
-        self.buf.into_bytes()  .into()
+    pub fn build(self) -> MessageQueueItem {
+        MessageQueueItem(self.buf.into_bytes().into())
     }
 }

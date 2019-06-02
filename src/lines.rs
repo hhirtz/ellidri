@@ -144,6 +144,14 @@ pub fn luser_me(mut r: MessageBuffer<'_>, num_clients: usize) {
     r.build();
 }
 
+pub fn motd_start(mut r: MessageBuffer<'_>, domain: &str) {
+    let trailing = r.raw_trailing_param();
+    trailing.push_str("- ");
+    trailing.push_str(domain);
+    trailing.push_str(" Senpai's message of the day -");
+    r.build();
+}
+
 // src/net.rs
 
 pub fn print_accept_error<E>(err: E)
