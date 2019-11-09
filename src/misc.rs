@@ -44,3 +44,7 @@ impl Borrow<UniCase<str>> for UniCase<String> {
         self.0.as_str().into()
     }
 }
+
+pub fn time_now() -> String {
+    chrono::Local::now().to_rfc2822()
+}

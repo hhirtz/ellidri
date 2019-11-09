@@ -3,28 +3,23 @@
 //! # Usage
 //!
 //! You need a configuration file, and pass its name as an argument. The git
-//! repository contains an example `ellidri.toml`, with comments describing the
+//! repository contains an example `ellidri.conf`, with comments describing the
 //! different options. The `config` module also has documentation about it.
 //!
-//! During development: `cargo run -- ellidri.toml`
+//! During development: `cargo run -- ellidri.conf`
 //!
 //! For an optimized build:
 //!
 //! ```console
 //! cargo install
-//! ellidri ellidri.toml
+//! ellidri ellidri.conf
 //! ```
 
 #![warn(clippy::all, rust_2018_idioms)]
 
+use crate::state::State;
 use std::{env, fs, path, process};
 use std::collections::HashMap;
-
-use futures::Future;
-
-use crate::config::BindToAddress;
-pub use crate::message::MessageQueueItem;
-pub use crate::state::State;
 
 mod channel;
 mod client;
@@ -36,21 +31,21 @@ mod modes;
 mod net;
 mod state;
 
-/// Read the file at `path`, parse the identity and builds a TlsAcceptor object.
-fn build_acceptor(path: &path::Path) -> tokio_tls::TlsAcceptor {
-    let der = fs::read(path).unwrap_or_else(|err| {
-        log::error!("I'm so sorry, senpai! I couldn't read {}...", path.display());
-        log::error!("Please fix this, senpai...: {}", err);
+/// Read the file at `p`, parse the identity and builds a TlsAcceptor object.
+fn build_acceptor(p: &path::Path) -> tokio_tls::TlsAcceptor {
+    let der = fs::read(p).unwrap_or_else(|err| {
+        log::error!("Failed to read {:?}: {}", p.display(), err);
         process::exit(1);
     });
     let identity = native_tls::Identity::from_pkcs12(&der, "").unwrap_or_else(|err| {
-        log::error!("Senpai... there's something wrong with your identity file here: {}", err);
+        log::error!("Failed to parse {:?}: {}", p.display(), err);
         process::exit(1);
     });
     let acceptor = native_tls::TlsAcceptor::builder(identity)
+        .min_protocol_version(Some(native_tls::Protocol::Tlsv11))
         .build()
         .unwrap_or_else(|err| {
-            log::error!("I don't know what to do with this identity senpai: {}", err);
+            log::error!("Failed to initialize TLS: {}", err);
             process::exit(1);
         });
     tokio_tls::TlsAcceptor::from(acceptor)
@@ -64,72 +59,64 @@ struct TlsIdentityStore {
 
 impl TlsIdentityStore {
     /// Retrieves the acceptor at `path`, or get it from the cache if it has already been built.
-    pub fn acceptor(&mut self, path: path::PathBuf) -> tokio_tls::TlsAcceptor {
-        self.acceptors.entry(path.clone())
-            .or_insert_with(|| build_acceptor(&path))
-            .clone()
+    pub fn acceptor(&mut self, file: path::PathBuf) -> tokio_tls::TlsAcceptor {
+        if let Some(acceptor) = self.acceptors.get(&file) {
+            acceptor.clone()
+        } else {
+            let acceptor = build_acceptor(&file);
+            self.acceptors.insert(file, acceptor.clone());
+            acceptor
+        }
     }
 }
 
 /// The beginning of everything
 pub fn start() {
     let config_path = env::args().nth(1).unwrap_or_else(|| {
-        eprintln!("Excuse-me senpai... I don't know what to do... *sob*");
-        eprintln!("Hint............................ ellidri CONFIG_FILE");
-        eprintln!("            THANK YOU FOR YOUR PATIENCE!      (n.n')");
+        eprintln!("Usage: {} CONFIG_FILE", env::args().nth(0).unwrap());
         process::exit(1);
     });
 
-    // When ellidri is compiled without optimisations, enable backtrace logging
-    // for thread crashes, and set the log level to debug.
     if cfg!(debug_assertions) {
-        std::env::set_var("RUST_BACKTRACE", "1");
-        std::env::set_var("RUST_LOG", "ellidri=debug");
+        env::set_var("RUST_BACKTRACE", "1");
+        env::set_var("RUST_LOG", "ellidri=debug");
     } else {
-        std::env::set_var("RUST_LOG", "ellidri=info");
+        env::set_var("RUST_LOG", "ellidri=info");
     }
 
     let c = config::from_file(config_path);
 
-    if let Some(level) = c.log_level {
-        std::env::set_var("RUST_LOG", format!("ellidri={}", level));
-    }
-
     env_logger::builder()
         .format(|buf, r| {
             use std::io::Write;
-            let now = chrono::Utc::now().naive_local()
-                .format("%Y-%m-%d %H:%M:%S%.6f").to_string();
-            writeln!(buf, "{} {:<5} {}", now, r.level(), r.args())
+            writeln!(buf, "{:<5} {}", r.level(), r.args())
         })
         .init();
 
-    log::warn!("Let's get started senpai!");
-
     let shared = State::new(c.srv);
     let mut runtime = tokio::runtime::Builder::new()
-        .core_threads(c.worker_threads)
+        .core_threads(c.workers.unwrap_or(1))
         // TODO panic_handler
         .build()
         .unwrap_or_else(|err| {
-            log::error!("Oh no, senpai! Your computer is killing me... argh..");
-            log::error!("*dies painfully because of {}*", err);
+            log::error!("Failed to start the tokio runtime: {}", err);
             process::exit(1);
         });
 
     let mut store = TlsIdentityStore::default();
-    for BindToAddress { addr, tls } in c.bind_to_address.into_iter() {
-        if let Some(options) = tls {
-            let acceptor = store.acceptor(options.tls_identity);
-            let server = net::listen_tls(addr, shared.clone(), acceptor);
+    for config::Binding { address, tls_identity } in c.bindings.into_iter() {
+        if let Some(identity_path) = tls_identity {
+            let acceptor = store.acceptor(identity_path);
+            let server = net::listen_tls(address, shared.clone(), acceptor);
             runtime.spawn(server);
-            log::warn!("I'm listening on {} (tls ^^), ok?", addr);
+            log::info!("Listening on {} for tls connections...", address);
         } else {
-            let server = net::listen(addr, shared.clone());
+            let server = net::listen(address, shared.clone());
             runtime.spawn(server);
-            log::warn!("I'm listening on {}, ok?", addr);
+            log::info!("Listening on {} for plain-text connections...", address);
         }
     }
 
+    use futures::Future;
     runtime.shutdown_on_idle().wait().unwrap();
 }

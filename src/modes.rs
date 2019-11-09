@@ -3,16 +3,8 @@ use std::iter;
 // Don't forget to change CHANMODES in StateInner::send_welcome
 pub const USER_MODES: &str = "aiorsw";
 pub const SIMPLE_CHAN_MODES: &str = "aimnqst";
-
-#[cfg(not(feature = "irdille"))]
 pub const EXTENDED_CHAN_MODES: &str = "beIklov";
-#[cfg(feature = "irdille")]
-pub const EXTENDED_CHAN_MODES: &str = "beIklovP";
-
-#[cfg(not(feature = "irdille"))]
 pub const CHANMODES: &str = "CHANMODES=beI,k,l,aimnpqst";
-#[cfg(feature = "irdille")]
-pub const CHANMODES: &str = "CHANMODES=beI,k,l,aimnpqstP";
 
 struct SimpleQuery<'a> {
     modes: &'a [u8],
@@ -51,15 +43,13 @@ pub type Result<T> = std::result::Result<T, Error>;
 #[derive(Clone, Copy, Debug)]
 pub enum UserModeChange {
     Invisible(bool),
-    Wallops(bool),
-    ServerNotices(bool),
 }
 
 impl UserModeChange {
     pub fn value(self) -> bool {
         use UserModeChange::*;
         match self {
-            Invisible(v) | Wallops(v) | ServerNotices(v) => v,
+            Invisible(v) => v,
         }
     }
 
@@ -67,8 +57,6 @@ impl UserModeChange {
         use UserModeChange::*;
         match self {
             Invisible(_) => 'i',
-            Wallops(_) => 'w',
-            ServerNotices(_) => 's',
         }
     }
 }
@@ -96,8 +84,6 @@ impl Iterator for UserQuery<'_> {
         self.inner.next().map(|(value, mode)| {
             match mode {
                 b'i' => Ok(UserModeChange::Invisible(value)),
-                b'w' => Ok(UserModeChange::Wallops(value)),
-                b's' => Ok(UserModeChange::ServerNotices(value)),
                 other if USER_MODES.contains(other as char) => Err(Error::UnsettableMode),
                 other => Err(Error::UnknownMode(other as char)),
             }
@@ -107,11 +93,9 @@ impl Iterator for UserQuery<'_> {
 
 #[derive(Clone, Copy, Debug)]
 pub enum ChannelModeChange<'a> {
-    Anonymous(bool),
     InviteOnly(bool),
     Moderated(bool),
     NoPrivMsgFromOutside(bool),
-    Quiet(bool),
     Secret(bool),
     TopicRestricted(bool),
     Key(bool, &'a str),
@@ -124,20 +108,15 @@ pub enum ChannelModeChange<'a> {
     ChangeInvitation(bool, &'a str),
     ChangeOperator(bool, &'a str),
     ChangeVoice(bool, &'a str),
-
-    #[cfg(feature = "irdille")]
-    MsgModifier(Option<&'a str>),
 }
 
 impl<'a> ChannelModeChange<'a> {
     pub fn value(&self) -> bool {
         use ChannelModeChange::*;
         match self {
-            Anonymous(v) |
             InviteOnly(v) |
             Moderated(v) |
             NoPrivMsgFromOutside(v) |
-            Quiet(v) |
             Secret(v) |
             TopicRestricted(v) |
             Key(v, _) |
@@ -147,10 +126,6 @@ impl<'a> ChannelModeChange<'a> {
             ChangeOperator(v, _) |
             ChangeVoice(v, _) => *v,
             UserLimit(l) => l.is_some(),
-
-            #[cfg(feature = "irdille")]
-            MsgModifier(l) => l.is_some(),
-
             _ => false,
         }
     }
@@ -158,11 +133,9 @@ impl<'a> ChannelModeChange<'a> {
     pub fn symbol(&self) -> Option<char> {
         use ChannelModeChange::*;
         match self {
-            Anonymous(_) => Some('a'),
             InviteOnly(_) => Some('i'),
             Moderated(_) => Some('m'),
             NoPrivMsgFromOutside(_) => Some('n'),
-            Quiet(_) => Some('q'),
             Secret(_) => Some('s'),
             TopicRestricted(_) => Some('t'),
             Key(_, _) => Some('k'),
@@ -172,10 +145,6 @@ impl<'a> ChannelModeChange<'a> {
             ChangeInvitation(_, _) => Some('I'),
             ChangeOperator(_, _) => Some('o'),
             ChangeVoice(_, _) => Some('v'),
-
-            #[cfg(feature = "irdille")]
-            MsgModifier(_) => Some('P'),
-
             _ => None,
         }
     }
@@ -190,10 +159,6 @@ impl<'a> ChannelModeChange<'a> {
             ChangeInvitation(_, p) => Some(p),
             ChangeOperator(_, p) => Some(p),
             ChangeVoice(_, p) => Some(p),
-
-            #[cfg(feature = "irdille")]
-            MsgModifier(p) => *p,
-
             _ => None,
         }
     }
@@ -231,11 +196,9 @@ impl<'a, I> Iterator for ChannelQuery<'a, I>
     fn next(&mut self) -> Option<Self::Item> {
         self.inner.next().map(|(value, mode)| {
             match mode {
-                b'a' => Ok(ChannelModeChange::Anonymous(value)),
                 b'i' => Ok(ChannelModeChange::InviteOnly(value)),
                 b'm' => Ok(ChannelModeChange::Moderated(value)),
                 b'n' => Ok(ChannelModeChange::NoPrivMsgFromOutside(value)),
-                b'q' => Ok(ChannelModeChange::Quiet(value)),
                 b's' => Ok(ChannelModeChange::Secret(value)),
                 b't' => Ok(ChannelModeChange::TopicRestricted(value)),
                 b'k' => if let Some(param) = self.params.next() {
@@ -277,18 +240,6 @@ impl<'a, I> Iterator for ChannelQuery<'a, I>
                 } else {
                     Err(Error::MissingModeParam)
                 },
-
-                #[cfg(feature = "irdille")]
-                b'P' => if value {
-                    if let Some(param) = self.params.next().filter(|p| !p.is_empty()) {
-                        Ok(ChannelModeChange::MsgModifier(Some(param)))
-                    } else {
-                        Err(Error::MissingModeParam)
-                    }
-                } else {
-                    Ok(ChannelModeChange::MsgModifier(None))
-                },
-
                 other => Err(Error::UnknownMode(other as char)),
             }
         })

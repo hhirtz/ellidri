@@ -1,10 +1,34 @@
 //! Client management and connection state.
 
-use crate::message::{Command, MessageBuffer, MessageQueueItem, Reply, rpl};
+use crate::message::{Command, MessageBuffer, Reply, rpl, ResponseBuffer};
 use crate::modes;
-use crate::state::MessageQueue;
+use futures::sync::mpsc;
+use std::sync::Arc;
 
 const FULL_NAME_LENGTH: usize = 63;
+
+#[derive(Clone)]
+pub struct MessageQueueItem(Arc<[u8]>);
+
+impl From<Vec<u8>> for MessageQueueItem {
+    fn from(bytes: Vec<u8>) -> Self {
+        Self(Arc::from(bytes))
+    }
+}
+
+impl From<ResponseBuffer> for MessageQueueItem {
+    fn from(response: ResponseBuffer) -> Self {
+        Self::from(response.build())
+    }
+}
+
+impl AsRef<[u8]> for MessageQueueItem {
+    fn as_ref(&self) -> &[u8] {
+        self.0.as_ref()
+    }
+}
+
+pub type MessageQueue = mpsc::UnboundedSender<MessageQueueItem>;
 
 /// Client data.
 pub struct Client {
@@ -14,31 +38,14 @@ pub struct Client {
     /// currently unbounded, meaning sending messages to this channel do not block.
     queue: MessageQueue,
 
-    /// The state of the connection with the client.
-    ///
-    /// This keeps track of whether the client has registered or not, if it's currently querying
-    /// capabilities, etc.
     state: ConnectionState,
-
-    /// The nickname.
     nick: String,
-
-    /// The username.
     user: String,
-
-    /// The real name.
     real: String,
-
-    /// The client hostname.
     host: String,
 
     /// The nick!user@host
     full_name: String,
-
-    /// The reason sent when a client quits.
-    ///
-    /// Set when it issues a "QUIT" message.
-    quit_message: Option<String>,
 
     /// Whether the client has issued a PASS command with the right password.
     pub has_given_password: bool,
@@ -46,10 +53,8 @@ pub struct Client {
     // Modes: https://tools.ietf.org/html/rfc2812.html#section-3.1.5
     pub away: bool,
     pub invisible: bool,
-    pub wallops: bool,
-    pub restricted: bool,
+    pub registered: bool,
     pub operator: bool,
-    pub server_notices: bool,
 }
 
 impl Client {
@@ -57,26 +62,23 @@ impl Client {
     ///
     /// The nickname is set to "*", as it seems it's what freenode server does.  The username and
     /// the realname are set to empty strings.
-    pub fn new(queue: MessageQueue, host: String) -> Client {
+    pub fn new(queue: MessageQueue, host: String) -> Self {
         let mut full_name = String::with_capacity(FULL_NAME_LENGTH);
         full_name.push('*');
         full_name.push_str(&host);
-        Client {
+        Self {
             queue,
-            state: ConnectionState::default(),
             nick: String::from("*"),
-            user: String::new(),
-            real: String::new(),
             host,
             full_name,
-            quit_message: None,
+            state: ConnectionState::default(),
+            user: String::new(),
+            real: String::new(),
             has_given_password: false,
             away: false,
             invisible: false,
-            wallops: false,
-            restricted: false,
+            registered: false,
             operator: false,
-            server_notices: false,
         }
     }
 
@@ -98,14 +100,8 @@ impl Client {
         self.state.apply(cmd).is_ok()
     }
 
-    /// The client quit message, or a default one if it has not set any.
-    pub fn quit_message(&self) -> &str {
-        self.quit_message.as_ref().map_or("Left without saying anything...", String::as_str)
-    }
-
-    /// Sets the client quit message (or reason).
-    pub fn set_quit_message(&mut self, reason: Option<&str>) {
-        self.quit_message = reason.map(str::to_owned)
+    pub fn is_registered(&self) -> bool {
+        self.state == ConnectionState::Registered
     }
 
     /// Add a message to the client message queue.
@@ -160,10 +156,7 @@ impl Client {
         modes.push('+');
         if self.away { modes.push('a'); }
         if self.invisible { modes.push('i'); }
-        if self.wallops { modes.push('w'); }
-        if self.restricted { modes.push('r'); }
         if self.operator { modes.push('o'); }
-        if self.server_notices { modes.push('s'); }
         out.build();
     }
 
@@ -174,14 +167,6 @@ impl Client {
             Invisible(value) => {
                 applied = self.invisible != value;
                 self.invisible = value;
-            },
-            Wallops(value) => {
-                applied = self.wallops != value;
-                self.wallops = value;
-            },
-            ServerNotices(value) => {
-                applied = self.server_notices != value;
-                self.server_notices = value;
             },
         }
         applied
@@ -194,125 +179,46 @@ impl Client {
 /// For example, a client that has only sent a "NICK" message cannot send a "JOIN" message.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum ConnectionState {
-    /// The client just connected to the server, and must register. Its registration is kept track
-    /// of by `RegistrationState`.
-    ConnectionEstablished(RegistrationState),
-
-    //CapabilityNegociation(RegistrationState),
-
-    /// The client is registered, and can send any command except "USER" and "PASS".
+    ConnectionEstablished,
+    NickGiven,
+    UserGiven,
     Registered,
+    Quit,
 }
 
 impl Default for ConnectionState {
-    /// The connection state of a client that has just connected to the server.
     fn default() -> ConnectionState {
-        ConnectionState::ConnectionEstablished(RegistrationState::Stranger)
+        ConnectionState::ConnectionEstablished
     }
 }
 
 impl ConnectionState {
-    /// Given a connection state and a command, returns the next connection state after a client
-    /// has sent the command, or a reply code to send the client if this command cannot be issued.
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// use ellidri::client::{ConnectionState, RegistrationState};
-    /// use ellidri::message::{Command, rpl};
-    ///
-    /// let state = ConnectionState::ConnectionEstablished(RegistrationState::NickGiven);
-    /// assert_eq!(state.apply(Command::User), Ok(ConnectionState::Registered));
-    ///
-    /// let state = ConnectionState::Registered;
-    /// assert_eq!(state.apply(Command::User), Err(rpl::ERR_ALREADYREGISTRED));
-    /// ```
     pub fn apply(self, cmd: Command) -> Result<ConnectionState, Reply> {
-        match self {
-            ConnectionState::ConnectionEstablished(reg) => {
-                let reg = reg.apply(cmd)?;
-                if reg.is_registered() {
-                    Ok(ConnectionState::Registered)
-                } else {
-                    Ok(ConnectionState::ConnectionEstablished(reg))
-                }
-            },
-            ConnectionState::Registered => match cmd {
-                Command::User => Err(rpl::ERR_ALREADYREGISTRED),
-                _ => Ok(ConnectionState::Registered),
-            },
-        }
-    }
-
-    /// True iff self == ConnectionState::Registered.
-    pub fn is_registered(self) -> bool {
-        match self {
-            ConnectionState::Registered => true,
-            _ => false,
-        }
-    }
-}
-
-/// A state machine that represents a registration (process of sending "NICK" and "USER").
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub enum RegistrationState {
-    /// The client hasn't began the registration.
-    Stranger,
-
-    /// The client has sent one or more "NICK", but has not sent any "USER".
-    NickGiven,
-
-    /// The client has sent a "USER", but has not sent any "NICK".
-    UserGiven,
-
-    /// The client has sent a "USER" and a "NICK", and completed its registration.
-    Registered,
-}
-
-impl RegistrationState {
-    /// Given a registration state and a command, returns the next registration state after the
-    /// client has sent the command, or a reply code if the command cannot be sent.
-    pub fn apply(self, cmd: Command) -> Result<Self, Reply> {
         match cmd {
-            Command::Nick => self.apply_nick(),
-            Command::Pass => self.apply_pass(),
-            Command::User => self.apply_user(),
-            _ => Err(rpl::ERR_NOTREGISTERED),
+            Command::Nick => match self {
+                ConnectionState::ConnectionEstablished => Ok(ConnectionState::NickGiven),
+                ConnectionState::UserGiven => Ok(ConnectionState::Registered),
+                ConnectionState::Quit => Err(""),
+                _ => Ok(self),
+            }
+            Command::User => match self {
+                ConnectionState::ConnectionEstablished => Ok(ConnectionState::UserGiven),
+                ConnectionState::NickGiven => Ok(ConnectionState::Registered),
+                _ => Err(rpl::ERR_ALREADYREGISTRED),
+            }
+            Command::Quit => match self {
+                ConnectionState::Quit => Err(""),
+                _ => Ok(ConnectionState::Quit),
+            }
+            _ => match self {
+                ConnectionState::Registered => Ok(self),
+                ConnectionState::Quit => Err(""),
+                _ => Err(rpl::ERR_NOTREGISTERED),
+            }
         }
     }
 
-    /// True iff self == RegistrationState::Registered.
     pub fn is_registered(self) -> bool {
-        match self {
-            RegistrationState::Registered => true,
-            _ => false,
-        }
-    }
-
-    /// Apply a "NICK" message.
-    fn apply_nick(self) -> Result<Self, Reply> {
-        match self {
-            RegistrationState::Stranger |
-            RegistrationState::NickGiven => Ok(RegistrationState::NickGiven),
-            RegistrationState::UserGiven |
-            RegistrationState::Registered => Ok(RegistrationState::Registered),
-        }
-    }
-
-    /// Apply a "PASS" message.
-    fn apply_pass(self) -> Result<Self, Reply> {
-        match self {
-            RegistrationState::Stranger => Ok(RegistrationState::Stranger),
-            _ => Err(rpl::ERR_ALREADYREGISTRED),
-        }
-    }
-
-    /// Apply a "USER" message.
-    fn apply_user(self) -> Result<Self, Reply> {
-        match self {
-            RegistrationState::Stranger => Ok(RegistrationState::UserGiven),
-            RegistrationState::NickGiven => Ok(RegistrationState::Registered),
-            _ => Err(rpl::ERR_ALREADYREGISTRED),
-        }
+        self == ConnectionState::Registered
     }
 }

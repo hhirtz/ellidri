@@ -1,22 +1,23 @@
-use std::iter;
-use std::io::BufReader;
-use std::net::SocketAddr;
-
+use crate::lines;
+use crate::message::Message;
+use crate::state::State;
 use futures::sync::mpsc;
-use tokio::io;
+use std::{io, iter, process};
+use std::net::SocketAddr;
+use tokio::io as aio;
 use tokio::net::TcpListener;
 use tokio::prelude::*;
 use tokio_tls::TlsAcceptor;
 
-use crate::lines;
-use crate::message::{Command, Message, rpl};
-use crate::state::State;
-
-/// Returns a future that listens, accepts and handles incoming clear-text IRC connections.
+/// Returns a future that listens, accepts and handles incoming plain-text connections.
 pub fn listen(addr: SocketAddr, shared: State) -> impl Future<Item=(), Error=()> {
-    TcpListener::bind(&addr).expect("Failed to bind to address")
+    TcpListener::bind(&addr)
+        .unwrap_or_else(|err| {
+            log::error!("Failed to bind to {}: {}", addr, err);
+            process::exit(1);
+        })
         .incoming()
-        .map_err(lines::print_accept_error)
+        .map_err(|err| log::debug!("Failed to accept connection: {}", err))
         .for_each(move |conn| {
             let peer_addr = conn.peer_addr().map_err(|_| ())?;
             tokio::spawn(handle(conn, peer_addr, shared.clone()));
@@ -24,18 +25,22 @@ pub fn listen(addr: SocketAddr, shared: State) -> impl Future<Item=(), Error=()>
         })
 }
 
-/// Returns a future that listens, accepts and handles incoming IRC-over-TLS connections.
+/// Returns a future that listens, accepts and handles incoming TLS connections.
 pub fn listen_tls(addr: SocketAddr, shared: State, acceptor: TlsAcceptor)
                   -> impl Future<Item=(), Error=()>
 {
-    TcpListener::bind(&addr).expect("Failed to bind to address")
+    TcpListener::bind(&addr)
+        .unwrap_or_else(|err| {
+            log::error!("Failed to bind to {}: {}", addr, err);
+            process::exit(1);
+        })
         .incoming()
-        .map_err(lines::print_accept_error)
+        .map_err(|err| log::debug!("Failed to accept connection: {}", err))
         .for_each(move |conn| {
             let peer_addr = conn.peer_addr().map_err(|_| ())?;
             let shared = shared.clone();
             let tls_accept = acceptor.accept(conn)
-                .map_err(move |err| lines::print_tls_error(err, peer_addr))
+                .map_err(|err| log::debug!("TLS handshake failed: {}", err))
                 .and_then(move |tls_conn| {
                     tokio::spawn(handle(tls_conn, peer_addr, shared));
                     Ok(())
@@ -50,141 +55,48 @@ fn handle<S>(conn: S, peer_addr: SocketAddr, shared: State) -> impl Future<Item=
     where S: AsyncRead + AsyncWrite
 {
     let (reader, writer) = conn.split();
-    let reader = BufReader::new(reader);
+    let reader = io::BufReader::new(reader);
     let (msg_queue, outgoing_msgs) = mpsc::unbounded();
-    shared.insert(peer_addr, msg_queue);
+    shared.peer_joined(peer_addr, msg_queue);
 
     let shared_clone = shared.clone();
     let incoming = stream::iter_ok(iter::repeat(()))
         .fold(reader, move |reader, ()| {
             let shared = shared_clone.clone();
-            let shared_clone = shared.clone();  // bite
-            io::read_until(reader, b'\n', Vec::new())
-                .and_then(|(reader, buf)| {
-                    if buf.is_empty() {
-                        Err(io::ErrorKind::BrokenPipe.into())
-                    } else {
-                        Ok((reader, String::from_utf8(buf)))
-                    }
+            aio::read_until(reader, b'\n', Vec::new())
+                .and_then(move |(reader, buf)| {
+                    handle_buffer(&peer_addr, buf, shared)
+                        .map(|_| reader)
                 })
-                .and_then(move |(reader, maybe_str)| match maybe_str {
-                    Ok(s) => Ok((reader, Message::parse(s))),
-                    Err(e) => {
-                        Err(io::Error::new(io::ErrorKind::InvalidData, e))
-                    }
-                })
-                .and_then(move |(reader, maybe_msg)| match maybe_msg {
-                    Ok(Some(msg)) => {
-                        handle_message(msg, peer_addr, shared_clone)
-                            .map(move |_| reader)
-                    },
-                    Ok(None) => Ok(reader),
-                    Err(_) => {
-                        let err = io::Error::new(io::ErrorKind::InvalidData,
-                                                 "it was just a typo...");
-                        Err(err)
-                    },
-                })
-                .map_err(move |err| match err.kind() {
-                    io::ErrorKind::BrokenPipe => lines::print_broken_pipe_error(err, peer_addr),
-                    _ => lines::print_invalid_data_error(err, peer_addr),
-                })
+                .map_err(|_| ())
         })
         .map(|_| ());
 
     let outgoing = outgoing_msgs
         .fold(writer, move |writer, msg| {
-            //log::trace!("us -> {}: {}", peer_addr, msg);
-            io::write_all(writer, msg)
+            aio::write_all(writer, msg)
                 .map(|(writer, _)| writer)
-                .map_err(move |err| lines::print_broken_pipe_error(err, peer_addr))
+                .map_err(|_| ())
         })
         .map(|_| ());
 
-    incoming.join(outgoing).then(move |_| {
-        shared.remove(peer_addr);
+    incoming.join(outgoing).then(move |_res| {
+        // TODO use res when its a io::Error
+        shared.peer_quit(&peer_addr, Some(io::Error::new(io::ErrorKind::BrokenPipe, "broken pipe")));
         Ok(())
     })
 }
 
-/// Handles an IRC message.
-fn handle_message(msg: Message<'_>, peer_addr: SocketAddr, shared: State)
-                  -> Result<(), io::Error>
-{
-    log::trace!("{} -> us: {}", peer_addr, msg);
-
-    let command = match msg.command() {
-        Ok(cmd) => cmd,
-        Err(unknown) => {
-            log::debug!("{}: Unknown command {:?}", peer_addr, unknown);
-            shared.send_reply(peer_addr, rpl::ERR_UNKNOWNCOMMAND,
-                              &[unknown, lines::UNKNOWN_COMMAND]);
-            return Ok(());
-        },
-    };
-
-    // Check if the client has sent a command that can be sent right now (e.g. a client cannot send
-    // a `CAP LS` after it has registered).
-    if !shared.can_issue_command(peer_addr, command) {
-        log::debug!("{}: Unexpected command {:?}", peer_addr, command);
-        if command == Command::User {
-            shared.send_reply(peer_addr, rpl::ERR_ALREADYREGISTRED, &[lines::RATELIMIT]);
-        }
-        return Ok(());
+fn handle_buffer(peer_addr: &SocketAddr, buf: Vec<u8>, shared: State) -> io::Result<()> {
+    if buf.is_empty() {
+        return Err(io::Error::new(io::ErrorKind::UnexpectedEof, "eof"));
     }
 
-    if !msg.has_enough_params() {
-        log::debug!("{}: Incomplete message {:?}", peer_addr, msg);
-        let num_params = msg.params().count();
-        if command == Command::Nick {
-            shared.send_reply(peer_addr, rpl::ERR_NONICKNAMEGIVEN, &[lines::NO_NICKNAME_GIVEN]);
-        } else if (command == Command::PrivMsg || command == Command::Notice) && num_params == 0 {
-            shared.send_reply(peer_addr, rpl::ERR_NORECIPIENT, &[lines::NO_RECIPIENT]);
-        } else if (command == Command::PrivMsg || command == Command::Notice) && num_params == 1 {
-            shared.send_reply(peer_addr, rpl::ERR_NOTEXTTOSEND, &[lines::NO_TEXT_TO_SEND]);
-        } else {
-            shared.send_reply(peer_addr, rpl::ERR_NEEDMOREPARAMS,
-                              &[command.as_str(), lines::NEED_MORE_PARAMS]);
-        }
-        return Ok(());
-    }
+    let buf = String::from_utf8(buf)
+        .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "doesn't speak utf-8"))?;
 
-    let mut ps = msg.params();
-    match command {
-        Command::Admin => shared.cmd_admin(peer_addr),
-        Command::Info => shared.cmd_info(peer_addr),
-        Command::Invite => shared.cmd_invite(peer_addr, ps.next().unwrap(), ps.next().unwrap()),
-        Command::Join => shared.cmd_join(peer_addr, ps.next().unwrap(), ps.next()),
-        Command::List => shared.cmd_list(peer_addr, ps.next()),
-        Command::Lusers => shared.cmd_lusers(peer_addr),
-        Command::Mode => shared.cmd_mode(peer_addr, ps.next().unwrap(), ps.next(), ps),
-        Command::Motd => shared.cmd_motd(peer_addr),
-        Command::Names => shared.cmd_names(peer_addr, ps.next()),
-        Command::Nick => shared.cmd_nick(peer_addr, ps.next().unwrap()),
-        Command::Notice => shared.cmd_notice(peer_addr, ps.next().unwrap(), ps.next().unwrap()),
-        Command::Oper => shared.cmd_oper(peer_addr, ps.next().unwrap(), ps.next().unwrap()),
-        Command::Part => shared.cmd_part(peer_addr, ps.next().unwrap(), ps.next()),
-        Command::Pass => shared.cmd_pass(peer_addr, ps.next().unwrap()),
-        Command::Ping => shared.send_command(peer_addr, Command::Pong, &[ps.next().unwrap()]),
-        Command::Pong => {},
-        Command::PrivMsg => shared.cmd_privmsg(peer_addr, ps.next().unwrap(), ps.next().unwrap()),
-        Command::Quit => {
-            shared.cmd_quit(peer_addr, ps.next());
-            return Err(io::Error::new(io::ErrorKind::Other, "but I just wanted to quit..."));
-        },
-        Command::Time => shared.cmd_time(peer_addr),
-        Command::Topic => shared.cmd_topic(peer_addr, ps.next().unwrap(), ps.next()),
-        Command::User => {
-            let user = ps.next().unwrap();
-            // https://tools.ietf.org/html/rfc2812.html#section-3.1.3
-            let mode: u8 = ps.next().unwrap().parse().unwrap_or_default();
-            let _ = ps.next().unwrap();
-            let real = ps.next().unwrap();
-            shared.cmd_user(peer_addr, user, real, mode & 8 != 0, mode & 4 != 0);
-        },
-        Command::Version => shared.cmd_version(peer_addr),
-        // Message::parse doesn't return a message with a Command::Reply.
-        Command::Reply(_) => unreachable!(),
+    if let Ok(Some(msg)) = Message::parse(&buf) {
+        shared.handle_message(peer_addr, msg);
     }
     Ok(())
 }

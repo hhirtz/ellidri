@@ -1,14 +1,11 @@
 [package]
 name = "ellidri"
-version = "0.7.0"
-authors = ["Taiite <hubert.hirtz@laposte.net>"]
+version = "1.0.0-alpha"
+authors = ["Hubert Hirtz <hubert.hirtz@laposte.net>"]
 edition = "2018"
 
 [features]
 default = []
-
-# Enables chanmode P
-irdille = ["rand", "regex"]
 
 [dependencies]
 # Runtime
@@ -18,23 +15,8 @@ tokio = "0.1"
 tokio-tls = "0.2"
 
 # Logging
-env_logger = { version = "0.6", default-features = false }
-log = "0.4"
-
-# Config
-serde = { version = "1", features = ["derive"] }
-toml = "0.5"
+env_logger = { version = "0.7", default-features = false }
+log = { version = "0.4", features = ["max_level_debug", "release_max_level_info"] }
 
 # Time
 chrono = "0.4"
-
-# feature = irdille
-regex = { version = "1", optional = true }
-rand = { version = "0.6", optional = true }
-
-[dev-dependencies]
-criterion = "0.2"
-
-[[bench]]
-name = "message"
-harness = false

@@ -1,11 +1,7 @@
-use std::collections::{HashMap, HashSet};
-use std::net::SocketAddr;
-
-#[cfg(feature = "irdille")]
-use regex::Regex;
-
 use crate::message::{MessageBuffer, Reply, rpl};
 use crate::modes;
+use std::collections::{HashMap, HashSet};
+use std::net::SocketAddr;
 
 /// Modes applied to clients on a per-channel basis.
 ///
@@ -51,17 +47,11 @@ pub struct Channel {
     pub invitation_mask: HashSet<String>,
 
     // Modes: https://tools.ietf.org/html/rfc2811.html#section-4.2
-    pub anonymous: bool,
     pub invite_only: bool,
     pub moderated: bool,
     pub no_privmsg_from_outside: bool,
-    pub quiet: bool,
     pub secret: bool,
-    pub reop: bool,
     pub topic_restricted: bool,
-
-    #[cfg(feature = "irdille")]
-    pub msg_modifier: Vec<(f64, Regex, String)>,
 }
 
 impl Channel {
@@ -90,7 +80,7 @@ impl Channel {
     }
 
     pub fn list_entry(&self, msg: MessageBuffer<'_>) {
-        msg.param(self.members.len().to_string())
+        msg.param(&self.members.len().to_string())
             .trailing_param(self.topic.as_ref().map(|s| s.as_ref()).unwrap_or(""));
     }
 
@@ -100,11 +90,11 @@ impl Channel {
             && !self.invitation_mask.contains(nick)
     }
 
-    pub fn is_invited(&self, addr: SocketAddr, nick: &str) -> bool {
+    pub fn is_invited(&self, addr: &SocketAddr, nick: &str) -> bool {
         !self.invite_only || self.invites.contains(&addr) || self.invitation_mask.contains(nick)
     }
 
-    pub fn can_talk(&self, addr: SocketAddr) -> bool {
+    pub fn can_talk(&self, addr: &SocketAddr) -> bool {
         if self.moderated {
             self.members.get(&addr).map(|m| m.voice || m.operator).unwrap_or(false)
         } else {
@@ -115,27 +105,20 @@ impl Channel {
     pub fn modes(&self, mut out: MessageBuffer<'_>, full_info: bool) {
         let modes = out.raw_param();
         modes.push('+');
-        if self.anonymous { modes.push('a'); }
         if self.invite_only { modes.push('i'); }
         if self.moderated { modes.push('m'); }
         if self.no_privmsg_from_outside { modes.push('n'); }
-        if self.quiet { modes.push('q'); }
-        if self.reop { modes.push('r'); }
         if self.secret { modes.push('s'); }
         if self.topic_restricted { modes.push('t'); }
         if self.user_limit.is_some() { modes.push('l'); }
         if self.key.is_some() { modes.push('k'); }
 
-        #[cfg(feature = "irdille")] {
-            if !self.msg_modifier.is_empty() { modes.push('P'); }
-        }
-
         if full_info {
             if let Some(user_limit) = self.user_limit {
-                out = out.param(user_limit.to_string());
+                out = out.param(&user_limit.to_string());
             }
             if let Some(ref key) = self.key {
-                out = out.param(key.to_owned());
+                out = out.param(&key.to_owned());
             }
         }
         out.build();
@@ -148,10 +131,6 @@ impl Channel {
         use modes::ChannelModeChange::*;
         let mut applied = false;
         match change {
-            Anonymous(value) => {
-                applied = self.anonymous != value;
-                self.anonymous = value;
-            },
             InviteOnly(value) => {
                 applied = self.invite_only != value;
                 self.invite_only = value;
@@ -163,10 +142,6 @@ impl Channel {
             NoPrivMsgFromOutside(value) => {
                 applied = self.no_privmsg_from_outside != value;
                 self.no_privmsg_from_outside = value;
-            },
-            Quiet(value) => {
-                applied = self.quiet != value;
-                self.quiet = value;
             },
             Secret(value) => {
                 applied = self.secret != value;
@@ -246,42 +221,6 @@ impl Channel {
                     return Err(rpl::ERR_USERNOTINCHANNEL);
                 }
             },
-
-            #[cfg(feature = "irdille")]
-            MsgModifier(Some(p)) => {
-                applied = true;
-                let mut modifiers = Vec::new();
-                let mut split = p.split("||");
-                loop {
-                    let proba = if let Some(p) = split.next().and_then(|s| s.parse().ok()) {
-                        if 0.0 <= p && p <= 1.0 {
-                            p
-                        } else {
-                            break;
-                        }
-                    } else {
-                        break;
-                    };
-                    let regex = if let Some(r) = split.next().and_then(|s| Regex::new(s).ok()) {
-                        r
-                    } else {
-                        break;
-                    };
-                    let repl = if let Some(r) = split.next() {
-                        r.to_owned()
-                    } else {
-                        break;
-                    };
-                    modifiers.push((proba, regex, repl));
-                }
-                self.msg_modifier = modifiers;
-            },
-            #[cfg(feature = "irdille")]
-            MsgModifier(None) => {
-                applied = !self.msg_modifier.is_empty();
-                self.msg_modifier = Vec::new();
-            },
-
             _ => {},
         }
         Ok(applied)
