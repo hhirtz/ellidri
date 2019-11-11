@@ -6,6 +6,7 @@ pub struct StateConfig {
 
     pub default_chan_mode: String,
     pub motd_file: Option<String>,
+    pub password: Option<String>,
 
     pub org_name: String,
     pub org_location: String,
@@ -68,6 +69,11 @@ fn add_setting(config: &mut Config, key: &str, value: &str, lineno: u32) {
             format_error(lineno, "duplicate motd_file setting");
         }
         config.srv.motd_file = Some(value.to_owned());
+    } else if key == "password" {
+        if config.srv.password.is_some() {
+            format_error(lineno, "duplicate password setting");
+        }
+        config.srv.password = Some(value.to_owned());
     } else if key == "org_name" {
         if !config.srv.org_name.is_empty() {
             format_error(lineno, "duplicate org_name setting");

@@ -72,7 +72,7 @@ struct StateInner {
     motd: Option<String>,
 
     /// The global password. Clients need to issue a PASS command with this password to register.
-    //password: Option<String>,
+    password: Option<String>,
 
     /// Modes applied at the creation of new channels.
     default_chan_mode: String,
@@ -99,7 +99,7 @@ impl StateInner {
             channels: HashMap::new(),
             created_at: time_now(),
             motd,
-            //password: config.password,
+            password: config.password,
             default_chan_mode: config.default_chan_mode,
             //opers: config.opers,
         }
@@ -925,11 +925,9 @@ impl StateInner {
     // PASS
 
     fn cmd_pass(&mut self, addr: &net::SocketAddr, pass: &str) {
-/*
         if self.password.as_ref().map_or(false, |p| p == pass) {
             self.clients.get_mut(&addr).unwrap().has_given_password = true;
         }
-// */
     }
 
     // PING

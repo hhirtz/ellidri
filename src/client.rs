@@ -210,6 +210,10 @@ impl ConnectionState {
                 ConnectionState::Quit => Err(""),
                 _ => Ok(ConnectionState::Quit),
             }
+            Command::Pass => match self {
+                ConnectionState::Registered | ConnectionState::Quit => Err(""),
+                _ => Ok(self),
+            }
             _ => match self {
                 ConnectionState::Registered => Ok(self),
                 ConnectionState::Quit => Err(""),
