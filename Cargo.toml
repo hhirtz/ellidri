@@ -4,9 +4,6 @@ version = "1.0.0-alpha"
 authors = ["Hubert Hirtz <hubert.hirtz@laposte.net>"]
 edition = "2018"
 
-[features]
-default = []
-
 [dependencies]
 # Runtime
 futures = "0.1"

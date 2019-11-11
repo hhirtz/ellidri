@@ -106,10 +106,12 @@ impl StateInner {
     }
 
     pub fn peer_joined(&mut self, addr: net::SocketAddr, queue: MessageQueue) {
+        log::debug!("{}: Connected", addr);
         self.clients.insert(addr, Client::new(queue, addr.to_string()));
     }
 
     pub fn peer_quit(&mut self, addr: &net::SocketAddr, err: Option<io::Error>) {
+        log::debug!("{}: Disconnected", addr);
         if let Some(client) = self.clients.remove(addr) {
             self.remove_client(addr, client, err.map(|err| err.to_string()));
         }
@@ -1125,7 +1127,8 @@ fn is_valid_nickname(s: &str) -> bool {
             || (0x5b <= c && c <= 0x60)
             || (0x7b <= c && c <= 0x7d)
     };
-    s.len() <= MAX_NICKNAME_LENGTH
+    !s.is_empty()
+        && s.len() <= MAX_NICKNAME_LENGTH
         && s.iter().all(is_valid_nickname_char)
         && s[0] != b'-' && !(b'0' <= s[0] && s[0] <= b'9')
 }

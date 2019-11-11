@@ -172,7 +172,6 @@ macro_rules! commands {
     }
 }
 
-//*
 commands! {
     Admin => 0,
     Info => 0,
@@ -197,7 +196,6 @@ commands! {
     User => 4,
     Version => 0,
 }
-// */
 
 /// An iterator over the parameters of a message. Use with `Message::params`.
 #[derive(Clone)]
@@ -213,8 +211,15 @@ impl<'a> Iterator for Params<'a> {
         if self.buf.is_empty() {
             None
         } else if self.buf.as_bytes()[0] == b':' {
-            self.buf = &self.buf[1..];  // Discard the ':'
-            Some(mem::replace(&mut self.buf, ""))
+            if self.buf.len() > 1 {
+                // Trailing parameter
+                self.buf = &self.buf[1..];
+                Some(mem::replace(&mut self.buf, ""))
+            } else {
+                // Trailing parameter but it's empty.
+                self.buf = "";
+                None
+            }
         } else {
             let mut words = self.buf.splitn(2, char::is_whitespace);
             let next = words.next().unwrap();
@@ -335,11 +340,11 @@ impl<'a> Message<'a> {
     /// ```rust
     /// use ellidri::message::Message;
     ///
-    /// let nick = Message::parse("NICK i suck dice").unwrap().unwrap();
+    /// let nick = Message::parse("NICK soos issi").unwrap().unwrap();
     /// assert_eq!(nick.has_enough_params(), true);
     ///
     /// let nick = Message::parse("NICK :").unwrap().unwrap();
-    /// assert_eq!(nick.has_enough_params(), true);
+    /// assert_eq!(nick.has_enough_params(), false);
     ///
     /// let nick = Message::parse("NICK").unwrap().unwrap();
     /// assert_eq!(nick.has_enough_params(), false);
