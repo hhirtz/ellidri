@@ -7,6 +7,7 @@ pub struct StateConfig {
     pub default_chan_mode: String,
     pub motd_file: Option<String>,
     pub password: Option<String>,
+    pub opers: Vec<(String, String)>,
 
     pub org_name: String,
     pub org_location: String,
@@ -74,6 +75,13 @@ fn add_setting(config: &mut Config, key: &str, value: &str, lineno: u32) {
             format_error(lineno, "duplicate password setting");
         }
         config.srv.password = Some(value.to_owned());
+    } else if key == "oper" {
+        let mut words = value.split_whitespace();
+        let oper_name = words.next().unwrap();
+        let oper_pass = words.next().unwrap_or_else(|| {
+            format_error(lineno, "oper must follow the format 'oper <name> <password>'");
+        });
+        config.srv.opers.push((oper_name.to_owned(), oper_pass.to_owned()));
     } else if key == "org_name" {
         if !config.srv.org_name.is_empty() {
             format_error(lineno, "duplicate org_name setting");

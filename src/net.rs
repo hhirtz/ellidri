@@ -1,4 +1,3 @@
-use crate::lines;
 use crate::message::Message;
 use crate::state::State;
 use futures::sync::mpsc;

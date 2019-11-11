@@ -77,7 +77,7 @@ struct StateInner {
     /// Modes applied at the creation of new channels.
     default_chan_mode: String,
 
-    //opers: Vec<(String, String)>,
+    opers: Vec<(String, String)>,
 }
 
 impl StateInner {
@@ -101,7 +101,7 @@ impl StateInner {
             motd,
             password: config.password,
             default_chan_mode: config.default_chan_mode,
-            //opers: config.opers,
+            opers: config.opers,
         }
     }
 
@@ -872,7 +872,6 @@ impl StateInner {
     // OPER
 
     fn cmd_oper(&mut self, addr: &net::SocketAddr, name: &str, password: &str) {
-        /*
         // TODO oper_hosts
         if !self.opers.iter().any(|(n, p)| n == name && p == password) {
             self.send_reply(addr, rpl::ERR_PASSWDMISMATCH, &[lines::PASSWORD_MISMATCH]);
@@ -890,8 +889,7 @@ impl StateInner {
             .param(client.nick())
             .param(lines::YOURE_OPER)
             .build();
-        client.send(response.build());
-        // */
+        client.send(MessageQueueItem::from(response));
     }
 
     // PART
