@@ -94,7 +94,7 @@ fn handle_buffer(peer_addr: &SocketAddr, buf: Vec<u8>, shared: State) -> io::Res
     let buf = String::from_utf8(buf)
         .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "doesn't speak utf-8"))?;
 
-    if let Ok(Some(msg)) = Message::parse(&buf) {
+    if let Some(msg) = Message::parse(&buf) {
         shared.handle_message(peer_addr, msg);
     }
     Ok(())

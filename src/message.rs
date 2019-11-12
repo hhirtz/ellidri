@@ -1,7 +1,7 @@
 pub use rpl::Reply;
-use std::{iter, mem};
 
 const MAX_MESSAGE_LENGTH: usize = 512;
+const MAX_PARAMS: usize = 14;
 
 /// The list of IRC replies.
 ///
@@ -80,6 +80,22 @@ pub mod rpl {
 
     pub const ERR_UMODEUNKNOWNFLAG: Reply = "501";  // :Unknown mode flag
     pub const ERR_USERSDONTMATCH: Reply   = "502";  // :Can't change mode for other users
+}
+
+fn parse_word(s: &str) -> (&str, &str) {
+    let mut split = s.splitn(2, ' ')
+        .map(str::trim)
+        .filter(|s| !s.is_empty());
+    (split.next().unwrap_or(""), split.next().unwrap_or(""))
+}
+
+fn parse_prefix(buf: &str) -> (Option<&str>, &str) {
+    if buf.starts_with(':') {
+        let (prefix, rest) = parse_word(buf);
+        (Some(&prefix[1..]), rest)
+    } else {
+        (None, buf.trim_start())
+    }
 }
 
 macro_rules! commands {
@@ -174,6 +190,7 @@ macro_rules! commands {
 
 commands! {
     Admin => 0,
+    Cap => 1,
     Info => 0,
     Invite => 2,
     Join => 1,
@@ -197,59 +214,11 @@ commands! {
     Version => 0,
 }
 
-/// An iterator over the parameters of a message. Use with `Message::params`.
-#[derive(Clone)]
-pub struct Params<'a> {
-    /// What is left to be parsed. Must be trimmed.
-    buf: &'a str,
-}
-
-impl<'a> Iterator for Params<'a> {
-    type Item = &'a str;
-
-    fn next(&mut self) -> Option<&'a str> {
-        if self.buf.is_empty() {
-            None
-        } else if self.buf.as_bytes()[0] == b':' {
-            if self.buf.len() > 1 {
-                // Trailing parameter
-                self.buf = &self.buf[1..];
-                Some(mem::replace(&mut self.buf, ""))
-            } else {
-                // Trailing parameter but it's empty.
-                self.buf = "";
-                None
-            }
-        } else {
-            let mut words = self.buf.splitn(2, char::is_whitespace);
-            let next = words.next().unwrap();
-            self.buf = words.next().unwrap_or("").trim_start();
-            Some(next)
-        }
-    }
-
-    fn size_hint(&self) -> (usize, Option<usize>) {
-        if self.buf.is_empty() {
-            (0, Some(0))
-        } else {
-            (1, None)
-        }
-    }
-}
-
-impl iter::FusedIterator for Params<'_> {}
-
-fn next_word(s: &str) -> (&str, Option<&str>) {
-    let mut split = s.splitn(2, ' ')
-        .map(str::trim)
-        .filter(|s| !s.is_empty());
-    (split.next().unwrap_or(""), split.next())
-}
-
 pub struct Message<'a> {
     pub prefix: Option<&'a str>,
     pub command: Result<Command, &'a str>,
-    pub params: Params<'a>
+    pub num_params: usize,
+    pub params: [&'a str; MAX_PARAMS],
 }
 
 impl<'a> Message<'a> {
@@ -257,29 +226,6 @@ impl<'a> Message<'a> {
     ///
     /// Relevant source of information:
     /// https://tools.ietf.org/html/rfc2812.html#section-2.3
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// use ellidri::message::{Command, Message};
-    ///
-    /// let msg = Message::parse(":kawai PRIVMSG #kekbab :You must be joking!")
-    ///     .unwrap()   // The message was parsed successfully.
-    ///     .unwrap();  // The message is not empty.
-    /// let mut params = msg.params();
-    ///
-    /// assert_eq!(msg.prefix(), Some("kawai"));
-    /// assert_eq!(msg.command(), Ok(Command::PrivMsg));
-    /// assert_eq!(params.next(), Some("#kekbab"));  // First parameter.
-    /// assert_eq!(params.next(), Some("You must be joking!"));  // Second parameter.
-    /// assert_eq!(params.next(), None);  // There is no third parameter.
-    ///
-    /// let unknown = Message::parse("waitwhat #admin hello there")
-    ///     .unwrap().unwrap();
-    ///
-    /// assert_eq!(unknown.prefix(), None);
-    /// assert_eq!(unknown.command(), Err("waitwhat"));  // Unknown command.
-    /// ```
     ///
     /// # Return value
     ///
@@ -296,51 +242,52 @@ impl<'a> Message<'a> {
     ///
     /// assert!(empty.unwrap().is_none());
     /// ```
-    pub fn parse(s: &'a str) -> Result<Option<Message<'a>>, ()>
+    pub fn parse(s: &'a str) -> Option<Message<'a>>
     {
         let mut buf = s.trim();
-        let mut prefix = None;
-
         if buf.is_empty() {
-            return Ok(None);
+            return None;
         }
 
-        if buf.starts_with(':') {
-            match next_word(buf) {
-                (word, Some(rest)) => {
-                    prefix = Some(&word[1..]);
-                    buf = rest;
-                }
-                (_, None) => {
-                    return Err(());
-                }
-            }
-        }
+        let (prefix, rest) = parse_prefix(buf);
+        buf = rest;
 
-        let (command_string, rest) = next_word(buf);
-
+        let (command_string, rest) = parse_word(buf);
         let command = if let Some(cmd) = Command::parse(command_string) {
             Ok(cmd)
         } else {
             Err(command_string)
         };
+        buf = rest;
 
-        let params = Params { buf: rest.unwrap_or("") };
+        let mut params = [""; MAX_PARAMS];
+        let mut num_params = 0;
+        while num_params < 14 {
+            if buf.is_empty() {
+                break;
+            }
+            if buf.starts_with(':') {
+                params[num_params] = &buf[1..];
+                buf = "";
+            } else {
+                let (word, rest) = parse_word(buf);
+                params[num_params] = word;
+                buf = rest;
+            }
+            num_params += 1;
+        }
 
-        Ok(Some(Message { prefix, command, params }))
+        Some(Message { prefix, command, num_params, params })
     }
 
     /// Returns true if the message has enough parameters for its command.
-    ///
-    /// Also returns true if the message has too much parameters for its command. false is only
-    /// returned when there's not enough of them.
     ///
     /// # Example
     ///
     /// ```rust
     /// use ellidri::message::Message;
     ///
-    /// let nick = Message::parse("NICK soos issi").unwrap().unwrap();
+    /// let nick = Message::parse("NICK hello there").unwrap().unwrap();
     /// assert_eq!(nick.has_enough_params(), true);
     ///
     /// let nick = Message::parse("NICK :").unwrap().unwrap();
@@ -351,7 +298,7 @@ impl<'a> Message<'a> {
     /// ```
     pub fn has_enough_params(&self) -> bool {
         match self.command {
-            Ok(cmd) => cmd.required_params() <= self.params.clone().count(),
+            Ok(cmd) => cmd.required_params() <= self.num_params,
             Err(_) => false,
         }
     }
