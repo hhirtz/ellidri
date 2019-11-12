@@ -56,6 +56,7 @@ pub mod rpl {
     pub const ERR_NOSUCHNICK: Reply       = "401";  // <nick> :No such nick/channel
     pub const ERR_NOSUCHCHANNEL: Reply    = "403";  // <channel> :No such channel
     pub const ERR_CANNOTSENDTOCHAN: Reply = "404";  // <channel> :Cannot send to channel
+    pub const ERR_INVALIDCAPCMD: Reply    = "410";  // <command> :Unknown cap command
     pub const ERR_NORECIPIENT: Reply      = "411";  // :No recipient given
     pub const ERR_NOTEXTTOSEND: Reply     = "412";  // :No text to send
     pub const ERR_UNKNOWNCOMMAND: Reply   = "421";  // <command> :Unknown command
@@ -309,6 +310,13 @@ pub struct MessageBuffer<'a> {
 }
 
 impl<'a> MessageBuffer<'a> {
+    fn new<C>(buf: &'a mut String, command: C) -> MessageBuffer<'a>
+        where C: Into<Command>
+    {
+        buf.push_str(command.into().as_str());
+        MessageBuffer { buf }
+    }
+
     fn with_prefix<C>(buf: &'a mut String, prefix: &str, command: C) -> MessageBuffer<'a>
         where C: Into<Command>
     {
@@ -377,24 +385,30 @@ impl ResponseBuffer {
         self.buf.is_empty()
     }
 
-    pub fn message<C>(&mut self, prefix: &str, command: C) -> MessageBuffer<'_>
+    pub fn message<C>(&mut self, command: C) -> MessageBuffer<'_>
+        where C: Into<Command>
+    {
+        MessageBuffer::new(&mut self.buf, command)
+    }
+
+    pub fn prefixed_message<C>(&mut self, prefix: &str, command: C) -> MessageBuffer<'_>
         where C: Into<Command>
     {
         MessageBuffer::with_prefix(&mut self.buf, prefix, command)
     }
 
-    pub fn list<I, F>(&mut self, prefix: &str, item_reply: Reply, end_reply: Reply,
-                      end_line: &str, list: I, mut map: F)
+    pub fn reply_list<I, F>(&mut self, prefix: &str, item_reply: Reply, end_reply: Reply,
+                            end_line: &str, list: I, mut map: F)
         where I: IntoIterator,
               I::Item: AsRef<str>,
               F: FnMut(MessageBuffer<'_>) -> MessageBuffer<'_>
     {
         for item in list {
-            map(self.message(prefix, item_reply))
+            map(self.prefixed_message(prefix, item_reply))
                 .param(item.as_ref())
                 .build();
         }
-        map(self.message(prefix, end_reply))
+        map(self.prefixed_message(prefix, end_reply))
             .trailing_param(end_line);
     }
 

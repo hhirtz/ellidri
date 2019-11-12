@@ -17,3 +17,6 @@ log = { version = "0.4", features = ["max_level_debug", "release_max_level_info"
 
 # Time
 chrono = "0.4"
+
+# Capabilities
+lazy_static = "1"

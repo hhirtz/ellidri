@@ -6,6 +6,9 @@ pub struct UniCase<S: ?Sized>(pub S);
 
 impl<'a> From<&'a str> for &'a UniCase<str> {
     fn from(s: &'a str) -> &'a UniCase<str> {
+        // Because of #[repr(transparent)],
+        // Unicase<str> and str have the same memory representation
+        // So the cast `as *const Unicase<str>` must work.
         unsafe { &*(s as *const str as *const UniCase<str>) }
     }
 }

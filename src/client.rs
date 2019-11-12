@@ -4,8 +4,8 @@ use crate::message::{Command, MessageBuffer, ResponseBuffer};
 use crate::modes;
 use futures::sync::mpsc;
 use std::sync::Arc;
-
-const FULL_NAME_LENGTH: usize = 63;
+use std::collections::HashSet;
+use std::str::SplitWhitespace;
 
 #[derive(Clone)]
 pub struct MessageQueueItem(Arc<[u8]>);
@@ -116,8 +116,48 @@ impl ConnectionState {
     }
 }
 
-pub struct Capabilities {
+pub const CAP_LS: &str = "";
+lazy_static::lazy_static! {
+    static ref CAPABILITIES: HashSet<&'static str> = ["cap-notify"].iter().cloned().collect();
 }
+
+#[derive(Default)]
+pub struct Capabilities {
+    pub v302: bool,
+    pub cap_notify: bool,
+}
+
+pub struct CapQuery<'a> {
+    inner: SplitWhitespace<'a>,
+}
+
+impl<'a> CapQuery<'a> {
+    pub fn parse(s: &'a str) -> Self {
+        Self {
+            inner: s.split_whitespace(),
+        }
+    }
+}
+
+impl<'a> Iterator for CapQuery<'a> {
+    type Item = (&'a str, bool);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.inner.next().map(|word| {
+            if word.starts_with('-') {
+                (&word[1..], false)
+            } else {
+                (word, true)
+            }
+        })
+    }
+}
+
+pub fn are_supported_capabilities(capabilities: &str) -> bool {
+    CapQuery::parse(capabilities).all(|(cap,  _)| CAPABILITIES.contains(cap))
+}
+
+const FULL_NAME_LENGTH: usize = 63;
 
 /// Client data.
 pub struct Client {
@@ -127,9 +167,7 @@ pub struct Client {
     /// currently unbounded, meaning sending messages to this channel do not block.
     queue: MessageQueue,
 
-
-    /// Set of capabilities enabled by the client, or `None` if it does not support capabilities.
-    capabilities: Option<Capabilities>,
+    capabilities: Capabilities,
     state: ConnectionState,
 
     nick: String,
@@ -164,7 +202,7 @@ impl Client {
             nick: String::from("*"),
             host,
             full_name,
-            capabilities: None,
+            capabilities: Capabilities::default(),
             state: ConnectionState::default(),
             user: String::new(),
             real: String::new(),
@@ -174,6 +212,25 @@ impl Client {
             registered: false,
             operator: false,
         }
+    }
+
+    pub fn update_capabilities(&mut self, capabilities: &str) {
+        for (capability, enable) in CapQuery::parse(capabilities) {
+            match capability {
+                "cap-notify" => self.capabilities.cap_notify = enable,
+                _ => {}
+            }
+        }
+    }
+
+    pub fn write_capabilites(&self, response: &mut ResponseBuffer) {
+        let mut msg = response.message(Command::Cap);
+        let trailing = msg.raw_trailing_param();
+        if self.capabilities.cap_notify {
+            trailing.push_str("cap-notify");
+            trailing.push(' ');
+        }
+        trailing.pop();
     }
 
     /// Change the connection state of the client given the command it just sent.
@@ -245,7 +302,7 @@ impl Client {
         self.state
     }
 
-    pub fn modes(&self, mut out: MessageBuffer<'_>) {
+    pub fn write_modes(&self, mut out: MessageBuffer<'_>) {
         let modes = out.raw_param();
         modes.push('+');
         if self.away { modes.push('a'); }
