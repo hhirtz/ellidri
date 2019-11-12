@@ -1,6 +1,6 @@
 //! Client management and connection state.
 
-use crate::message::{Command, MessageBuffer, Reply, rpl, ResponseBuffer};
+use crate::message::{Command, MessageBuffer, ResponseBuffer};
 use crate::modes;
 use futures::sync::mpsc;
 use std::sync::Arc;
@@ -30,6 +30,95 @@ impl AsRef<[u8]> for MessageQueueItem {
 
 pub type MessageQueue = mpsc::UnboundedSender<MessageQueueItem>;
 
+/// A state machine that represent the connection with a client. It keeps track of what message the
+/// client can send.
+///
+/// For example, a client that has only sent a "NICK" message cannot send a "JOIN" message.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum ConnectionState {
+    ConnectionEstablished,
+    NickGiven,
+    UserGiven,
+    CapGiven,
+    CapNickGiven,
+    CapUserGiven,
+    CapNegotiation,
+    Registered,
+    Quit,
+}
+
+impl Default for ConnectionState {
+    fn default() -> ConnectionState {
+        ConnectionState::ConnectionEstablished
+    }
+}
+
+impl ConnectionState {
+    pub fn apply(self, command: Command, sub_command: &str) -> Result<ConnectionState, ()> {
+        match self {
+            ConnectionState::ConnectionEstablished => match command {
+                Command::Cap if sub_command == "LS" => Ok(ConnectionState::CapGiven),
+                Command::Pass => Ok(self),
+                Command::Nick => Ok(ConnectionState::NickGiven),
+                Command::User => Ok(ConnectionState::UserGiven),
+                Command::Quit => Ok(ConnectionState::Quit),
+                _ => Err(()),
+            }
+            ConnectionState::NickGiven => match command {
+                Command::Nick | Command::Pass => Ok(self),
+                Command::User => Ok(ConnectionState::Registered),
+                Command::Quit => Ok(ConnectionState::Quit),
+                _ => Err(()),
+            }
+            ConnectionState::UserGiven => match command {
+                Command::Pass => Ok(self),
+                Command::Nick => Ok(ConnectionState::Registered),
+                Command::Quit => Ok(ConnectionState::Quit),
+                _ => Err(()),
+            }
+            ConnectionState::CapGiven => match command {
+                Command::Pass => Ok(self),
+                Command::Nick => Ok(ConnectionState::CapNickGiven),
+                Command::User => Ok(ConnectionState::CapUserGiven),
+                Command::Quit => Ok(ConnectionState::Quit),
+                _ => Err(()),
+            }
+            ConnectionState::CapNickGiven => match command {
+                Command::Pass | Command::Nick => Ok(self),
+                Command::User => Ok(ConnectionState::CapNegotiation),
+                Command::Quit => Ok(ConnectionState::Quit),
+                _ => Err(()),
+            }
+            ConnectionState::CapUserGiven => match command {
+                Command::Pass => Ok(self),
+                Command::Nick => Ok(ConnectionState::CapNegotiation),
+                Command::Quit => Ok(ConnectionState::Quit),
+                _ => Err(()),
+            }
+            ConnectionState::CapNegotiation => match command {
+                Command::Pass | Command::Nick => Ok(self),
+                Command::Cap if sub_command == "END" => Ok(ConnectionState::Registered),
+                Command::Cap => Ok(self),
+                Command::Quit => Ok(ConnectionState::Quit),
+                _ => Err(()),
+            }
+            ConnectionState::Registered => match command {
+                Command::Pass | Command::User => Err(()),
+                Command::Quit => Ok(ConnectionState::Quit),
+                _ => Ok(self),
+            }
+            ConnectionState::Quit => Err(()),
+        }
+    }
+
+    pub fn is_registered(self) -> bool {
+        self == ConnectionState::Registered
+    }
+}
+
+pub struct Capabilities {
+}
+
 /// Client data.
 pub struct Client {
     /// The queue of messages to be sent to the client.
@@ -38,7 +127,11 @@ pub struct Client {
     /// currently unbounded, meaning sending messages to this channel do not block.
     queue: MessageQueue,
 
+
+    /// Set of capabilities enabled by the client, or `None` if it does not support capabilities.
+    capabilities: Option<Capabilities>,
     state: ConnectionState,
+
     nick: String,
     user: String,
     real: String,
@@ -71,6 +164,7 @@ impl Client {
             nick: String::from("*"),
             host,
             full_name,
+            capabilities: None,
             state: ConnectionState::default(),
             user: String::new(),
             real: String::new(),
@@ -88,16 +182,16 @@ impl Client {
     ///
     /// This function panics if the command cannot be issued in the client current state.
     /// `Client::can_issue_command` should be called before.
-    pub fn apply_command(&mut self, cmd: Command) -> ConnectionState {
-        self.state = self.state.apply(cmd).unwrap();
+    pub fn apply_command(&mut self, command: Command, sub_command: &str) -> ConnectionState {
+        self.state = self.state.apply(command, sub_command).unwrap();
         self.state
     }
 
     /// Whether or not the client can issue the given command.
     ///
     /// This function does not change the connection state.
-    pub fn can_issue_command(&self, cmd: Command) -> bool {
-        self.state.apply(cmd).is_ok()
+    pub fn can_issue_command(&self, command: Command, sub_command: &str) -> bool {
+        self.state.apply(command, sub_command).is_ok()
     }
 
     pub fn is_registered(&self) -> bool {
@@ -170,59 +264,5 @@ impl Client {
             },
         }
         applied
-    }
-}
-
-/// A state machine that represent the connection with a client. It keeps track of what message the
-/// client can send.
-///
-/// For example, a client that has only sent a "NICK" message cannot send a "JOIN" message.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub enum ConnectionState {
-    ConnectionEstablished,
-    NickGiven,
-    UserGiven,
-    Registered,
-    Quit,
-}
-
-impl Default for ConnectionState {
-    fn default() -> ConnectionState {
-        ConnectionState::ConnectionEstablished
-    }
-}
-
-impl ConnectionState {
-    pub fn apply(self, cmd: Command) -> Result<ConnectionState, Reply> {
-        match cmd {
-            Command::Nick => match self {
-                ConnectionState::ConnectionEstablished => Ok(ConnectionState::NickGiven),
-                ConnectionState::UserGiven => Ok(ConnectionState::Registered),
-                ConnectionState::Quit => Err(""),
-                _ => Ok(self),
-            }
-            Command::User => match self {
-                ConnectionState::ConnectionEstablished => Ok(ConnectionState::UserGiven),
-                ConnectionState::NickGiven => Ok(ConnectionState::Registered),
-                _ => Err(rpl::ERR_ALREADYREGISTRED),
-            }
-            Command::Quit => match self {
-                ConnectionState::Quit => Err(""),
-                _ => Ok(ConnectionState::Quit),
-            }
-            Command::Pass => match self {
-                ConnectionState::Registered | ConnectionState::Quit => Err(""),
-                _ => Ok(self),
-            }
-            _ => match self {
-                ConnectionState::Registered => Ok(self),
-                ConnectionState::Quit => Err(""),
-                _ => Err(rpl::ERR_NOTREGISTERED),
-            }
-        }
-    }
-
-    pub fn is_registered(self) -> bool {
-        self == ConnectionState::Registered
     }
 }

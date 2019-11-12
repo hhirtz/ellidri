@@ -1,7 +1,7 @@
 pub use rpl::Reply;
 
 const MAX_MESSAGE_LENGTH: usize = 512;
-const MAX_PARAMS: usize = 14;
+const MAX_PARAMS: usize = 15;
 
 /// The list of IRC replies.
 ///
