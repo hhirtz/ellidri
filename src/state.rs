@@ -1,7 +1,7 @@
 //! Shared state and API to handle incoming commands.
 
 use crate::channel::Channel;
-use crate::client::{Client, MessageQueue, MessageQueueItem, CAP_LS, are_supported_capabilities};
+use crate::client::{Client, MessageQueue, MessageQueueItem, are_supported_capabilities};
 use crate::config::StateConfig;
 use crate::lines;
 use crate::message::{Command, Message, Reply, rpl, ResponseBuffer};
@@ -410,15 +410,16 @@ impl StateInner {
     fn cmd_cap_list(&self, addr: &net::SocketAddr) -> bool {
         let client = &self.clients[addr];
         let mut response = ResponseBuffer::new();
-        client.write_capabilites(&mut response);
+        client.write_enabled_capabilities(&mut response);
         client.send(MessageQueueItem::from(response));
         true
     }
 
-    fn cmd_cap_ls(&self, addr: &net::SocketAddr) -> bool {
+    fn cmd_cap_ls(&mut self, addr: &net::SocketAddr, version: &str) -> bool {
+        let client = self.clients.get_mut(addr).unwrap();
         let mut response = ResponseBuffer::new();
-        response.message(Command::Cap).param("LS").trailing_param(CAP_LS);
-        let client = &self.clients[addr];
+        client.set_cap_version(version);
+        client.write_capabilites(&mut response);
         client.send(MessageQueueItem::from(response));
         true
     }
@@ -442,7 +443,7 @@ impl StateInner {
         match params[0] {
             "END" => true,
             "LIST" => self.cmd_cap_list(addr),
-            "LS" => self.cmd_cap_ls(addr),
+            "LS" => self.cmd_cap_ls(addr, *params.get(1).unwrap_or(&"")),
             "REQ" => self.cmd_cap_req(addr, *params.get(1).unwrap_or(&"")),
             _ => {
                 self.send_reply(addr, rpl::ERR_INVALIDCAPCMD, &[params[0], lines::UNKNOWN_COMMAND]);

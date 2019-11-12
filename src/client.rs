@@ -223,7 +223,13 @@ impl Client {
         }
     }
 
-    pub fn write_capabilites(&self, response: &mut ResponseBuffer) {
+    pub fn set_cap_version(&mut self, version: &str) {
+        if version == "302" {
+            self.capabilities.v302 = true;
+        }
+    }
+
+    pub fn write_enabled_capabilities(&self, response: &mut ResponseBuffer) {
         let mut msg = response.message(Command::Cap);
         let trailing = msg.raw_trailing_param();
         if self.capabilities.cap_notify {
@@ -231,6 +237,10 @@ impl Client {
             trailing.push(' ');
         }
         trailing.pop();
+    }
+
+    pub fn write_capabilities(&self, reponse: &mut ResponseBuffer) {
+        response.message(Command::Cap).param("LS").trailing_param(CAP_LS);
     }
 
     /// Change the connection state of the client given the command it just sent.
