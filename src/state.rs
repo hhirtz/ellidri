@@ -408,6 +408,7 @@ impl StateInner {
     // CAP
 
     fn cmd_cap_list(&self, addr: &net::SocketAddr) -> bool {
+        log::debug!("{}: CAP LIST", addr);
         let client = &self.clients[addr];
         let mut response = ResponseBuffer::new();
         client.write_enabled_capabilities(&mut response);
@@ -416,15 +417,17 @@ impl StateInner {
     }
 
     fn cmd_cap_ls(&mut self, addr: &net::SocketAddr, version: &str) -> bool {
+        log::debug!("{}: CAP LS {}", addr, version);
         let client = self.clients.get_mut(addr).unwrap();
         let mut response = ResponseBuffer::new();
         client.set_cap_version(version);
-        client.write_capabilites(&mut response);
+        client.write_capabilities(&mut response);
         client.send(MessageQueueItem::from(response));
         true
     }
 
     fn cmd_cap_req(&mut self, addr: &net::SocketAddr, capabilities: &str) -> bool {
+        log::debug!("{}: CAP REQ {}", addr, capabilities);
         let client = self.clients.get_mut(addr).unwrap();
         if !are_supported_capabilities(capabilities) {
             let mut response = ResponseBuffer::new();
@@ -446,6 +449,7 @@ impl StateInner {
             "LS" => self.cmd_cap_ls(addr, *params.get(1).unwrap_or(&"")),
             "REQ" => self.cmd_cap_req(addr, *params.get(1).unwrap_or(&"")),
             _ => {
+                log::debug!("{}: Bad CAP command: {:?}", addr, params[0]);
                 self.send_reply(addr, rpl::ERR_INVALIDCAPCMD, &[params[0], lines::UNKNOWN_COMMAND]);
                 false
             }

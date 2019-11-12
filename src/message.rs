@@ -90,12 +90,64 @@ fn parse_word(s: &str) -> (&str, &str) {
     (split.next().unwrap_or(""), split.next().unwrap_or(""))
 }
 
+fn parse_tags(buf: &str) -> (Tags<'_>, &str) {
+    if buf.starts_with('@') {
+        let (tags, rest) = parse_word(buf);
+        (Tags { buf: &tags[1..] }, rest)
+    } else {
+        (Tags { buf: "" }, buf)
+    }
+}
+
 fn parse_prefix(buf: &str) -> (Option<&str>, &str) {
     if buf.starts_with(':') {
         let (prefix, rest) = parse_word(buf);
         (Some(&prefix[1..]), rest)
     } else {
         (None, buf.trim_start())
+    }
+}
+
+fn parse_command(buf: &str) -> (Result<Command, &str>, &str) {
+    let (command_string, rest) = parse_word(buf);
+    (Command::parse(command_string).ok_or(command_string), rest)
+}
+
+pub struct Tag<'a> {
+    pub key: &'a str,
+    pub value: Option<&'a str>,
+    pub is_client: bool,
+}
+
+impl<'a> Tag<'a> {
+    pub fn parse(buf: &'a str) -> Tag<'a> {
+        let mut split = buf.splitn(2, '=');
+        let key = split.next().unwrap();
+        let value = split.next();
+        let is_client = key.starts_with('+');
+        Tag {
+            key: if is_client {&key[1..]} else {key},
+            value,
+            is_client,
+        }
+    }
+}
+
+pub struct Tags<'a> {
+    buf: &'a str,
+}
+
+impl<'a> Iterator for Tags<'a> {
+    type Item = Tag<'a>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.buf.is_empty() {
+            return None;
+        }
+        let mut split = self.buf.splitn(2, ';');
+        let tag = Tag::parse(split.next().unwrap());
+        self.buf = split.next().unwrap_or("");
+        Some(tag)
     }
 }
 
@@ -216,6 +268,7 @@ commands! {
 }
 
 pub struct Message<'a> {
+    pub tags: Tags<'a>,
     pub prefix: Option<&'a str>,
     pub command: Result<Command, &'a str>,
     pub num_params: usize,
@@ -250,15 +303,11 @@ impl<'a> Message<'a> {
             return None;
         }
 
+        let (tags, rest) = parse_tags(buf);
+        buf = rest;
         let (prefix, rest) = parse_prefix(buf);
         buf = rest;
-
-        let (command_string, rest) = parse_word(buf);
-        let command = if let Some(cmd) = Command::parse(command_string) {
-            Ok(cmd)
-        } else {
-            Err(command_string)
-        };
+        let (command, rest) = parse_command(buf);
         buf = rest;
 
         let mut params = [""; MAX_PARAMS];
@@ -278,7 +327,7 @@ impl<'a> Message<'a> {
             num_params += 1;
         }
 
-        Some(Message { prefix, command, num_params, params })
+        Some(Message { tags, prefix, command, num_params, params })
     }
 
     /// Returns true if the message has enough parameters for its command.

@@ -239,7 +239,7 @@ impl Client {
         trailing.pop();
     }
 
-    pub fn write_capabilities(&self, reponse: &mut ResponseBuffer) {
+    pub fn write_capabilities(&self, response: &mut ResponseBuffer) {
         response.message(Command::Cap).param("LS").trailing_param(CAP_LS);
     }
 
