@@ -537,6 +537,10 @@ impl StateInner {
             return false;
         }
         if let Some(channel) = self.channels.get(<&UniCase<str>>::from(target)) {
+            if channel.members.contains_key(addr) {
+                log::debug!("{}: Can't join {:?}: Already in channel", addr, target);
+                return false;
+            }
             let nick = self.clients[&addr].nick();
             if channel.key.as_ref().map_or(false, |ck| key == ck) {
                 log::debug!("{}: Can't join {:?}: Bad key", addr, target);
