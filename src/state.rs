@@ -144,11 +144,11 @@ impl StateInner {
 
     fn remove_client(&mut self, addr: &net::SocketAddr, client: Client, reason: Option<String>) {
         let mut response = ResponseBuffer::new();
-        let msg = response.prefixed_message(client.full_name(), Command::Quit);
-        if let Some(reason) = reason {
-            msg.trailing_param(&reason);
-        } else {
-            msg.build();
+        {
+            let msg = response.prefixed_message(client.full_name(), Command::Quit);
+            if let Some(reason) = reason {
+                msg.trailing_param(&reason);
+            }
         }
         let msg = MessageQueueItem::from(response);
 
@@ -290,14 +290,14 @@ impl StateInner {
     fn send_reply(&self, addr: &net::SocketAddr, r: Reply, params: &[&str]) {
         let client = &self.clients[addr];
         let mut response = ResponseBuffer::new();
-        let mut msg = response.prefixed_message(&self.domain, r).param(client.nick());
-        if params.is_empty() {
-            msg.build();
-        } else {
-            for p in &params[0..params.len() - 1] {
-                msg = msg.param(p);
+        {
+            let mut msg = response.prefixed_message(&self.domain, r).param(client.nick());
+            if !params.is_empty() {
+                for p in &params[0..params.len() - 1] {
+                    msg = msg.param(p);
+                }
+                msg.trailing_param(params[params.len() - 1]);
             }
-            msg.trailing_param(params[params.len() - 1]);
         }
         client.send(MessageQueueItem::from(response));
     }
@@ -333,7 +333,6 @@ impl StateInner {
                     trailing.push(' ');
                 }
                 trailing.pop();  // Remove last space
-                message.build();
             }
             response.prefixed_message(&self.domain, rpl::ENDOFNAMES)
                 .param(client.nick())
@@ -371,8 +370,7 @@ impl StateInner {
             .param(SERVER_VERSION)
             .param(modes::USER_MODES)
             .param(modes::SIMPLE_CHAN_MODES)
-            .param(modes::EXTENDED_CHAN_MODES)
-            .build();
+            .param(modes::EXTENDED_CHAN_MODES);
         self.send_i_support(&mut response, client.nick());
         client.send(MessageQueueItem::from(response));
         self.cmd_lusers(addr);
@@ -514,15 +512,13 @@ impl StateInner {
             response.prefixed_message(&self.domain, rpl::INVITING)
                 .param(client.nick())
                 .param(channel_name)
-                .param(target_nick)
-                .build();
+                .param(target_nick);
             client.send(MessageQueueItem::from(response));
 
             let mut target_res = ResponseBuffer::new();
             target_res.prefixed_message(client.full_name(), Command::Invite)
                 .param(target_nick)
-                .param(channel_name)
-                .build();
+                .param(channel_name);
             self.clients[target_addr].send(MessageQueueItem::from(target_res));
         }
         true
@@ -571,7 +567,7 @@ impl StateInner {
         channel.add_member(*addr);
         let client = &self.clients[&addr];
         let mut join_response = ResponseBuffer::new();
-        join_response.prefixed_message(client.full_name(), Command::Join).param(target).build();
+        join_response.prefixed_message(client.full_name(), Command::Join).param(target);
         self.broadcast(target, MessageQueueItem::from(join_response));
         self.send_topic(addr, target);
         self.send_names(addr, target);
@@ -674,7 +670,7 @@ impl StateInner {
         }
         let client_modes = client_modes.unwrap();
         if !client_modes.operator {
-            log::debug!("{}: can't set modes of {:?}: not operator", addr, target);
+            log::debug!("{}: can't set modes of {:?} to {:?}: not operator", addr, target, modes);
             self.send_reply(addr, rpl::ERR_CHANOPRIVSNEEDED, &[target, lines::CHAN_O_PRIVS_NEEDED]);
             return false;
         }
@@ -739,13 +735,14 @@ impl StateInner {
         }
         if !applied_modes.is_empty() {
             let mut response = ResponseBuffer::new();
-            let mut msg = response.prefixed_message(self.clients[&addr].full_name(), Command::Mode)
-                .param(target)
-                .param(&applied_modes);
-            for mp in applied_modeparams {
-                msg = msg.param(&mp);
+            {
+                let mut msg = response.prefixed_message(self.clients[&addr].full_name(), Command::Mode)
+                    .param(target)
+                    .param(&applied_modes);
+                for mp in applied_modeparams {
+                    msg = msg.param(&mp);
+                }
             }
-            msg.build();
             self.broadcast(target, MessageQueueItem::from(response));
         }
         true
@@ -843,7 +840,6 @@ impl StateInner {
                 let trailing = msg.raw_trailing_param();
                 trailing.push_str("- ");
                 trailing.push_str(line);
-                msg.build();
             }
             response.prefixed_message(&self.domain, rpl::ENDOFMOTD)
                 .param(client.nick())
@@ -902,7 +898,7 @@ impl StateInner {
 
         if client.is_registered() {
             let mut response = ResponseBuffer::new();
-            response.prefixed_message(client.full_name(), Command::Nick).param(nick).build();
+            response.prefixed_message(client.full_name(), Command::Nick).param(nick);
             let msg = MessageQueueItem::from(response);
 
             let mut noticed = self.channels.values()
@@ -983,12 +979,10 @@ impl StateInner {
         let mut response = ResponseBuffer::new();
         response.prefixed_message(&self.domain, Command::Mode)
             .param(client.nick())
-            .param("+o")
-            .build();
+            .param("+o");
         response.prefixed_message(&self.domain, rpl::YOUREOPER)
             .param(client.nick())
-            .param(lines::YOURE_OPER)
-            .build();
+            .param(lines::YOURE_OPER);
         client.send(MessageQueueItem::from(response));
         true
     }
@@ -1009,9 +1003,9 @@ impl StateInner {
         let client = &self.clients[&addr];
         let mut response = ResponseBuffer::new();
         if !reason.is_empty() {
-            response.prefixed_message(client.nick(), Command::Part).param(target).trailing_param(reason);
+            response.prefixed_message(client.full_name(), Command::Part).param(target).trailing_param(reason);
         } else {
-            response.prefixed_message(client.nick(), Command::Part).param(target).build();
+            response.prefixed_message(client.full_name(), Command::Part).param(target);
         }
         let msg = MessageQueueItem::from(response);
         client.send(msg.clone());
@@ -1198,8 +1192,7 @@ impl StateInner {
         response.prefixed_message(&self.domain, rpl::VERSION)
             .param(client.nick())
             .param(SERVER_VERSION)
-            .param(&self.domain)
-            .build();
+            .param(&self.domain);
         self.send_i_support(&mut response, client.nick());
         client.send(MessageQueueItem::from(response));
         true

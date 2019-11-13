@@ -376,11 +376,6 @@ impl<'a> MessageBuffer<'a> {
         MessageBuffer { buf }
     }
 
-    pub fn build(self) {
-        self.buf.push('\r');
-        self.buf.push('\n');
-    }
-
     pub fn param(self, param: &str) -> MessageBuffer<'a>
     {
         let param = param.trim();
@@ -397,7 +392,6 @@ impl<'a> MessageBuffer<'a> {
         self.buf.push(' ');
         self.buf.push(':');
         self.buf.push_str(param);
-        self.build()
     }
 
     pub fn raw_param(&mut self) -> &mut String {
@@ -409,6 +403,13 @@ impl<'a> MessageBuffer<'a> {
         self.buf.push(' ');
         self.buf.push(':');
         &mut self.buf
+    }
+}
+
+impl<'a> Drop for MessageBuffer<'a> {
+    fn drop(&mut self) {
+        self.buf.push('\r');
+        self.buf.push('\n');
     }
 }
 
@@ -454,8 +455,7 @@ impl ResponseBuffer {
     {
         for item in list {
             map(self.prefixed_message(prefix, item_reply))
-                .param(item.as_ref())
-                .build();
+                .param(item.as_ref());
         }
         map(self.prefixed_message(prefix, end_reply))
             .trailing_param(end_line);

@@ -118,10 +118,9 @@ impl Channel {
                 out = out.param(&user_limit.to_string());
             }
             if let Some(ref key) = self.key {
-                out = out.param(&key.to_owned());
+                out.param(&key.to_owned());
             }
         }
-        out.build();
     }
 
     pub fn apply_mode_change<'a, F>(&mut self, change: modes::ChannelModeChange<'_>,

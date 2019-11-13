@@ -119,7 +119,6 @@ pub fn created(mut r: MessageBuffer<'_>, since: &str) {
     let trailing = r.raw_trailing_param();
     trailing.push_str("I've been looking at you since ");
     trailing.push_str(since);
-    r.build();
 }
 
 pub fn luser_client(mut r: MessageBuffer<'_>, num_clients: usize) {
@@ -127,7 +126,6 @@ pub fn luser_client(mut r: MessageBuffer<'_>, num_clients: usize) {
     trailing.push_str("There are ");
     trailing.push_str(&num_clients.to_string());
     trailing.push_str(" senpais on 1 server");
-    r.build();
 }
 
 pub fn luser_me(mut r: MessageBuffer<'_>, num_clients: usize) {
@@ -135,7 +133,6 @@ pub fn luser_me(mut r: MessageBuffer<'_>, num_clients: usize) {
     trailing.push_str("I have ");
     trailing.push_str(&num_clients.to_string());
     trailing.push_str(" senpais and 0 servers");
-    r.build();
 }
 
 pub fn motd_start(mut r: MessageBuffer<'_>, domain: &str) {
@@ -143,5 +140,4 @@ pub fn motd_start(mut r: MessageBuffer<'_>, domain: &str) {
     trailing.push_str("- ");
     trailing.push_str(domain);
     trailing.push_str(" message of the day -");
-    r.build();
 }

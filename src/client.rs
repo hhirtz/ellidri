@@ -318,7 +318,6 @@ impl Client {
         if self.away { modes.push('a'); }
         if self.invisible { modes.push('i'); }
         if self.operator { modes.push('o'); }
-        out.build();
     }
 
     pub fn apply_mode_change(&mut self, change: modes::UserModeChange) -> bool {
