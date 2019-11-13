@@ -5,7 +5,7 @@ use std::net::SocketAddr;
 
 /// Modes applied to clients on a per-channel basis.
 ///
-/// https://tools.ietf.org/html/rfc2811.html#section-4.1
+/// <https://tools.ietf.org/html/rfc2811.html#section-4.1>
 #[derive(Default)]
 pub struct MemberModes {
     pub creator: bool,
@@ -81,7 +81,7 @@ impl Channel {
 
     pub fn list_entry(&self, msg: MessageBuffer<'_>) {
         msg.param(&self.members.len().to_string())
-            .trailing_param(self.topic.as_ref().map(|s| s.as_ref()).unwrap_or(""));
+            .trailing_param(self.topic.as_ref().map_or("", |s| s.as_ref()));
     }
 
     pub fn is_banned(&self, nick: &str) -> bool {
@@ -96,7 +96,7 @@ impl Channel {
 
     pub fn can_talk(&self, addr: &SocketAddr) -> bool {
         if self.moderated {
-            self.members.get(&addr).map(|m| m.voice || m.operator).unwrap_or(false)
+            self.members.get(&addr).map_or(false, |m| m.voice || m.operator)
         } else {
             !self.no_privmsg_from_outside || self.members.contains_key(&addr)
         }
@@ -195,7 +195,7 @@ impl Channel {
             },
             ChangeOperator(value, param) => {
                 let mut has_it = false;
-                for (member, modes) in self.members.iter_mut() {
+                for (member, modes) in &mut self.members {
                     if nick_of(member) == param {
                         has_it = true;
                         applied = modes.operator != value;
@@ -209,11 +209,11 @@ impl Channel {
             },
             ChangeVoice(value, param) => {
                 let mut has_it = false;
-                for (member, modes) in self.members.iter_mut() {
+                for (member, modes) in &mut self.members {
                     if nick_of(member) == param {
                         has_it = true;
-                        applied = modes.operator != value;
-                        modes.operator = value;
+                        applied = modes.voice != value;
+                        modes.voice = value;
                         break;
                     }
                 }

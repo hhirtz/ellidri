@@ -46,9 +46,9 @@ fn is_valid_nickname(s: &str) -> bool {
 pub struct State(Arc<Mutex<StateInner>>);
 
 impl State {
-    pub fn new(config: StateConfig) -> State {
+    pub fn new(config: StateConfig) -> Self {
         let inner = StateInner::new(config);
-        State(Arc::new(Mutex::new(inner)))
+        Self(Arc::new(Mutex::new(inner)))
     }
 
     pub fn peer_joined(&self, addr: net::SocketAddr, queue: MessageQueue) {
@@ -95,7 +95,7 @@ struct StateInner {
 }
 
 impl StateInner {
-    pub fn new(config: StateConfig) -> StateInner {
+    pub fn new(config: StateConfig) -> Self {
         let motd = config.motd_file.and_then(|file| match fs::read_to_string(&file) {
             Ok(motd) => Some(motd),
             Err(err) => {
@@ -103,7 +103,7 @@ impl StateInner {
                 None
             }
         });
-        StateInner {
+        Self {
             domain: config.domain,
             org_name: config.org_name,
             org_location: config.org_location,
@@ -216,7 +216,7 @@ impl StateInner {
             return;
         }
 
-        let ps = &msg.params;
+        let ps = msg.params;
         let n = msg.num_params;
         let success = match command {
             Command::Admin => self.cmd_admin(addr),
@@ -569,7 +569,7 @@ impl StateInner {
         let client = &self.clients[&addr];
         let mut response = ResponseBuffer::new();
         if targets.is_empty() {
-            for (name, channel) in self.channels.iter() {
+            for (name, channel) in &self.channels {
                 if channel.secret && !channel.members.contains_key(&addr) {
                     continue;
                 }
@@ -990,10 +990,10 @@ impl StateInner {
         channel.members.remove(&addr);
         let client = &self.clients[&addr];
         let mut response = ResponseBuffer::new();
-        if !reason.is_empty() {
-            response.prefixed_message(client.full_name(), Command::Part).param(target).trailing_param(reason);
-        } else {
+        if reason.is_empty() {
             response.prefixed_message(client.full_name(), Command::Part).param(target);
+        } else {
+            response.prefixed_message(client.full_name(), Command::Part).param(target).trailing_param(reason);
         }
         let msg = MessageQueueItem::from(response);
         client.send(msg.clone());

@@ -16,6 +16,7 @@
 //! ```
 
 #![warn(clippy::all, rust_2018_idioms)]
+#![allow(clippy::filter_map, clippy::find_map, clippy::shadow_unrelated, clippy::use_self)]
 
 use crate::state::State;
 use std::{env, fs, path, process};
@@ -31,7 +32,7 @@ mod modes;
 mod net;
 mod state;
 
-/// Read the file at `p`, parse the identity and builds a TlsAcceptor object.
+/// Read the file at `p`, parse the identity and builds a `TlsAcceptor` object.
 fn build_acceptor(p: &path::Path) -> tokio_tls::TlsAcceptor {
     let der = fs::read(p).unwrap_or_else(|err| {
         log::error!("Failed to read {:?}: {}", p.display(), err);
@@ -51,7 +52,7 @@ fn build_acceptor(p: &path::Path) -> tokio_tls::TlsAcceptor {
     tokio_tls::TlsAcceptor::from(acceptor)
 }
 
-/// TlsAcceptor cache, to avoid reading the same identity file several times.
+/// `TlsAcceptor` cache, to avoid reading the same identity file several times.
 #[derive(Default)]
 struct TlsIdentityStore {
     acceptors: HashMap<path::PathBuf, tokio_tls::TlsAcceptor>,
@@ -104,7 +105,7 @@ pub fn start() {
         });
 
     let mut store = TlsIdentityStore::default();
-    for config::Binding { address, tls_identity } in c.bindings.into_iter() {
+    for config::Binding { address, tls_identity } in c.bindings {
         if let Some(identity_path) = tls_identity {
             let acceptor = store.acceptor(identity_path);
             let server = net::listen_tls(address, shared.clone(), acceptor);

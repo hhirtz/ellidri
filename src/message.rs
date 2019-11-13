@@ -5,7 +5,7 @@ const MAX_PARAMS: usize = 15;
 
 /// The list of IRC replies.
 ///
-/// Source: https://tools.ietf.org/html/rfc2812.html#section-5
+/// Source: <https://tools.ietf.org/html/rfc2812.html#section-5>
 pub mod rpl {
     pub type Reply = &'static str;
 
@@ -396,13 +396,13 @@ impl<'a> MessageBuffer<'a> {
 
     pub fn raw_param(&mut self) -> &mut String {
         self.buf.push(' ');
-        &mut self.buf
+        self.buf
     }
 
     pub fn raw_trailing_param(&mut self) -> &mut String {
         self.buf.push(' ');
         self.buf.push(':');
-        &mut self.buf
+        self.buf
     }
 }
 
@@ -425,8 +425,8 @@ impl Default for ResponseBuffer {
 }
 
 impl ResponseBuffer {
-    pub fn new() -> ResponseBuffer {
-        ResponseBuffer {
+    pub fn new() -> Self {
+        Self {
             buf: String::with_capacity(MAX_MESSAGE_LENGTH),
         }
     }

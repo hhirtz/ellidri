@@ -56,13 +56,13 @@ pub enum UserModeChange {
 impl UserModeChange {
     pub fn value(self) -> bool {
         match self {
-            UserModeChange::Invisible(v) => v,
+            Self::Invisible(v) => v,
         }
     }
 
     pub fn symbol(self) -> char {
         match self {
-            UserModeChange::Invisible(_) => 'i',
+            Self::Invisible(_) => 'i',
         }
     }
 }
@@ -138,13 +138,9 @@ impl<'a> ChannelModeChange<'a> {
     pub fn param(&self) -> Option<&'a str> {
         use ChannelModeChange::*;
         match self {
-            Key(_, p) => Some(p),
+            Key(_, p) | ChangeBan(_, p) | ChangeException(_, p) | ChangeInvitation(_, p)
+                | ChangeOperator(_, p) | ChangeVoice(_, p) => Some(p),
             UserLimit(l) => *l,
-            ChangeBan(_, p) => Some(p),
-            ChangeException(_, p) => Some(p),
-            ChangeInvitation(_, p) => Some(p),
-            ChangeOperator(_, p) => Some(p),
-            ChangeVoice(_, p) => Some(p),
             _ => None,
         }
     }
