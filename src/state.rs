@@ -1097,7 +1097,7 @@ impl StateInner {
         response.prefixed_message(&self.domain, "ERROR").trailing_param(lines::CLOSING_LINK);
         client.send(MessageQueueItem::from(response));
         self.remove_client(addr, client, if reason.is_empty() {None} else {Some(reason.to_owned())});
-        true
+        false
     }
 
     // TIME
