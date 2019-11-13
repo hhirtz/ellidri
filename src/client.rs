@@ -230,7 +230,7 @@ impl Client {
     }
 
     pub fn write_enabled_capabilities(&self, response: &mut ResponseBuffer) {
-        let mut msg = response.message(Command::Cap);
+        let mut msg = response.message(Command::Cap).param(&self.nick);
         let trailing = msg.raw_trailing_param();
         if self.capabilities.cap_notify {
             trailing.push_str("cap-notify");
@@ -240,7 +240,7 @@ impl Client {
     }
 
     pub fn write_capabilities(&self, response: &mut ResponseBuffer) {
-        response.message(Command::Cap).param("LS").trailing_param(CAP_LS);
+        response.message(Command::Cap).param(&self.nick).param("LS").trailing_param(CAP_LS);
     }
 
     /// Change the connection state of the client given the command it just sent.
