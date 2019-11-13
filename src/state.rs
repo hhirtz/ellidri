@@ -745,6 +745,7 @@ impl StateInner {
             for mp in applied_modeparams {
                 msg = msg.param(&mp);
             }
+            msg.build();
             self.broadcast(target, MessageQueueItem::from(response));
         }
         true
