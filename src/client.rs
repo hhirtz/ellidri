@@ -236,7 +236,7 @@ impl Client {
     }
 
     pub fn write_capabilities(&self, response: &mut ResponseBuffer) {
-        response.message(Command::Cap).param(&self.nick).param("LS").trailing_param(CAP_LS);
+        response.message(Command::Cap).param(&self.nick).param("LS").trailing_param(cap::LS);
     }
 
     /// Change the connection state of the client given the command it just sent.

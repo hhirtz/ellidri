@@ -49,7 +49,7 @@ pub fn listen_tls(addr: SocketAddr, shared: State, acceptor: TlsAcceptor)
         })
 }
 
-/// Returns a future that handle an IRC connection.
+/// Returns a future that handles an IRC connection.
 fn handle<S>(conn: S, peer_addr: SocketAddr, shared: State) -> impl Future<Item=(), Error=()>
     where S: AsyncRead + AsyncWrite
 {
@@ -62,6 +62,7 @@ fn handle<S>(conn: S, peer_addr: SocketAddr, shared: State) -> impl Future<Item=
     let incoming = stream::iter_ok(iter::repeat(()))
         .fold(reader, move |reader, ()| {
             let shared = shared_clone.clone();
+            // TODO size limit (tags=8192 + message=512 == bite c pas un multiple de 4K)
             aio::read_until(reader, b'\n', Vec::new())
                 .and_then(move |(reader, buf)| {
                     handle_buffer(&peer_addr, buf, shared)

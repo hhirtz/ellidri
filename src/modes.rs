@@ -153,9 +153,10 @@ impl<'a> ChannelModeChange<'a> {
 pub fn channel_query<'a, I>(modes: &'a str, params: I)
     -> impl Iterator<Item=Result<ChannelModeChange<'a>>>
 where
-    I: IntoIterator<Item=&'a str>
+    I: IntoIterator<Item=&'a str> + 'a
 {
-    SimpleQuery::new(modes).map(|(value, mode)| {
+    let mut params = params.into_iter();
+    SimpleQuery::new(modes).map(move |(value, mode)| {
         match mode {
             b'i' => Ok(ChannelModeChange::InviteOnly(value)),
             b'm' => Ok(ChannelModeChange::Moderated(value)),

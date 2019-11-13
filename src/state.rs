@@ -220,13 +220,13 @@ impl StateInner {
         let n = msg.num_params;
         let success = match command {
             Command::Admin => self.cmd_admin(addr),
-            Command::Cap => self.cmd_cap(addr, &msg.params[..n]),
+            Command::Cap => self.cmd_cap(addr, &ps[..n]),
             Command::Info => self.cmd_info(addr),
             Command::Invite => self.cmd_invite(addr, ps[0], ps[1]),
             Command::Join => self.cmd_join(addr, ps[0], ps[1]),
             Command::List => self.cmd_list(addr, ps[0]),
             Command::Lusers => self.cmd_lusers(addr),
-            Command::Mode => self.cmd_mode(addr, ps[0], ps[1], &msg.params[2..cmp::max(2, n)]),
+            Command::Mode => self.cmd_mode(addr, ps[0], ps[1], &ps[2..cmp::max(2, n)]),
             Command::Motd => self.cmd_motd(addr),
             Command::Names => self.cmd_names(addr, ps[0]),
             Command::Nick => self.cmd_nick(addr, ps[0]),
@@ -239,7 +239,7 @@ impl StateInner {
             Command::PrivMsg => self.cmd_privmsg(addr, ps[0], ps[1]),
             Command::Quit => self.cmd_quit(addr, ps[0]),
             Command::Time => self.cmd_time(addr),
-            Command::Topic => self.cmd_topic(addr, ps[0], ps[1]),
+            Command::Topic => self.cmd_topic(addr, ps[0], if n == 1 {None} else {Some(ps[1])}),
             Command::User => self.cmd_user(addr, ps[0], ps[3]),
             Command::Version => self.cmd_version(addr),
             Command::Reply(_) => true,
@@ -1146,11 +1146,11 @@ impl StateInner {
         true
     }
 
-    fn cmd_topic(&mut self, addr: &net::SocketAddr, target: &str, topic: &str) -> bool {
-        if topic.is_empty() {
-            self.cmd_topic_get(addr, target)
-        } else {
+    fn cmd_topic(&mut self, addr: &net::SocketAddr, target: &str, topic: Option<&str>) -> bool {
+        if let Some(topic) = topic {
             self.cmd_topic_set(addr, target, topic)
+        } else {
+            self.cmd_topic_get(addr, target)
         }
     }
 

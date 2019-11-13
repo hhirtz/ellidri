@@ -58,7 +58,7 @@ impl Channel {
     /// Creates a channel with the given modes set.
     pub fn new(modes: &str) -> Self {
         let mut channel = Self::default();
-        for change in modes::simple_channel_query.filter_map(Result::ok) {
+        for change in modes::simple_channel_query(modes).filter_map(Result::ok) {
             channel.apply_mode_change(change, |_| "").unwrap();
         }
         channel
