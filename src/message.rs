@@ -312,7 +312,7 @@ impl<'a> Message<'a> {
 
         let mut params = [""; MAX_PARAMS];
         let mut num_params = 0;
-        while num_params < 14 {
+        while num_params < MAX_PARAMS {
             if buf.is_empty() {
                 break;
             }
