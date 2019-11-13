@@ -55,13 +55,13 @@ pub struct Channel {
 }
 
 impl Channel {
-    /// Creates a channel with the 'n' mode set.
-    pub fn new(modes: &str) -> Channel {
-        let mut chan = Channel::default();
-        for change in modes::ChannelQuery::simple(modes).filter_map(Result::ok) {
-            chan.apply_mode_change(change, |_| "").unwrap();
+    /// Creates a channel with the given modes set.
+    pub fn new(modes: &str) -> Self {
+        let mut channel = Self::default();
+        for change in modes::simple_channel_query.filter_map(Result::ok) {
+            channel.apply_mode_change(change, |_| "").unwrap();
         }
-        chan
+        channel
     }
 
     /// Adds a member with the default mode.
@@ -123,6 +123,7 @@ impl Channel {
         }
     }
 
+    // TODO use MessageBuffer
     pub fn apply_mode_change<'a, F>(&mut self, change: modes::ChannelModeChange<'_>,
                                     nick_of: F) -> Result<bool, Reply>
         where F: Fn(&SocketAddr) -> &'a str

@@ -10,6 +10,15 @@ struct SimpleQuery<'a> {
     value: bool,
 }
 
+impl<'a> SimpleQuery<'a> {
+    pub fn new(modes: &'a str) -> Self {
+        Self {
+            modes: modes.as_bytes(),
+            value: true,
+        }
+    }
+}
+
 impl Iterator for SimpleQuery<'_> {
     type Item = (bool, u8);
 
@@ -46,48 +55,26 @@ pub enum UserModeChange {
 
 impl UserModeChange {
     pub fn value(self) -> bool {
-        use UserModeChange::*;
         match self {
-            Invisible(v) => v,
+            UserModeChange::Invisible(v) => v,
         }
     }
 
     pub fn symbol(self) -> char {
-        use UserModeChange::*;
         match self {
-            Invisible(_) => 'i',
+            UserModeChange::Invisible(_) => 'i',
         }
     }
 }
 
-pub struct UserQuery<'a> {
-    inner: SimpleQuery<'a>,
-}
-
-impl<'a> UserQuery<'a> {
-    pub fn new(modes: &'a str) -> UserQuery<'a> {
-        let modes = modes.as_bytes();
-        UserQuery {
-            inner: SimpleQuery {
-                modes,
-                value: true,
-            },
+pub fn user_query(modes: &str) -> impl Iterator<Item=Result<UserModeChange>> + '_ {
+    SimpleQuery::new(modes).map(|(value, mode)| {
+        match mode {
+            b'i' => Ok(UserModeChange::Invisible(value)),
+            other if USER_MODES.contains(other as char) => Err(Error::UnsettableMode),
+            other => Err(Error::UnknownMode(other as char)),
         }
-    }
-}
-
-impl Iterator for UserQuery<'_> {
-    type Item = Result<UserModeChange>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        self.inner.next().map(|(value, mode)| {
-            match mode {
-                b'i' => Ok(UserModeChange::Invisible(value)),
-                other if USER_MODES.contains(other as char) => Err(Error::UnsettableMode),
-                other => Err(Error::UnknownMode(other as char)),
-            }
-        })
-    }
+    })
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -163,88 +150,66 @@ impl<'a> ChannelModeChange<'a> {
     }
 }
 
-pub struct ChannelQuery<'a, I> {
-    inner: SimpleQuery<'a>,
-    params: I,
-}
-
-impl<'a, I> ChannelQuery<'a, I> {
-    pub fn new(modes: &'a str, params: I) -> ChannelQuery<'a, I> {
-        let modes = modes.as_bytes();
-        ChannelQuery {
-            inner: SimpleQuery {
-                modes,
-                value: true,
-            },
-            params,
-        }
-    }
-}
-
-impl<'a> ChannelQuery<'a, iter::Empty<&'a str>> {
-    pub fn simple(modes: &'a str) -> Self {
-        ChannelQuery::new(modes, iter::empty())
-    }
-}
-
-impl<'a, I> Iterator for ChannelQuery<'a, I>
-    where I: Iterator<Item=&'a str>
+pub fn channel_query<'a, I>(modes: &'a str, params: I)
+    -> impl Iterator<Item=Result<ChannelModeChange<'a>>>
+where
+    I: IntoIterator<Item=&'a str>
 {
-    type Item = Result<ChannelModeChange<'a>>;
+    SimpleQuery::new(modes).map(|(value, mode)| {
+        match mode {
+            b'i' => Ok(ChannelModeChange::InviteOnly(value)),
+            b'm' => Ok(ChannelModeChange::Moderated(value)),
+            b'n' => Ok(ChannelModeChange::NoPrivMsgFromOutside(value)),
+            b's' => Ok(ChannelModeChange::Secret(value)),
+            b't' => Ok(ChannelModeChange::TopicRestricted(value)),
+            b'k' => if let Some(param) = params.next() {
+                Ok(ChannelModeChange::Key(value, param))
+            } else {
+                Err(Error::MissingModeParam)
+            },
+            b'l' => if value {
+                if let Some(param) = params.next().filter(|p| !p.is_empty()) {
+                    Ok(ChannelModeChange::UserLimit(Some(param)))
+                } else {
+                    Err(Error::MissingModeParam)
+                }
+            } else {
+                Ok(ChannelModeChange::UserLimit(None))
+            },
+            b'b' => if let Some(param) = params.next().filter(|p| !p.is_empty()) {
+                Ok(ChannelModeChange::ChangeBan(value, param))
+            } else {
+                Ok(ChannelModeChange::GetBans)
+            },
+            b'e' => if let Some(param) = params.next().filter(|p| !p.is_empty()) {
+                Ok(ChannelModeChange::ChangeException(value, param))
+            } else {
+                Ok(ChannelModeChange::GetExceptions)
+            },
+            b'I' => if let Some(param) = params.next().filter(|p| !p.is_empty()) {
+                Ok(ChannelModeChange::ChangeInvitation(value, param))
+            } else {
+                Ok(ChannelModeChange::GetInvitations)
+            },
+            b'o' => if let Some(param) = params.next().filter(|p| !p.is_empty()) {
+                Ok(ChannelModeChange::ChangeOperator(value, param))
+            } else {
+                Err(Error::MissingModeParam)
+            },
+            b'v' => if let Some(param) = params.next().filter(|p| !p.is_empty()) {
+                Ok(ChannelModeChange::ChangeVoice(value, param))
+            } else {
+                Err(Error::MissingModeParam)
+            },
+            other => Err(Error::UnknownMode(other as char)),
+        }
+    })
+}
 
-    fn next(&mut self) -> Option<Self::Item> {
-        self.inner.next().map(|(value, mode)| {
-            match mode {
-                b'i' => Ok(ChannelModeChange::InviteOnly(value)),
-                b'm' => Ok(ChannelModeChange::Moderated(value)),
-                b'n' => Ok(ChannelModeChange::NoPrivMsgFromOutside(value)),
-                b's' => Ok(ChannelModeChange::Secret(value)),
-                b't' => Ok(ChannelModeChange::TopicRestricted(value)),
-                b'k' => if let Some(param) = self.params.next() {
-                    Ok(ChannelModeChange::Key(value, param))
-                } else {
-                    Err(Error::MissingModeParam)
-                },
-                b'l' => if value {
-                    if let Some(param) = self.params.next().filter(|p| !p.is_empty()) {
-                        Ok(ChannelModeChange::UserLimit(Some(param)))
-                    } else {
-                        Err(Error::MissingModeParam)
-                    }
-                } else {
-                    Ok(ChannelModeChange::UserLimit(None))
-                },
-                b'b' => if let Some(param) = self.params.next().filter(|p| !p.is_empty()) {
-                    Ok(ChannelModeChange::ChangeBan(value, param))
-                } else {
-                    Ok(ChannelModeChange::GetBans)
-                },
-                b'e' => if let Some(param) = self.params.next().filter(|p| !p.is_empty()) {
-                    Ok(ChannelModeChange::ChangeException(value, param))
-                } else {
-                    Ok(ChannelModeChange::GetExceptions)
-                },
-                b'I' => if let Some(param) = self.params.next().filter(|p| !p.is_empty()) {
-                    Ok(ChannelModeChange::ChangeInvitation(value, param))
-                } else {
-                    Ok(ChannelModeChange::GetInvitations)
-                },
-                b'o' => if let Some(param) = self.params.next().filter(|p| !p.is_empty()) {
-                    Ok(ChannelModeChange::ChangeOperator(value, param))
-                } else {
-                    Err(Error::MissingModeParam)
-                },
-                b'v' => if let Some(param) = self.params.next().filter(|p| !p.is_empty()) {
-                    Ok(ChannelModeChange::ChangeVoice(value, param))
-                } else {
-                    Err(Error::MissingModeParam)
-                },
-                other => Err(Error::UnknownMode(other as char)),
-            }
-        })
-    }
+pub fn simple_channel_query(modes: &str) -> impl Iterator<Item=Result<ChannelModeChange<'_>>> {
+    channel_query(modes, iter::empty())
 }
 
 pub fn is_channel_mode_string(s: &str) -> bool {
-    ChannelQuery::simple(s).all(|r| r.is_ok())
+    simple_channel_query(s).all(|r| r.is_ok())
 }

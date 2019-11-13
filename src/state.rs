@@ -1,7 +1,7 @@
 //! Shared state and API to handle incoming commands.
 
 use crate::channel::Channel;
-use crate::client::{Client, MessageQueue, MessageQueueItem, are_supported_capabilities};
+use crate::client::{cap, Client, MessageQueue, MessageQueueItem};
 use crate::config::StateConfig;
 use crate::lines;
 use crate::message::{Command, Message, Reply, rpl, ResponseBuffer};
@@ -65,19 +65,8 @@ impl State {
 }
 
 /// The actual shared data (state) of the IRC server.
-///
-/// It is hidden behind the `State` pointer. Most of its methods are wrapped by `State`'s methods
-/// (that just lock reads or writes to the data).
-///
-/// Most command handling methods are split in two: one that checks whether the given client can
-/// issue the command (depending on the given parameters), and the other that actually executes the
-/// command.
-///
-/// The first set of methods have names like `check_cmd_$command`, the other have names like
-/// `apply_cmd_$command`.
 struct StateInner {
-    /// The domain of the server. This string is used as a prefix for most replies and commands
-    /// sent to clients.
+    /// The domain of the server. This string is used as a prefix for replies sent to clients.
     domain: String,
 
     /// Information about the administrators of the server. Sent as a reply to the ADMIN command.
@@ -86,7 +75,6 @@ struct StateInner {
     org_mail: String,
 
     clients: HashMap<net::SocketAddr, Client>,
-
     channels: HashMap<UniCase<String>, Channel>,
 
     /// The formatted time when this instance is created. It is sent to the client when they
@@ -102,11 +90,11 @@ struct StateInner {
     /// Modes applied at the creation of new channels.
     default_chan_mode: String,
 
+    /// A list of (name, password) that are valid OPER parameters.
     opers: Vec<(String, String)>,
 }
 
 impl StateInner {
-    /// Creates a new shared state. See `State::new`.
     pub fn new(config: StateConfig) -> StateInner {
         let motd = config.motd_file.and_then(|file| match fs::read_to_string(&file) {
             Ok(motd) => Some(motd),
@@ -427,7 +415,7 @@ impl StateInner {
     fn cmd_cap_req(&mut self, addr: &net::SocketAddr, capabilities: &str) -> bool {
         log::debug!("{}: CAP REQ {}", addr, capabilities);
         let client = self.clients.get_mut(addr).unwrap();
-        if !are_supported_capabilities(capabilities) {
+        if !cap::are_supported(capabilities) {
             let mut response = ResponseBuffer::new();
             response.message(Command::Cap).param("NAK").trailing_param(capabilities);
             client.send(MessageQueueItem::from(response));
@@ -680,7 +668,7 @@ impl StateInner {
         let mut applied_modeparams = Vec::new();
         let mut response = ResponseBuffer::new();
         let clients = &self.clients;
-        for maybe_change in modes::ChannelQuery::new(modes, modeparams.iter().cloned()) { match maybe_change {
+        for maybe_change in modes::channel_query(modes, modeparams.iter().cloned()) { match maybe_change {
             Ok(modes::ChannelModeChange::GetBans) => {
                 response.reply_list(&self.domain, rpl::BANLIST, rpl::ENDOFBANLIST,
                                     lines::END_OF_BAN_LIST, &channel.ban_mask,
@@ -768,7 +756,7 @@ impl StateInner {
         let client = self.clients.get_mut(&addr).unwrap();
         let mut response = ResponseBuffer::new();
         let mut applied_modes = String::new();
-        for maybe_change in modes::UserQuery::new(modes) { match maybe_change {
+        for maybe_change in modes::user_query(modes) { match maybe_change {
             Ok(change) => if client.apply_mode_change(change) {
                 log::debug!("  - Applied {:?}", change);
                 applied_modes.push(if change.value() {'+'} else {'-'});

@@ -4,8 +4,6 @@ use crate::message::{Command, MessageBuffer, ResponseBuffer};
 use crate::modes;
 use futures::sync::mpsc;
 use std::sync::Arc;
-use std::collections::HashSet;
-use std::str::SplitWhitespace;
 
 #[derive(Clone)]
 pub struct MessageQueueItem(Arc<[u8]>);
@@ -116,45 +114,42 @@ impl ConnectionState {
     }
 }
 
-pub const CAP_LS: &str = "";
-lazy_static::lazy_static! {
-    static ref CAPABILITIES: HashSet<&'static str> = ["cap-notify"].iter().cloned().collect();
+pub mod cap {
+    use std::collections::HashSet;
+
+    pub const CAP_NOTIFY: &str   = "cap-notify";
+    pub const MESSAGE_TAGS: &str = "message-tags";
+
+    lazy_static::lazy_static! {
+        pub static ref ALL: HashSet<&'static str> =
+            [ CAP_NOTIFY
+            , MESSAGE_TAGS
+            ].iter().cloned().collect();
+    }
+
+    pub const LS: &str = "message-tags";
+
+    pub fn are_supported(capabilities: &str) -> bool {
+        super::cap_query(capabilities).all(|(cap,  _)| ALL.contains(cap))
+    }
 }
+
 
 #[derive(Default)]
 pub struct Capabilities {
     pub v302: bool,
     pub cap_notify: bool,
+    pub message_tags: bool,
 }
 
-pub struct CapQuery<'a> {
-    inner: SplitWhitespace<'a>,
-}
-
-impl<'a> CapQuery<'a> {
-    pub fn parse(s: &'a str) -> Self {
-        Self {
-            inner: s.split_whitespace(),
+fn cap_query(buf: &str) -> impl Iterator<Item=(&str, bool)> {
+    buf.split_whitespace().map(|word| {
+        if word.starts_with('-') {
+            (&word[1..], false)
+        } else {
+            (word, true)
         }
-    }
-}
-
-impl<'a> Iterator for CapQuery<'a> {
-    type Item = (&'a str, bool);
-
-    fn next(&mut self) -> Option<Self::Item> {
-        self.inner.next().map(|word| {
-            if word.starts_with('-') {
-                (&word[1..], false)
-            } else {
-                (word, true)
-            }
-        })
-    }
-}
-
-pub fn are_supported_capabilities(capabilities: &str) -> bool {
-    CapQuery::parse(capabilities).all(|(cap,  _)| CAPABILITIES.contains(cap))
+    })
 }
 
 const FULL_NAME_LENGTH: usize = 63;
@@ -215,9 +210,10 @@ impl Client {
     }
 
     pub fn update_capabilities(&mut self, capabilities: &str) {
-        for (capability, enable) in CapQuery::parse(capabilities) {
+        for (capability, enable) in cap_query(capabilities) {
             match capability {
-                "cap-notify" => self.capabilities.cap_notify = enable,
+                cap::CAP_NOTIFY => self.capabilities.cap_notify = enable,
+                cap::MESSAGE_TAGS => self.capabilities.message_tags = enable,
                 _ => {}
             }
         }
