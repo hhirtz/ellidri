@@ -132,7 +132,7 @@ impl StateInner {
 
     pub fn peer_joined(&mut self, addr: net::SocketAddr, queue: MessageQueue) {
         log::debug!("{}: Connected", addr);
-        self.clients.insert(addr, Client::new(queue, addr.to_string()));
+        self.clients.insert(addr, Client::new(queue, addr.ip().to_string()));
     }
 
     pub fn peer_quit(&mut self, addr: &net::SocketAddr, err: Option<io::Error>) {
