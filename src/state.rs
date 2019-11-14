@@ -657,7 +657,7 @@ impl StateInner {
             return false;
         }
         let client_modes = client_modes.unwrap();
-        if !client_modes.operator {
+        if modes::needs_chanop(modes) && !client_modes.operator {
             log::debug!("{}: can't set modes of {:?} to {:?}: not operator", addr, target, modes);
             self.send_reply(addr, rpl::ERR_CHANOPRIVSNEEDED, &[target, lines::CHAN_O_PRIVS_NEEDED]);
             return false;

@@ -210,3 +210,11 @@ pub fn simple_channel_query(modes: &str) -> impl Iterator<Item=Result<ChannelMod
 pub fn is_channel_mode_string(s: &str) -> bool {
     simple_channel_query(s).all(|r| r.is_ok())
 }
+
+pub fn needs_chanop(modes: &str) -> bool {
+    simple_channel_query(modes).any(|mode| match mode {
+        Ok(ChannelModeChange::GetBans) | Ok(ChannelModeChange::GetExceptions)
+            | Ok(ChannelModeChange::GetInvitations) => false,
+        _ => true,
+    })
+}
