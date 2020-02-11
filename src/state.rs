@@ -9,7 +9,8 @@ use crate::misc::{time_now, UniCase};
 use crate::modes;
 use std::{cmp, fs, io, net};
 use std::collections::{HashMap, HashSet};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+use tokio::sync::Mutex;
 
 const SERVER_INFO: &str = include_str!("info.txt");
 const SERVER_VERSION: &str = concat!(env!("CARGO_PKG_NAME"), "-", env!("CARGO_PKG_VERSION"));
@@ -51,16 +52,16 @@ impl State {
         Self(Arc::new(Mutex::new(inner)))
     }
 
-    pub fn peer_joined(&self, addr: net::SocketAddr, queue: MessageQueue) {
-        self.0.lock().unwrap().peer_joined(addr, queue);
+    pub async fn peer_joined(&self, addr: net::SocketAddr, queue: MessageQueue) {
+        self.0.lock().await.peer_joined(addr, queue);
     }
 
-    pub fn peer_quit(&self, addr: &net::SocketAddr, err: Option<io::Error>) {
-        self.0.lock().unwrap().peer_quit(addr, err);
+    pub async fn peer_quit(&self, addr: &net::SocketAddr, err: Option<io::Error>) {
+        self.0.lock().await.peer_quit(addr, err);
     }
 
-    pub fn handle_message(&self, addr: &net::SocketAddr, msg: Message<'_>) {
-        self.0.lock().unwrap().handle_message(addr, msg);
+    pub async fn handle_message(&self, addr: &net::SocketAddr, msg: Message<'_>) {
+        self.0.lock().await.handle_message(addr, msg);
     }
 }
 

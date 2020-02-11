@@ -1,102 +1,127 @@
 use crate::message::Message;
 use crate::state::State;
-use futures::sync::mpsc;
-use std::{io, iter, process};
+use std::{fs, path, process};
+use std::collections::HashMap;
 use std::net::SocketAddr;
-use tokio::io as aio;
-use tokio::net::TcpListener;
-use tokio::prelude::*;
+use std::sync::Arc;
+use tokio::{io, net, sync};
 use tokio_tls::TlsAcceptor;
 
-/// Returns a future that listens, accepts and handles incoming plain-text connections.
-pub fn listen(addr: SocketAddr, shared: State) -> impl Future<Item=(), Error=()> {
-    TcpListener::bind(&addr)
+/// `TlsAcceptor` cache, to avoid reading the same identity file several times.
+#[derive(Default)]
+pub struct TlsIdentityStore {
+    acceptors: HashMap<path::PathBuf, Arc<tokio_tls::TlsAcceptor>>,
+}
+
+impl TlsIdentityStore {
+    /// Retrieves the acceptor at `path`, or get it from the cache if it has already been built.
+    pub fn acceptor(&mut self, file: path::PathBuf) -> Arc<tokio_tls::TlsAcceptor> {
+        if let Some(acceptor) = self.acceptors.get(&file) {
+            acceptor.clone()
+        } else {
+            let acceptor = Arc::new(build_acceptor(&file));
+            self.acceptors.insert(file, acceptor.clone());
+            acceptor
+        }
+    }
+}
+
+/// Read the file at `p`, parse the identity and builds a `TlsAcceptor` object.
+fn build_acceptor(p: &path::Path) -> tokio_tls::TlsAcceptor {
+    let der = fs::read(p).unwrap_or_else(|err| {
+        log::error!("Failed to read {:?}: {}", p.display(), err);
+        process::exit(1);
+    });
+    let identity = native_tls::Identity::from_pkcs12(&der, "").unwrap_or_else(|err| {
+        log::error!("Failed to parse {:?}: {}", p.display(), err);
+        process::exit(1);
+    });
+    let acceptor = native_tls::TlsAcceptor::builder(identity)
+        .min_protocol_version(Some(native_tls::Protocol::Tlsv11))
+        .build()
         .unwrap_or_else(|err| {
-            log::error!("Failed to bind to {}: {}", addr, err);
+            log::error!("Failed to initialize TLS: {}", err);
             process::exit(1);
-        })
-        .incoming()
-        .map_err(|err| log::debug!("Failed to accept connection: {}", err))
-        .for_each(move |conn| {
-            let peer_addr = conn.peer_addr().map_err(|_| ())?;
-            tokio::spawn(handle(conn, peer_addr, shared.clone()));
-            Ok(())
-        })
+        });
+    tokio_tls::TlsAcceptor::from(acceptor)
+}
+
+/// Returns a future that listens, accepts and handles incoming plain-text connections.
+pub async fn listen(addr: SocketAddr, shared: State) -> io::Result<()> {
+    let mut ln = net::TcpListener::bind(&addr).await?;
+
+    loop {
+        match ln.accept().await {
+            Ok((conn, peer_addr)) => { tokio::spawn(handle(conn, peer_addr, shared.clone())); }
+            Err(err) => { log::debug!("Failed to accept connection: {}", err); }
+        }
+    }
 }
 
 /// Returns a future that listens, accepts and handles incoming TLS connections.
-pub fn listen_tls(addr: SocketAddr, shared: State, acceptor: TlsAcceptor)
-                  -> impl Future<Item=(), Error=()>
-{
-    TcpListener::bind(&addr)
-        .unwrap_or_else(|err| {
-            log::error!("Failed to bind to {}: {}", addr, err);
-            process::exit(1);
-        })
-        .incoming()
-        .map_err(|err| log::debug!("Failed to accept connection: {}", err))
-        .for_each(move |conn| {
-            let peer_addr = conn.peer_addr().map_err(|_| ())?;
+pub async fn listen_tls(addr: SocketAddr, shared: State, acceptor: Arc<TlsAcceptor>) -> io::Result<()> {
+    let mut ln = net::TcpListener::bind(&addr).await?;
+
+    loop { match ln.accept().await {
+        Ok((conn, peer_addr)) => {
             let shared = shared.clone();
-            let tls_accept = acceptor.accept(conn)
-                .map_err(|err| log::debug!("TLS handshake failed: {}", err))
-                .and_then(move |tls_conn| {
-                    tokio::spawn(handle(tls_conn, peer_addr, shared));
-                    Ok(())
-                });
-            tokio::spawn(tls_accept);
-            Ok(())
-        })
+            let acceptor = acceptor.clone();
+            tokio::spawn(async move {
+                let tls_conn = match acceptor.accept(conn)
+                    .await
+                    .map_err(|err| {
+                        log::debug!("TLS handshake failed: {}", err);
+                    })
+                { Ok(tls_conn) => tls_conn, Err(_) => return, };
+                handle(tls_conn, peer_addr, shared).await;
+            });
+        }
+        Err(err) => log::debug!("Failed to accept connection: {}", err),
+    }}
 }
 
 /// Returns a future that handles an IRC connection.
-fn handle<S>(conn: S, peer_addr: SocketAddr, shared: State) -> impl Future<Item=(), Error=()>
-    where S: AsyncRead + AsyncWrite
+async fn handle<S>(conn: S, peer_addr: SocketAddr, shared: State)
+    where S: io::AsyncRead + io::AsyncWrite
 {
-    let (reader, writer) = conn.split();
-    let reader = io::BufReader::new(reader);
-    let (msg_queue, outgoing_msgs) = mpsc::unbounded();
-    shared.peer_joined(peer_addr, msg_queue);
+    let (reader, mut writer) = io::split(conn);
+    let mut reader = io::BufReader::new(reader);
+    let (msg_queue, mut outgoing_msgs) = sync::mpsc::unbounded_channel();
+    shared.peer_joined(peer_addr, msg_queue).await;
 
-    let shared_clone = shared.clone();
-    let incoming = stream::iter_ok(iter::repeat(()))
-        .fold(reader, move |reader, ()| {
-            let shared = shared_clone.clone();
-            // TODO size limit (tags=8192 + message=512 == bite c pas un multiple de 4K)
-            aio::read_until(reader, b'\n', Vec::new())
-                .and_then(move |(reader, buf)| {
-                    handle_buffer(&peer_addr, buf, shared)
-                        .map(|_| reader)
-                })
-                .map_err(|_| ())
-        })
-        .map(|_| ());
+    let incoming = async {
+        use io::AsyncBufReadExt as _;
 
-    let outgoing = outgoing_msgs
-        .fold(writer, move |writer, msg| {
-            aio::write_all(writer, msg)
-                .map(|(writer, _)| writer)
-                .map_err(|_| ())
-        })
-        .map(|_| ());
+        let mut buf = String::new();
+        loop {
+            buf.clear();
+            reader.read_line(&mut buf).await?;
+            handle_buffer(&peer_addr, &buf, &shared).await?;
+        }
+    };
 
-    incoming.join(outgoing).then(move |_res| {
-        // TODO use res when its a io::Error
-        shared.peer_quit(&peer_addr, Some(io::Error::new(io::ErrorKind::BrokenPipe, "broken pipe")));
+    let outgoing = async {
+        use io::AsyncWriteExt as _;
+
+        while let Some(msg) = outgoing_msgs.recv().await {
+            writer.write_all(msg.as_ref()).await?;
+        }
         Ok(())
-    })
+    };
+
+    // TODO irssi waiting for server to close connection
+    let res: io::Result<((), ())> = futures::future::try_join(incoming, outgoing).await;
+    shared.peer_quit(&peer_addr, res.err()).await;
 }
 
-fn handle_buffer(peer_addr: &SocketAddr, buf: Vec<u8>, shared: State) -> io::Result<()> {
+async fn handle_buffer(peer_addr: &SocketAddr, buf: &str, shared: &State) -> io::Result<()> {
     if buf.is_empty() {
         return Err(io::Error::new(io::ErrorKind::UnexpectedEof, "eof"));
     }
 
-    let buf = String::from_utf8(buf)
-        .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "doesn't speak utf-8"))?;
-
-    if let Some(msg) = Message::parse(&buf) {
-        shared.handle_message(peer_addr, msg);
+    if let Some(msg) = Message::parse(buf) {
+        shared.handle_message(peer_addr, msg).await;
     }
+
     Ok(())
 }

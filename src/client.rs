@@ -2,8 +2,8 @@
 
 use crate::message::{Command, MessageBuffer, ResponseBuffer};
 use crate::modes;
-use futures::sync::mpsc;
 use std::sync::Arc;
+use tokio::sync::mpsc;
 
 #[derive(Clone)]
 pub struct MessageQueueItem(Arc<[u8]>);
@@ -120,6 +120,7 @@ pub mod cap {
     pub const CAP_NOTIFY: &str   = "cap-notify";
     pub const MESSAGE_TAGS: &str = "message-tags";
 
+    // TODO replace with const fn
     lazy_static::lazy_static! {
         pub static ref ALL: HashSet<&'static str> =
             [ CAP_NOTIFY
@@ -265,7 +266,7 @@ impl Client {
     ///
     /// Use this function to send messages to the client.
     pub fn send(&self, msg: MessageQueueItem) {
-        self.queue.unbounded_send(msg).unwrap();
+        let _ = self.queue.send(msg);
     }
 
     pub fn full_name(&self) -> &str {

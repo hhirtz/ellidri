@@ -19,8 +19,7 @@
 #![allow(clippy::filter_map, clippy::find_map, clippy::shadow_unrelated, clippy::use_self)]
 
 use crate::state::State;
-use std::{env, fs, path, process};
-use std::collections::HashMap;
+use std::{env, process};
 
 mod channel;
 mod client;
@@ -31,45 +30,6 @@ mod misc;
 mod modes;
 mod net;
 mod state;
-
-/// Read the file at `p`, parse the identity and builds a `TlsAcceptor` object.
-fn build_acceptor(p: &path::Path) -> tokio_tls::TlsAcceptor {
-    let der = fs::read(p).unwrap_or_else(|err| {
-        log::error!("Failed to read {:?}: {}", p.display(), err);
-        process::exit(1);
-    });
-    let identity = native_tls::Identity::from_pkcs12(&der, "").unwrap_or_else(|err| {
-        log::error!("Failed to parse {:?}: {}", p.display(), err);
-        process::exit(1);
-    });
-    let acceptor = native_tls::TlsAcceptor::builder(identity)
-        .min_protocol_version(Some(native_tls::Protocol::Tlsv11))
-        .build()
-        .unwrap_or_else(|err| {
-            log::error!("Failed to initialize TLS: {}", err);
-            process::exit(1);
-        });
-    tokio_tls::TlsAcceptor::from(acceptor)
-}
-
-/// `TlsAcceptor` cache, to avoid reading the same identity file several times.
-#[derive(Default)]
-struct TlsIdentityStore {
-    acceptors: HashMap<path::PathBuf, tokio_tls::TlsAcceptor>,
-}
-
-impl TlsIdentityStore {
-    /// Retrieves the acceptor at `path`, or get it from the cache if it has already been built.
-    pub fn acceptor(&mut self, file: path::PathBuf) -> tokio_tls::TlsAcceptor {
-        if let Some(acceptor) = self.acceptors.get(&file) {
-            acceptor.clone()
-        } else {
-            let acceptor = build_acceptor(&file);
-            self.acceptors.insert(file, acceptor.clone());
-            acceptor
-        }
-    }
-}
 
 /// The beginning of everything
 pub fn start() {
@@ -95,16 +55,13 @@ pub fn start() {
         .init();
 
     let shared = State::new(c.srv);
-    let mut runtime = tokio::runtime::Builder::new()
-        .core_threads(c.workers.unwrap_or(1))
-        // TODO panic_handler
-        .build()
+    let mut runtime = tokio::runtime::Runtime::new()
         .unwrap_or_else(|err| {
             log::error!("Failed to start the tokio runtime: {}", err);
             process::exit(1);
         });
 
-    let mut store = TlsIdentityStore::default();
+    let mut store = net::TlsIdentityStore::default();
     for config::Binding { address, tls_identity } in c.bindings {
         if let Some(identity_path) = tls_identity {
             let acceptor = store.acceptor(identity_path);
@@ -118,6 +75,9 @@ pub fn start() {
         }
     }
 
-    use futures::Future;
-    runtime.shutdown_on_idle().wait().unwrap();
+    runtime.block_on(infinite());
+}
+
+fn infinite() -> impl std::future::Future<Output=()> {
+    futures::future::poll_fn(|_| futures::task::Poll::Pending)
 }

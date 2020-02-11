@@ -6,17 +6,17 @@ edition = "2018"
 
 [dependencies]
 # Runtime
-futures = "0.1"
-native-tls = "0.2"
-tokio = "0.1"
-tokio-tls = "0.2"
+futures = { version = "0.3", default-features = false }
+native-tls = { version = "0.2", default-features = false }
+tokio = { version = "0.2", default-faetures = false, features = ["rt-core", "io-util", "macros", "tcp", "sync"] }
+tokio-tls = { version = "0.3", default-features = false }
 
 # Logging
 env_logger = { version = "0.7", default-features = false }
-log = { version = "0.4", features = ["max_level_debug", "release_max_level_info"] }
+log = { version = "0.4", default-features = false, features = ["max_level_debug", "release_max_level_info"] }
 
 # Time
-chrono = "0.4"
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
 
 # Capabilities
-lazy_static = "1"
+lazy_static = { version = "1", default-features = false }
