@@ -1,6 +1,6 @@
 use crate::message::Message;
 use crate::state::State;
-use std::{fs, path, process};
+use std::{fs, path, process, str};
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -96,6 +96,7 @@ async fn handle<S>(conn: S, peer_addr: SocketAddr, shared: State)
         loop {
             buf.clear();
             reader.read_line(&mut buf).await?;
+            log::trace!("{} >> {}", peer_addr, buf.trim());
             handle_buffer(&peer_addr, &buf, &shared).await?;
         }
     };

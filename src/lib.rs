@@ -40,7 +40,7 @@ pub fn start() {
 
     if cfg!(debug_assertions) {
         env::set_var("RUST_BACKTRACE", "1");
-        env::set_var("RUST_LOG", "ellidri=debug");
+        env::set_var("RUST_LOG", "ellidri=trace");
     } else {
         env::set_var("RUST_LOG", "ellidri=info");
     }
