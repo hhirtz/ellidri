@@ -267,6 +267,7 @@ commands! {
     User => 4,
     Version => 0,
     Who => 0,
+    Whois => 1,
 }
 
 pub struct Message<'a> {

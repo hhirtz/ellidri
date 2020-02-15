@@ -171,10 +171,12 @@ impl StateInner {
                 let mut response = ResponseBuffer::new();
                 if client.is_registered() {
                     response.prefixed_message(&self.domain, rpl::ERR_UNKNOWNCOMMAND)
+                        .param(client.nick())
                         .param(unknown)
                         .trailing_param(lines::UNKNOWN_COMMAND);
                 } else {
                     response.prefixed_message(&self.domain, rpl::ERR_NOTREGISTERED)
+                        .param(client.nick())
                         .trailing_param(lines::NOT_REGISTERED);
                 }
                 client.send(MessageQueueItem::from(response));
@@ -185,20 +187,24 @@ impl StateInner {
         if !msg.has_enough_params() {
             let mut response = ResponseBuffer::new();
             match command {
-                Command::Nick => {
+                Command::Nick | Command::Whois => {
                     response.prefixed_message(&self.domain, rpl::ERR_NONICKNAMEGIVEN)
+                        .param(client.nick())
                         .trailing_param(lines::NEED_MORE_PARAMS);
                 }
                 Command::PrivMsg | Command::Notice if msg.num_params == 0 => {
                     response.prefixed_message(&self.domain, rpl::ERR_NORECIPIENT)
+                        .param(client.nick())
                         .trailing_param(lines::NEED_MORE_PARAMS);
                 }
                 Command::PrivMsg | Command::Notice if msg.num_params == 1 => {
                     response.prefixed_message(&self.domain, rpl::ERR_NOTEXTTOSEND)
+                        .param(client.nick())
                         .trailing_param(lines::NEED_MORE_PARAMS);
                 }
                 _ => {
                     response.prefixed_message(&self.domain, rpl::ERR_NEEDMOREPARAMS)
+                        .param(client.nick())
                         .param(command.as_str())
                         .trailing_param(lines::NEED_MORE_PARAMS);
                 }
@@ -211,9 +217,11 @@ impl StateInner {
             let mut response = ResponseBuffer::new();
             if client.is_registered() || command == Command::User {
                 response.prefixed_message(&self.domain, rpl::ERR_ALREADYREGISTRED)
+                    .param(client.nick())
                     .trailing_param(lines::ALREADY_REGISTERED);
             } else {
                 response.prefixed_message(&self.domain, rpl::ERR_NOTREGISTERED)
+                    .param(client.nick())
                     .trailing_param(lines::NOT_REGISTERED);
             }
             client.send(MessageQueueItem::from(response));
@@ -248,6 +256,7 @@ impl StateInner {
             Command::User => self.cmd_user(addr, ps[0], ps[3]),
             Command::Version => self.cmd_version(addr),
             Command::Who => self.cmd_who(addr, ps[0], ps[1]),
+            Command::Whois => self.cmd_whois(addr, ps[0]),
             Command::Reply(_) => true,
         };
 
@@ -899,7 +908,9 @@ impl StateInner {
                 .trailing_param(lines::END_OF_MOTD);
         } else {
             log::debug!("{}: Sending no-motd error", addr);
-            response.prefixed_message(&self.domain, rpl::ERR_NOMOTD).trailing_param(lines::NO_MOTD);
+            response.prefixed_message(&self.domain, rpl::ERR_NOMOTD)
+                .param(client.nick())
+                .trailing_param(lines::NO_MOTD);
         }
         client.send(MessageQueueItem::from(response));
         true
@@ -1277,6 +1288,12 @@ impl StateInner {
             .param(mask)
             .trailing_param(lines::END_OF_WHO);
         self.send(addr, MessageQueueItem::from(response));
+        true
+    }
+
+    // WHOIS
+
+    fn cmd_whois(&self, addr: &net::SocketAddr, nick: &str) -> bool {
         true
     }
 }
