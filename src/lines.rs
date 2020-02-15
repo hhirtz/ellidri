@@ -69,11 +69,8 @@ pub const NO_MOTD: &str =
 pub const NO_TOPIC: &str =
 "It seems this channel doesn't have any topic";
 
-pub const NOT_ON_CHANNEL_PART: &str =
-"Did you say it wrong? I don't see you on the channel list";
-
-pub const NOT_ON_CHANNEL_TOPIC: &str =
-"Senpai... I can't give you the topic of a channel you're not on!";
+pub const NOT_ON_CHANNEL: &str =
+"Senpai... I can't do that if you're not on the channel!";
 
 pub const NOT_REGISTERED: &str =
 "You must register first!";

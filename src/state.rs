@@ -42,7 +42,7 @@ fn is_valid_nickname(s: &str) -> bool {
         && s[0] != b'-' && !(b'0' <= s[0] && s[0] <= b'9')
 }
 
-/// Pointer to the shared state of the IRC server.
+/// Reference-counted pointer to the shared state of the IRC server.
 #[derive(Clone)]
 pub struct State(Arc<Mutex<StateInner>>);
 
@@ -52,14 +52,17 @@ impl State {
         Self(Arc::new(Mutex::new(inner)))
     }
 
+    /// Called when the connection to a new peer is created.
     pub async fn peer_joined(&self, addr: net::SocketAddr, queue: MessageQueue) {
         self.0.lock().await.peer_joined(addr, queue);
     }
 
+    /// Called when the connection to a peer is closed.
     pub async fn peer_quit(&self, addr: &net::SocketAddr, err: Option<io::Error>) {
         self.0.lock().await.peer_quit(addr, err);
     }
 
+    /// Called when a connected peer sends a message.
     pub async fn handle_message(&self, addr: &net::SocketAddr, msg: Message<'_>) {
         self.0.lock().await.handle_message(addr, msg);
     }
@@ -225,6 +228,7 @@ impl StateInner {
             Command::Info => self.cmd_info(addr),
             Command::Invite => self.cmd_invite(addr, ps[0], ps[1]),
             Command::Join => self.cmd_join(addr, ps[0], ps[1]),
+            Command::Kick => self.cmd_kick(addr, ps[0], ps[1], ps[2]),
             Command::List => self.cmd_list(addr, ps[0]),
             Command::Lusers => self.cmd_lusers(addr),
             Command::Mode => self.cmd_mode(addr, ps[0], ps[1], &ps[2..cmp::max(2, n)]),
@@ -263,7 +267,7 @@ impl StateInner {
     fn broadcast(&self, target: &str, msg: MessageQueueItem) {
         let channel = &self.channels[<&UniCase<str>>::from(target)];
         for member in channel.members.keys() {
-            self.send(member, msg.clone());
+            self.clients[member].send(msg.clone());
         }
     }
 
@@ -477,7 +481,7 @@ impl StateInner {
             if modes.is_none() {
                 log::debug!("{}: Can't invite {:?} to {:?}: Not on channel", addr, target_nick, channel_name);
                 self.send_reply(addr, rpl::ERR_NOTONCHANNEL,
-                    &[channel_name, lines::NOT_ON_CHANNEL_TOPIC]);
+                    &[channel_name, lines::NOT_ON_CHANNEL]);
                 return false;
             }
             if channel.invite_only && !modes.unwrap().operator {
@@ -560,6 +564,65 @@ impl StateInner {
         self.broadcast(target, MessageQueueItem::from(join_response));
         self.send_topic(addr, target);
         self.send_names(addr, target);
+        true
+    }
+
+    // KICK
+
+    fn cmd_kick(&mut self, addr: &net::SocketAddr, channel_names: &str, nicks: &str, reason: &str) -> bool {
+        let channel = match self.channels.get(<&UniCase<str>>::from(channel_names)) {
+            Some(channel) => channel,
+            None => {
+                log::debug!("{}: Can't kick {:?} from {:?}: channel doesn't exist", addr, nicks, channel_names);
+                self.send_reply(addr, rpl::ERR_NOSUCHCHANNEL, &[channel_names, lines::NO_SUCH_CHANNEL]);
+                return false;
+            }
+        };
+        let member_modes = match channel.members.get(addr) {
+            Some(member_modes) => member_modes,
+            None => {
+                log::debug!("{}: Cant kick {:?} from {:?}: not on channel", addr, nicks, channel_names);
+                self.send_reply(addr, rpl::ERR_NOTONCHANNEL, &[channel_names, lines::NOT_ON_CHANNEL]);
+                return false;
+            }
+        };
+        if !member_modes.operator {
+            log::debug!("{}: Cant kick {:?} from {:?}: not operator", addr, nicks, channel_names);
+            self.send_reply(addr, rpl::ERR_CHANOPRIVSNEEDED, &[channel_names, lines::CHAN_O_PRIVS_NEEDED]);
+            return false;
+        }
+        let clients = &self.clients;
+        let kicked_addrs = channel.members.keys()
+            .find(|addr| clients[addr].nick() == nicks)
+            .copied();
+        let kicked_addrs = match kicked_addrs {
+            Some(kicked_addrs) => kicked_addrs,
+            None => {
+                log::debug!("{}: Cant kick {:?} from {:?}: targets not on channel", addr, nicks, channel_names);
+                self.send_reply(addr, rpl::ERR_NOTONCHANNEL,
+                                &[nicks, channel_names, lines::USER_NOT_IN_CHANNEL]);
+                return false;
+            }
+        };
+
+        log::debug!("{}: Kick {:?} from {:?}", addr, nicks, channel_names);
+        let client = &self.clients[addr];
+        let mut kick_response = ResponseBuffer::new();
+        {
+            let msg = kick_response.prefixed_message(client.full_name(), Command::Kick)
+                .param(channel_names)
+                .param(nicks);
+            if !reason.is_empty() {
+                msg.trailing_param(reason);
+            }
+        }
+        let msg = MessageQueueItem::from(kick_response);
+        let channel = self.channels.get_mut(<&UniCase<str>>::from(channel_names)).unwrap();
+        for member in channel.members.keys() {
+            self.clients[member].send(msg.clone());
+        }
+        channel.members.remove(&kicked_addrs);
+
         true
     }
 
@@ -982,7 +1045,7 @@ impl StateInner {
         let is_on_channel = self.channels.get(<&UniCase<str>>::from(target))
             .map_or(false, |channel| channel.members.contains_key(&addr));
         if !is_on_channel {
-            self.send_reply(addr, rpl::ERR_NOTONCHANNEL, &[target, lines::NOT_ON_CHANNEL_PART]);
+            self.send_reply(addr, rpl::ERR_NOTONCHANNEL, &[target, lines::NOT_ON_CHANNEL]);
             return false;
         }
 
@@ -1113,7 +1176,7 @@ impl StateInner {
             } else {
             log::debug!("{}: Can't set topic of {:?}: not on channel", addr, target);
                 self.send_reply(addr, rpl::ERR_NOTONCHANNEL,
-                                &[target, lines::NOT_ON_CHANNEL_TOPIC]);
+                                &[target, lines::NOT_ON_CHANNEL]);
                 return false;
             }
         } else {
@@ -1143,7 +1206,7 @@ impl StateInner {
                 return false;
             }
         }
-        self.send_reply(addr, rpl::ERR_NOTONCHANNEL, &[target, lines::NOT_ON_CHANNEL_TOPIC]);
+        self.send_reply(addr, rpl::ERR_NOTONCHANNEL, &[target, lines::NOT_ON_CHANNEL]);
         true
     }
 

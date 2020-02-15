@@ -247,6 +247,7 @@ commands! {
     Info => 0,
     Invite => 2,
     Join => 1,
+    Kick => 2,
     List => 0,
     Lusers => 0,
     Mode => 1,
