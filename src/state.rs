@@ -5,8 +5,8 @@ use crate::client::{cap, Client, MessageQueue, MessageQueueItem};
 use crate::config::StateConfig;
 use crate::lines;
 use crate::message::{Command, Message, Reply, rpl, ResponseBuffer};
-use crate::misc::{time_now, UniCase};
 use crate::modes;
+use ellidri_unicase::UniCase;
 use std::{cmp, fs, io, net};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -16,6 +16,10 @@ const SERVER_INFO: &str = include_str!("info.txt");
 const SERVER_VERSION: &str = concat!(env!("CARGO_PKG_NAME"), "-", env!("CARGO_PKG_VERSION"));
 const MAX_CHANNEL_NAME_LENGTH: usize = 50;
 const MAX_NICKNAME_LENGTH: usize = 9;
+
+pub fn time_now() -> String {
+    chrono::Local::now().to_rfc2822()
+}
 
 fn is_valid_channel_name(s: &str) -> bool {
     // https://tools.ietf.org/html/rfc2811.html#section-2.1
@@ -1294,6 +1298,7 @@ impl StateInner {
     // WHOIS
 
     fn cmd_whois(&self, addr: &net::SocketAddr, nick: &str) -> bool {
+        // TODO
         true
     }
 }

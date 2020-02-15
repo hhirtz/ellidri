@@ -1,3 +1,9 @@
+//! Wrapper around str that makes ASCII comparisons case-insensitive.
+//!
+//! Intended for use within a `HashMap`.  Actually used by ellidri's `State`.
+//!
+//! It's made for IRC.  It doesn't need to support Unicode case-folding.
+
 use std::borrow::Borrow;
 use std::hash::{Hash, Hasher};
 
@@ -46,8 +52,4 @@ impl Borrow<UniCase<str>> for UniCase<String> {
     fn borrow(&self) -> &UniCase<str> {
         self.0.as_str().into()
     }
-}
-
-pub fn time_now() -> String {
-    chrono::Local::now().to_rfc2822()
 }

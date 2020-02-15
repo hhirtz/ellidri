@@ -15,6 +15,7 @@
 //! ellidri ellidri.conf
 //! ```
 
+#![forbid(unsafe_code)]
 #![warn(clippy::all, rust_2018_idioms)]
 #![allow(clippy::filter_map, clippy::find_map, clippy::shadow_unrelated, clippy::use_self)]
 
@@ -26,7 +27,6 @@ mod client;
 pub mod config;
 mod lines;
 pub mod message;
-mod misc;
 mod modes;
 mod net;
 mod state;
