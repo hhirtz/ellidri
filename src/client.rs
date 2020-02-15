@@ -299,6 +299,21 @@ impl Client {
         self.update_full_name();
     }
 
+    /// The username of the client
+    pub fn user(&self) -> &str {
+        &self.user
+    }
+
+    /// The realname of the client
+    pub fn real(&self) -> &str {
+        &self.real
+    }
+
+    /// The host of the client
+    pub fn host(&self) -> &str {
+        &self.host
+    }
+
     /// Change the username and the realname of the client.
     ///
     /// This function does not change the connection state.

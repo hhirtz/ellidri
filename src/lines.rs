@@ -45,6 +45,9 @@ pub const END_OF_MOTD: &str =
 pub const END_OF_NAMES: &str =
 "End of names";
 
+pub const END_OF_WHO: &str =
+"End of WHO list";
+
 pub const ERRONEOUS_NICNAME: &str =
 "Meh, this is obviously a bad nickname...";
 

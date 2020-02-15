@@ -247,6 +247,7 @@ impl StateInner {
             Command::Topic => self.cmd_topic(addr, ps[0], if n == 1 {None} else {Some(ps[1])}),
             Command::User => self.cmd_user(addr, ps[0], ps[3]),
             Command::Version => self.cmd_version(addr),
+            Command::Who => self.cmd_who(addr, ps[0], ps[1]),
             Command::Reply(_) => true,
         };
 
@@ -1247,6 +1248,35 @@ impl StateInner {
             .param(&self.domain);
         self.send_i_support(&mut response, client.nick());
         client.send(MessageQueueItem::from(response));
+        true
+    }
+
+    // WHO
+
+    fn cmd_who(&self, addr: &net::SocketAddr, mask: &str, o: &str) -> bool {
+        let mask = if mask.is_empty() {"*"} else {mask};
+        let o = o == "o";  // best line
+        let client_nick = self.clients[addr].nick();
+        let mut response = ResponseBuffer::new();
+        for client in self.clients.values() {
+            if client.nick() != mask || (o && !client.operator) {
+                continue;
+            }
+            response.prefixed_message(&self.domain, rpl::WHOREPLY)
+                .param(client_nick)
+                .param("*")
+                .param(client.user())
+                .param(client.host())
+                .param(&self.domain)
+                .param(client.nick())
+                .param("H")
+                .trailing_param(client.real());
+        }
+        response.prefixed_message(&self.domain, rpl::ENDOFWHO)
+            .param(client_nick)
+            .param(mask)
+            .trailing_param(lines::END_OF_WHO);
+        self.send(addr, MessageQueueItem::from(response));
         true
     }
 }
