@@ -32,7 +32,7 @@ pub type MessageQueue = mpsc::UnboundedSender<MessageQueueItem>;
 /// client can send.
 ///
 /// For example, a client that has only sent a "NICK" message cannot send a "JOIN" message.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ConnectionState {
     ConnectionEstablished,
     NickGiven,
@@ -75,28 +75,31 @@ impl ConnectionState {
                 _ => Err(()),
             }
             ConnectionState::CapGiven => match command {
-                Command::Pass => Ok(self),
+                Command::Cap if sub_command == "END" => Ok(ConnectionState::ConnectionEstablished),
+                Command::Cap | Command::Pass => Ok(self),
                 Command::Nick => Ok(ConnectionState::CapNickGiven),
                 Command::User => Ok(ConnectionState::CapUserGiven),
                 Command::Quit => Ok(ConnectionState::Quit),
                 _ => Err(()),
             }
             ConnectionState::CapNickGiven => match command {
-                Command::Pass | Command::Nick => Ok(self),
+                Command::Cap if sub_command == "END" => Ok(ConnectionState::NickGiven),
+                Command::Cap | Command::Pass | Command::Nick => Ok(self),
                 Command::User => Ok(ConnectionState::CapNegotiation),
                 Command::Quit => Ok(ConnectionState::Quit),
                 _ => Err(()),
             }
             ConnectionState::CapUserGiven => match command {
-                Command::Pass => Ok(self),
+                Command::Cap if sub_command == "END" => Ok(ConnectionState::UserGiven),
+                Command::Cap | Command::Pass => Ok(self),
                 Command::Nick => Ok(ConnectionState::CapNegotiation),
                 Command::Quit => Ok(ConnectionState::Quit),
                 _ => Err(()),
             }
             ConnectionState::CapNegotiation => match command {
-                Command::Pass | Command::Nick => Ok(self),
                 Command::Cap if sub_command == "END" => Ok(ConnectionState::Registered),
                 Command::Cap => Ok(self),
+                Command::Pass | Command::Nick => Ok(self),
                 Command::Quit => Ok(ConnectionState::Quit),
                 _ => Err(()),
             }
