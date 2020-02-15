@@ -50,7 +50,7 @@ pub fn start() {
     env_logger::builder()
         .format(|buf, r| {
             use std::io::Write;
-            writeln!(buf, "{:<5} {}", r.level(), r.args())
+            writeln!(buf, "[{:<5} {}] {}", r.level(), r.target(), r.args())
         })
         .init();
 
