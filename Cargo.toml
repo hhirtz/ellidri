@@ -1,11 +1,21 @@
 [workspace]
 members = [".", "ellidri-unicase"]
 
+
 [package]
 name = "ellidri"
 version = "1.0.0-alpha"
 authors = ["Hubert Hirtz <hubert.hirtz@laposte.net>"]
 edition = "2018"
+description = "A kawai IRC server"
+homepage = "https://github.com/hhirtz/ellidri"
+repository = "https://github.com/hhirtz/ellidri"
+readme = "README.md"
+keywords = ["irc"]
+categories = ["network-programming"]
+license = "ISC"
+license-file = "LICENSE"
+
 
 [dependencies]
 # Runtime
