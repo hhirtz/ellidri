@@ -4,6 +4,9 @@
 //!
 //! It's made for IRC.  It doesn't need to support Unicode case-folding.
 
+#![warn(clippy::all, rust_2018_idioms)]
+#![allow(clippy::filter_map, clippy::find_map, clippy::shadow_unrelated, clippy::use_self)]
+
 use std::borrow::Borrow;
 use std::hash::{Hash, Hasher};
 
