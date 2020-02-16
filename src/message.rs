@@ -28,7 +28,13 @@ pub mod rpl {
     pub const ADMINLOC2: Reply     = "258";  // :<info>
     pub const ADMINMAIL: Reply     = "259";  // :<info>
 
+    pub const WHOISUSER: Reply       = "311";  // <nick> <user> <host> * :<realname>
+    pub const WHOISSERVER: Reply     = "312";  // <nick> <server> :<server info>
+    pub const WHOISOPERATOR: Reply   = "313";  // <nick> :is an IRC operator
     pub const ENDOFWHO: Reply        = "315";  // <name> :End of WHO list
+    pub const WHOISIDLE: Reply       = "317";  // <nick> <integer> [<integer>] :seconds idle [, signon time]
+    pub const ENDOFWHOIS: Reply      = "318";  // <nick> :End of WHOIS list
+    pub const WHOISCHANNELS: Reply   = "319";  // <nick> :*( (@/+) <channel> " " )
     pub const LIST: Reply            = "322";  // <channel> <# of visible members> <topic>
     pub const LISTEND: Reply         = "323";  // :End of list
     pub const CHANNELMODEIS: Reply   = "324";  // <channel> <modes> <modeparams>

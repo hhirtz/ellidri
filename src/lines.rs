@@ -48,6 +48,9 @@ pub const END_OF_NAMES: &str =
 pub const END_OF_WHO: &str =
 "End of WHO list";
 
+pub const END_OF_WHOIS: &str =
+"End of WHOIS list";
+
 pub const ERRONEOUS_NICNAME: &str =
 "Meh, this is obviously a bad nickname...";
 
@@ -101,6 +104,9 @@ pub const USERS_DONT_MATCH: &str =
 
 pub const YOURE_OPER: &str =
 "You are now a BIG senpai!";
+
+pub const WHOIS_IDLE: &str =
+"Seconds since last activity, registration time";
 
 // Welcome messages
 

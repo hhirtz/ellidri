@@ -1269,6 +1269,7 @@ impl StateInner {
     // WHO
 
     fn cmd_who(&self, addr: &net::SocketAddr, mask: &str, o: &str) -> bool {
+        log::debug!("{}: WHO request of {:?}", addr, mask);
         let mask = if mask.is_empty() {"*"} else {mask};
         let o = o == "o";  // best line
         let client_nick = self.clients[addr].nick();
@@ -1298,7 +1299,43 @@ impl StateInner {
     // WHOIS
 
     fn cmd_whois(&self, addr: &net::SocketAddr, nick: &str) -> bool {
-        // TODO
+        let target_client = self.clients.values()
+            .find(|client| client.nick() == nick);
+        let target_client = match target_client {
+            Some(target_client) => target_client,
+            None => {
+                log::debug!("{}: Can't see WHOIS of {:?}: nick doesn't exist", addr, nick);
+                self.send_reply(addr, rpl::ERR_NOSUCHNICK, &[nick, lines::NO_SUCH_NICK]);
+                return false;
+            }
+        };
+
+        log::debug!("{}: WHOIS request of {:?}", addr, nick);
+        let client = &self.clients[addr];
+        let mut response = ResponseBuffer::new();
+        response.prefixed_message(&self.domain, rpl::WHOISUSER)
+            .param(client.nick())
+            .param(target_client.nick())
+            .param(target_client.user())
+            .param(target_client.host())
+            .param("*")
+            .trailing_param(target_client.real());
+        response.prefixed_message(&self.domain, rpl::WHOISSERVER)
+            .param(client.nick())
+            .param(target_client.nick())
+            .param(&self.domain)
+            .trailing_param(&self.org_name);
+        response.prefixed_message(&self.domain, rpl::WHOISIDLE)
+            .param(client.nick())
+            .param(target_client.nick())
+            .param("42")  // TODO keep track of time when sending messages and joining channels
+            .param("42")  // TODO keep track of time when registering
+            .trailing_param(lines::WHOIS_IDLE);
+        response.prefixed_message(&self.domain, rpl::ENDOFWHOIS)
+            .param(client.nick())
+            .param(target_client.nick())
+            .trailing_param(lines::END_OF_WHOIS);
+        client.send(MessageQueueItem::from(response));
         true
     }
 }
