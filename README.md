@@ -1,16 +1,45 @@
-# KAWAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIDESUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUU
+# kawai
 
-*Computer:* Intellij IDEA is ready to **u p d a t e**
+ellidri, your kawai IRC server.
 
-*Me:* (. o .)
 
-*Senpai:* <333
+## Features
 
-## ouais
+- RFC [1459][0] and [2812][1] compliance (almost!)
+- Capabilities (version 302)
+
+[0]: https://tools.ietf.org/html/rfc1459
+[1]: https://tools.ietf.org/html/rfc2812
+
+
+## Build and Install
+
+You'll need the Rust compiler and Cargo: <https://rustup.rs/>
+
+Install ellidri with `cargo install`
+
+Build it with `cargo build`.  Append the `--release` flag to build with
+optimizations enabled.
+
+
+## Usage
+
+ellidri needs a configuration file to run.  Its format is the following:
 
 ```
-cargo run -- ellidri.toml
-cargo doc --no-deps --document-private-items --open
-cargo test
-echo profit
+file   =  *( line "\n" )
+line   =  sp key sp value sp
+key    =  word
+value  =  *( word / sp )
+sp     =  any sequence of whitespace
 ```
+
+An example configuration file with all settings and their defaults can be found
+in `doc/ellidri.conf`.
+
+To start ellidri, pass the path of the configuration file as its first argument.
+
+
+## License
+
+ellidri is under the ISC license.  See `LICENSE` for a copy.
