@@ -30,6 +30,7 @@ pub mod message;
 mod modes;
 mod net;
 mod state;
+mod util;
 
 /// The beginning of everything
 pub fn start() {

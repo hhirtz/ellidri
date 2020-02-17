@@ -2,6 +2,7 @@
 
 use crate::message::{Command, MessageBuffer, ResponseBuffer};
 use crate::modes;
+use crate::util::time;
 use std::sync::Arc;
 use tokio::sync::mpsc;
 
@@ -177,6 +178,12 @@ pub struct Client {
     /// The nick!user@host
     full_name: String,
 
+    /// The time when the user has signed in
+    signon_time: u64,
+
+    /// The time of the last action
+    last_action_time: u64,
+
     /// Whether the client has issued a PASS command with the right password.
     pub has_given_password: bool,
 
@@ -193,6 +200,7 @@ impl Client {
     /// The nickname is set to "*", as it seems it's what freenode server does.  The username and
     /// the realname are set to empty strings.
     pub fn new(queue: MessageQueue, host: String) -> Self {
+        let now = time();
         let mut full_name = String::with_capacity(FULL_NAME_LENGTH);
         full_name.push('*');
         full_name.push_str(&host);
@@ -205,12 +213,18 @@ impl Client {
             state: ConnectionState::default(),
             user: String::new(),
             real: String::new(),
+            signon_time: now,
+            last_action_time: now,
             has_given_password: false,
             away: false,
             invisible: false,
             registered: false,
             operator: false,
         }
+    }
+
+    pub fn state(&self) -> ConnectionState {
+        self.state
     }
 
     pub fn update_capabilities(&mut self, capabilities: &str) {
@@ -323,8 +337,16 @@ impl Client {
         self.update_full_name();
     }
 
-    pub fn state(&self) -> ConnectionState {
-        self.state
+    pub fn signon_time(&self) -> u64 {
+        self.signon_time
+    }
+
+    pub fn idle_time(&self) -> u64 {
+        time() - self.last_action_time
+    }
+
+    pub fn update_idle_time(&mut self) {
+        self.last_action_time = time();
     }
 
     pub fn write_modes(&self, mut out: MessageBuffer<'_>) {

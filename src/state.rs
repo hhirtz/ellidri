@@ -6,6 +6,7 @@ use crate::config::StateConfig;
 use crate::lines;
 use crate::message::{Command, Message, Reply, rpl, ResponseBuffer};
 use crate::modes;
+use crate::util::time_str;
 use ellidri_unicase::UniCase;
 use std::{cmp, fs, io, net};
 use std::collections::{HashMap, HashSet};
@@ -16,10 +17,6 @@ const SERVER_INFO: &str = include_str!("info.txt");
 const SERVER_VERSION: &str = concat!(env!("CARGO_PKG_NAME"), "-", env!("CARGO_PKG_VERSION"));
 const MAX_CHANNEL_NAME_LENGTH: usize = 50;
 const MAX_NICKNAME_LENGTH: usize = 9;
-
-pub fn time_now() -> String {
-    chrono::Local::now().to_rfc2822()
-}
 
 fn is_valid_channel_name(s: &str) -> bool {
     // https://tools.ietf.org/html/rfc2811.html#section-2.1
@@ -118,7 +115,7 @@ impl StateInner {
             org_mail: config.org_mail,
             clients: HashMap::new(),
             channels: HashMap::new(),
-            created_at: time_now(),
+            created_at: time_str(),
             motd,
             password: config.password,
             default_chan_mode: config.default_chan_mode,
@@ -572,7 +569,8 @@ impl StateInner {
         let channel = self.channels.entry(UniCase(target.to_owned()))
             .or_insert_with(|| Channel::new(&default_chan_mode));
         channel.add_member(*addr);
-        let client = &self.clients[&addr];
+        let client = self.clients.get_mut(addr).unwrap();
+        client.update_idle_time();
         let mut join_response = ResponseBuffer::new();
         join_response.prefixed_message(client.full_name(), Command::Join).param(target);
         self.broadcast(target, MessageQueueItem::from(join_response));
@@ -983,54 +981,56 @@ impl StateInner {
 
     // NOTICE
 
-    fn cmd_notice_user(&self, addr: &net::SocketAddr, target: &str, user: &Client, content: &str) -> bool {
-        log::debug!("{}: Send notice to {:?}: {:?}", addr, target, content);
-        let mut response = ResponseBuffer::new();
-        response.prefixed_message(self.clients[&addr].full_name(), Command::Notice)
-            .param(target)
-            .trailing_param(content);
-        user.send(MessageQueueItem::from(response));
-        true
-    }
-
-    fn cmd_notice_channel(&self, addr: &net::SocketAddr, target: &str, channel: &Channel, content: &str) -> bool {
-        log::debug!("{}: Send notice to {:?}: {:?}", addr, target, content);
-        let mut response = ResponseBuffer::new();
-        response.prefixed_message(self.clients[&addr].full_name(), Command::Notice)
-            .param(target)
-            .trailing_param(content);
-        let msg = MessageQueueItem::from(response);
-        channel.members.keys()
-            .filter(|&a| a != addr)
-            .for_each(|member| self.send(member, msg.clone()));
-        true
-    }
-
-    fn cmd_notice(&self, addr: &net::SocketAddr, target: &str, content: &str) -> bool {
+    fn cmd_notice(&mut self, addr: &net::SocketAddr, target: &str, content: &str) -> bool {
         if content.is_empty() {
             self.send_reply(addr, rpl::ERR_NOTEXTTOSEND, &[lines::NEED_MORE_PARAMS]);
             return false;
         }
-        if let Some(ref channel) = self.channels.get(<&UniCase<str>>::from(target)) {
-            if channel.can_talk(addr) {
-                self.cmd_notice_channel(addr, target, channel, content);
-                return false;
-            } else {
-                log::debug!("{}: Can't send notice to {:?}: No voice", addr, target);
+        if is_valid_channel_name(target) {
+            let channel = match self.channels.get(<&UniCase<str>>::from(target)) {
+                Some(channel) => channel,
+                None => {
+                    log::debug!("{}: Can't send notice to {:?}: No such channel", addr, target);
+                    self.send_reply(addr, rpl::ERR_NOSUCHNICK, &[target, lines::NO_SUCH_NICK]);
+                    return false;
+                }
+            };
+
+            if !channel.can_talk(addr) {
+                log::debug!("{}: Can't send notice to {:?}", addr, target);
                 self.send_reply(addr, rpl::ERR_CANNOTSENDTOCHAN,
                                 &[target, lines::CANNOT_SEND_TO_CHAN]);
                 return false;
             }
+
+            log::debug!("{}: notice to channel {:?}", addr, target);
+            let mut response = ResponseBuffer::new();
+            response.prefixed_message(self.clients[addr].full_name(), Command::Notice)
+                .param(target)
+                .trailing_param(content);
+            let msg = MessageQueueItem::from(response);
+            channel.members.keys()
+                .filter(|&a| a != addr)
+                .for_each(|member| self.send(member, msg.clone()));
+        } else {
+            let target_client = match self.clients.values().find(|c| c.nick() == target) {
+                Some(target_client) => target_client,
+                None => {
+                    log::debug!("{}: Can't send notice to {:?}: No such channel", addr, target);
+                    self.send_reply(addr, rpl::ERR_NOSUCHNICK, &[target, lines::NO_SUCH_NICK]);
+                    return false;
+                }
+            };
+
+            log::debug!("{}: notice to user {:?}", addr, target);
+            let mut response = ResponseBuffer::new();
+            response.prefixed_message(self.clients[addr].full_name(), Command::Notice)
+                .param(target)
+                .trailing_param(content);
+            target_client.send(MessageQueueItem::from(response));
         }
-        if is_valid_nickname(target) {
-            if let Some(user) = self.clients.values().find(|c| c.nick() == target) {
-                self.cmd_notice_user(addr, target, user, content);
-                return false;
-            }
-        }
-        log::debug!("{}: Can't send notice to {:?}: No such channel", addr, target);
-        self.send_reply(addr, rpl::ERR_NOSUCHNICK, &[target, lines::NO_SUCH_NICK]);
-        false
+        self.clients.get_mut(addr).unwrap().update_idle_time();
+        true
     }
 
     // OPER
@@ -1105,54 +1105,56 @@ impl StateInner {
 
     // PRIVMSG
 
-    fn cmd_privmsg_user(&self, addr: &net::SocketAddr, target: &str, user: &Client, content: &str) -> bool {
-        let mut response = ResponseBuffer::new();
-        response.prefixed_message(self.clients[&addr].full_name(), Command::PrivMsg)
-            .param(target)
-            .trailing_param(content);
-        user.send(MessageQueueItem::from(response));
-        true
-    }
-
-    fn cmd_privmsg_channel(&self, addr: &net::SocketAddr, target: &str, channel: &Channel, content: &str) -> bool {
-        let mut response = ResponseBuffer::new();
-        response.prefixed_message(self.clients[&addr].full_name(), Command::PrivMsg)
-            .param(target)
-            .trailing_param(content);
-        let msg = MessageQueueItem::from(response);
-        channel.members.keys()
-            .filter(|&a| a != addr)
-            .for_each(|member| self.send(member, msg.clone()));
-        true
-    }
-
-    fn cmd_privmsg(&self, addr: &net::SocketAddr, target: &str, content: &str) -> bool {
+    fn cmd_privmsg(&mut self, addr: &net::SocketAddr, target: &str, content: &str) -> bool {
         if content.is_empty() {
             self.send_reply(addr, rpl::ERR_NOTEXTTOSEND, &[lines::NEED_MORE_PARAMS]);
             return false;
         }
-        if let Some(ref channel) = self.channels.get(<&UniCase<str>>::from(target)) {
-            if channel.can_talk(addr) {
-                log::debug!("{}: privmsg to {:?}", addr, target);
-                self.cmd_privmsg_channel(addr, target, channel, content);
-                return false;
-            } else {
+        if is_valid_channel_name(target) {
+            let channel = match self.channels.get(<&UniCase<str>>::from(target)) {
+                Some(channel) => channel,
+                None => {
+                    log::debug!("{}: Can't send privmsg to {:?}: No such channel", addr, target);
+                    self.send_reply(addr, rpl::ERR_NOSUCHNICK, &[target, lines::NO_SUCH_NICK]);
+                    return false;
+                }
+            };
+
+            if !channel.can_talk(addr) {
                 log::debug!("{}: Can't send privmsg to {:?}", addr, target);
                 self.send_reply(addr, rpl::ERR_CANNOTSENDTOCHAN,
                                 &[target, lines::CANNOT_SEND_TO_CHAN]);
                 return false;
             }
+
+            log::debug!("{}: privmsg to channel {:?}", addr, target);
+            let mut response = ResponseBuffer::new();
+            response.prefixed_message(self.clients[addr].full_name(), Command::PrivMsg)
+                .param(target)
+                .trailing_param(content);
+            let msg = MessageQueueItem::from(response);
+            channel.members.keys()
+                .filter(|&a| a != addr)
+                .for_each(|member| self.send(member, msg.clone()));
+        } else {
+            let target_client = match self.clients.values().find(|c| c.nick() == target) {
+                Some(target_client) => target_client,
+                None => {
+                    log::debug!("{}: Can't send privmsg to {:?}: No such channel", addr, target);
+                    self.send_reply(addr, rpl::ERR_NOSUCHNICK, &[target, lines::NO_SUCH_NICK]);
+                    return false;
+                }
+            };
+
+            log::debug!("{}: privmsg to user {:?}", addr, target);
+            let mut response = ResponseBuffer::new();
+            response.prefixed_message(self.clients[addr].full_name(), Command::PrivMsg)
+                .param(target)
+                .trailing_param(content);
+            target_client.send(MessageQueueItem::from(response));
         }
-        if is_valid_nickname(target) {
-            if let Some(user) = self.clients.values().find(|c| c.nick() == target) {
-                log::debug!("{}: privmsg to {:?}", addr, target);
-                self.cmd_privmsg_user(addr, target, user, content);
-                return false;
-            }
-        }
-        log::debug!("{}: Can't send privmsg to {:?}: No such channel", addr, target);
-        self.send_reply(addr, rpl::ERR_NOSUCHNICK, &[target, lines::NO_SUCH_NICK]);
-        false
+        self.clients.get_mut(addr).unwrap().update_idle_time();
+        true
     }
 
     // QUIT
@@ -1171,7 +1173,7 @@ impl StateInner {
 
     fn cmd_time(&self, addr: &net::SocketAddr) -> bool {
         log::debug!("{}: Request time", addr);
-        let time = time_now();
+        let time = time_str();
         self.send_reply(addr, rpl::TIME, &[&self.domain, &time]);
         true
     }
@@ -1328,8 +1330,8 @@ impl StateInner {
         response.prefixed_message(&self.domain, rpl::WHOISIDLE)
             .param(client.nick())
             .param(target_client.nick())
-            .param("42")  // TODO keep track of time when sending messages and joining channels
-            .param("42")  // TODO keep track of time when registering
+            .param(&client.idle_time().to_string())
+            .param(&client.signon_time().to_string())
             .trailing_param(lines::WHOIS_IDLE);
         response.prefixed_message(&self.domain, rpl::ENDOFWHOIS)
             .param(client.nick())
