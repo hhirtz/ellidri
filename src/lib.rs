@@ -41,14 +41,14 @@ pub fn start() {
 
     if cfg!(debug_assertions) {
         env::set_var("RUST_BACKTRACE", "1");
-        env::set_var("RUST_LOG", "ellidri=trace");
-    } else {
-        env::set_var("RUST_LOG", "ellidri=info");
     }
 
     let c = config::from_file(config_path);
 
-    env_logger::builder()
+    let log_settings = env_logger::Env::new()
+        .filter_or("ELLIDRI_LOG", "ellidri=debug")
+        .write_style("ELLIDRI_LOG_STYLE");
+    env_logger::Builder::from_env(log_settings)
         .format(|buf, r| {
             use std::io::Write;
             writeln!(buf, "[{:<5} {}] {}", r.level(), r.target(), r.args())
