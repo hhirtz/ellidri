@@ -436,7 +436,7 @@ impl Default for ResponseBuffer {
 impl ResponseBuffer {
     pub fn new() -> Self {
         Self {
-            buf: String::with_capacity(MAX_MESSAGE_LENGTH),
+            buf: String::new(),
         }
     }
 
@@ -447,12 +447,14 @@ impl ResponseBuffer {
     pub fn message<C>(&mut self, command: C) -> MessageBuffer<'_>
         where C: Into<Command>
     {
+        self.buf.reserve(MAX_MESSAGE_LENGTH);
         MessageBuffer::new(&mut self.buf, command)
     }
 
     pub fn prefixed_message<C>(&mut self, prefix: &str, command: C) -> MessageBuffer<'_>
         where C: Into<Command>
     {
+        self.buf.reserve(MAX_MESSAGE_LENGTH);
         MessageBuffer::with_prefix(&mut self.buf, prefix, command)
     }
 
