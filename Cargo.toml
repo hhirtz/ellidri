@@ -14,7 +14,6 @@ readme = "README.md"
 keywords = ["irc"]
 categories = ["network-programming"]
 license = "ISC"
-license-file = "LICENSE"
 
 
 [dependencies]
