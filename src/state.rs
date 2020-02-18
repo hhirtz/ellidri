@@ -18,6 +18,8 @@ const SERVER_VERSION: &str = concat!(env!("CARGO_PKG_NAME"), "-", env!("CARGO_PK
 const MAX_CHANNEL_NAME_LENGTH: usize = 50;
 const MAX_NICKNAME_LENGTH: usize = 9;
 
+type ChannelMap = HashMap<UniCase<String>, Channel>;
+type ClientMap = HashMap<net::SocketAddr, Client>;
 type Result = std::result::Result<(), ()>;
 
 fn is_valid_channel_name(s: &str) -> bool {
@@ -45,21 +47,45 @@ fn is_valid_nickname(s: &str) -> bool {
         && s[0] != b'-' && !(b'0' <= s[0] && s[0] <= b'9')
 }
 
-fn find_nick<'a>(addr: &net::SocketAddr, domain: &str, clients: &'a HashMap<net::SocketAddr, Client>,
+fn send_reply<'a>(addr: &net::SocketAddr, domain: &str, clients: &'a ClientMap,
+                  r: Reply, params: &[&str])
+{
+    let client = &clients[addr];
+    let mut response = ResponseBuffer::new();
+    {
+        let mut msg = response.prefixed_message(domain, r).param(client.nick());
+        if !params.is_empty() {
+            for p in &params[0..params.len() - 1] {
+                msg = msg.param(p);
+            }
+            msg.trailing_param(params[params.len() - 1]);
+        }
+    }
+    client.send(MessageQueueItem::from(response));
+}
+
+fn find_channel<'a>(addr: &net::SocketAddr, domain: &str, clients: &ClientMap,
+                    channels: &'a ChannelMap, name: &str) -> std::result::Result<&'a Channel, ()>
+{
+    match channels.get(<&UniCase<str>>::from(name)) {
+        Some(channel) => Ok(channel),
+        None => {
+            log::debug!("{}:         no such channel", addr);
+            send_reply(addr, domain, clients, rpl::ERR_NOSUCHCHANNEL,
+                       &[name, lines::NO_SUCH_CHANNEL]);
+            Err(())
+        }
+    }
+}
+
+fn find_nick<'a>(addr: &net::SocketAddr, domain: &str, clients: &'a ClientMap,
                  nick: &str) -> std::result::Result<(net::SocketAddr, &'a Client), ()>
 {
     match clients.iter().find(|(_, client)| client.nick() == nick) {
         Some((addr, client)) => Ok((*addr, client)),
         None => {
             log::debug!("{}:         nick doesn't exist", addr);
-            // TODO replace with send_reply
-            let client = &clients[addr];
-            let mut response = ResponseBuffer::new();
-            response.prefixed_message(domain, rpl::ERR_NOSUCHNICK)
-                .param(client.nick())
-                .param(nick)
-                .trailing_param(lines::NO_SUCH_NICK);
-            client.send(MessageQueueItem::from(response));
+            send_reply(addr, domain, clients, rpl::ERR_NOSUCHNICK, &[nick, lines::NO_SUCH_NICK]);
             Err(())
         }
     }
@@ -101,8 +127,8 @@ struct StateInner {
     org_location: String,
     org_mail: String,
 
-    clients: HashMap<net::SocketAddr, Client>,
-    channels: HashMap<UniCase<String>, Channel>,
+    clients: ClientMap,
+    channels: ChannelMap,
 
     /// The formatted time when this instance is created. It is sent to the client when they
     /// register (in a "003 RPL_CREATED" reply).
@@ -612,16 +638,7 @@ impl StateInner {
     // KICK
 
     fn cmd_kick(&mut self, addr: &net::SocketAddr, channel_names: &str, nicks: &str, reason: &str) -> Result {
-        let channel = match self.channels.get(<&UniCase<str>>::from(channel_names)) {
-            Some(channel) => channel,
-            None => {
-                log::debug!("{}: KICK {:?} from {:?}: channel doesn't exist",
-                            addr, nicks, channel_names);
-                self.send_reply(addr, rpl::ERR_NOSUCHCHANNEL,
-                                &[channel_names, lines::NO_SUCH_CHANNEL]);
-                return Err(());
-            }
-        };
+        let channel = find_channel(addr, &self.domain, &self.clients, &self.channels, channel_names)?;
         let member_modes = match channel.members.get(addr) {
             Some(member_modes) => member_modes,
             None => {
@@ -740,14 +757,7 @@ impl StateInner {
     // MODE
 
     fn cmd_mode_chan_get(&self, addr: &net::SocketAddr, target: &str) -> Result {
-        let channel = match self.channels.get(<&UniCase<str>>::from(target)) {
-            Some(channel) => channel,
-            None => {
-                log::debug!("{}: MODE {:?}: no such channel", addr, target);
-                self.send_reply(addr, rpl::ERR_NOSUCHCHANNEL, &[target, lines::NO_SUCH_CHANNEL]);
-                return Err(());
-            }
-        };
+        let channel = find_channel(addr, &self.domain, &self.clients, &self.channels, target)?;
 
         log::debug!("{}: MODE {:?}", addr, target);
         let mut response = ResponseBuffer::new();
@@ -1035,14 +1045,7 @@ impl StateInner {
             return Err(());
         }
         if is_valid_channel_name(target) {
-            let channel = match self.channels.get(<&UniCase<str>>::from(target)) {
-                Some(channel) => channel,
-                None => {
-                    log::debug!("{}: NOTICE {:?}: No such channel", addr, target);
-                    self.send_reply(addr, rpl::ERR_NOSUCHNICK, &[target, lines::NO_SUCH_NICK]);
-                    return Err(());
-                }
-            };
+            let channel = find_channel(addr, &self.domain, &self.clients, &self.channels, target)?;
 
             if !channel.can_talk(addr) {
                 log::debug!("{}: NOTICE {:?}", addr, target);
@@ -1170,14 +1173,7 @@ impl StateInner {
             return Err(());
         }
         if is_valid_channel_name(target) {
-            let channel = match self.channels.get(<&UniCase<str>>::from(target)) {
-                Some(channel) => channel,
-                None => {
-                    log::debug!("{}: PRIVMSG {:?}: No such channel", addr, target);
-                    self.send_reply(addr, rpl::ERR_NOSUCHNICK, &[target, lines::NO_SUCH_NICK]);
-                    return Err(());
-                }
-            };
+            let channel = find_channel(addr, &self.domain, &self.clients, &self.channels, target)?;
 
             if !channel.can_talk(addr) {
                 log::debug!("{}: PRIVMSG {:?}", addr, target);
@@ -1272,14 +1268,7 @@ impl StateInner {
     }
 
     fn cmd_topic_get(&self, addr: &net::SocketAddr, target: &str) -> Result {
-        let channel = match self.channels.get(<&UniCase<str>>::from(target)) {
-            Some(channel) => channel,
-            None => {
-                log::debug!("{}: TOPIC {:?}: No such channel", addr, target);
-                self.send_reply(addr, rpl::ERR_NOSUCHCHANNEL, &[target, lines::NO_SUCH_CHANNEL]);
-                return Err(());
-            }
-        };
+        let channel = find_channel(addr, &self.domain, &self.clients, &self.channels, target)?;
         if channel.secret && !channel.members.contains_key(addr) {
             log::debug!("{}: TOPIC {:?}: Not on channel", addr, target);
             self.send_reply(addr, rpl::ERR_NOTONCHANNEL, &[target, lines::NOT_ON_CHANNEL]);
