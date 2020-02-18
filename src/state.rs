@@ -348,7 +348,7 @@ impl StateInner {
         send_reply(addr, &self.domain, &self.clients, r, params);
     }
 
-    fn send_i_support(&self, response: &mut ResponseBuffer, nick: &str) {
+    fn write_i_support(&self, response: &mut ResponseBuffer, nick: &str) {
         response.prefixed_message(&self.domain, rpl::ISUPPORT)
             .param(nick)
             .param("CASEMAPPING=ascii")
@@ -417,7 +417,7 @@ impl StateInner {
             .param(modes::USER_MODES)
             .param(modes::SIMPLE_CHAN_MODES)
             .param(modes::EXTENDED_CHAN_MODES);
-        self.send_i_support(&mut response, client.nick());
+        self.write_i_support(&mut response, client.nick());
         client.send(MessageQueueItem::from(response));
         let _ = self.cmd_lusers(addr);
         let _ = self.cmd_motd(addr);
@@ -755,7 +755,7 @@ impl StateInner {
         let msg = response.prefixed_message(&self.domain, rpl::CHANNELMODEIS)
             .param(client.nick())
             .param(target);
-        channel.modes(msg, channel.members.contains_key(&addr));
+        channel.modes(msg, channel.members.contains_key(addr));
         client.send(MessageQueueItem::from(response));
 
         Ok(())
@@ -1309,7 +1309,7 @@ impl StateInner {
             .param(client.nick())
             .param(SERVER_VERSION)
             .param(&self.domain);
-        self.send_i_support(&mut response, client.nick());
+        self.write_i_support(&mut response, client.nick());
         client.send(MessageQueueItem::from(response));
 
         Ok(())
