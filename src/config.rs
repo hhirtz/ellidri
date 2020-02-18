@@ -32,6 +32,11 @@ fn format_error(lineno: u32, msg: &'static str) -> ! {
     process::exit(1)
 }
 
+fn missing_setting_error(setting: &'static str) -> ! {
+    eprintln!("Config file error: missing setting {}", setting);
+    process::exit(1);
+}
+
 fn add_setting(config: &mut Config, key: &str, value: &str, lineno: u32) {
     if key == "bind_to" {
         let address = value.parse().unwrap_or_else(|_| format_error(lineno, "expected IP address"));
@@ -51,6 +56,9 @@ fn add_setting(config: &mut Config, key: &str, value: &str, lineno: u32) {
             format_error(lineno, "duplicate workers setting");
         }
         let workers = value.parse().unwrap_or_else(|_| format_error(lineno, "expected integer"));
+        if 32768 < workers {
+            format_error(lineno, "workers should be between 0 and 32768");
+        }
         config.workers = Some(workers);
     } else if key == "domain" {
         if !config.srv.domain.is_empty() {
@@ -102,6 +110,31 @@ fn add_setting(config: &mut Config, key: &str, value: &str, lineno: u32) {
     }
 }
 
+fn validate(config: &mut Config) {
+    if config.bindings.is_empty() {
+        missing_setting_error("bind_to");
+    }
+    if let Some(0) = config.workers {
+        config.workers = None;
+    }
+
+    if config.srv.domain.is_empty() {
+        missing_setting_error("domain");
+    }
+    if config.srv.default_chan_mode.is_empty() {
+        config.srv.default_chan_mode.push_str("+nt");
+    }
+    if config.srv.org_name.is_empty() {
+        missing_setting_error("org_name");
+    }
+    if config.srv.org_location.is_empty() {
+        missing_setting_error("org_location");
+    }
+    if config.srv.org_mail.is_empty() {
+        missing_setting_error("org_mail");
+    }
+}
+
 pub fn from_file(filename: String) -> Config {
     let contents = fs::read_to_string(&filename).unwrap_or_else(|err| {
         eprintln!("Could not open {:?}: {}", filename, err);
@@ -118,6 +151,8 @@ pub fn from_file(filename: String) -> Config {
         let value = split.next().unwrap_or_else(|| format_error(lineno, "setting with no value"));
         add_setting(&mut res, key, value, lineno);
     }
+
+    validate(&mut res);
 
     res
 }
