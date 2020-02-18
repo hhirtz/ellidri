@@ -348,7 +348,7 @@ impl StateInner {
 
     /// Sends the list of nicknames in the channel `channel_name` to the given client.
     fn send_names(&self, addr: &net::SocketAddr, channel_name: &str) {
-        if let Some(channel) = &self.channels.get(<&UniCase<str>>::from(channel_name)) {
+        if let Some(channel) = self.channels.get(<&UniCase<str>>::from(channel_name)) {
             if channel.secret && !channel.members.contains_key(&addr) { return; }
             let client = &self.clients[&addr];
             let mut response = ResponseBuffer::new();
@@ -1104,9 +1104,15 @@ impl StateInner {
     // PART
 
     fn cmd_part(&mut self, addr: &net::SocketAddr, target: &str, reason: &str) -> Result {
-        let is_on_channel = self.channels.get(<&UniCase<str>>::from(target))
-            .map_or(false, |channel| channel.members.contains_key(&addr));
-        if !is_on_channel {
+        let channel = match self.channels.get_mut(<&UniCase<str>>::from(target)) {
+            Some(channel) => channel,
+            None => {
+                log::debug!("{}: PART {:?}: Not on channel", addr, target);
+                self.send_reply(addr, rpl::ERR_NOTONCHANNEL, &[target, lines::NOT_ON_CHANNEL]);
+                return Err(());
+            }
+        };
+        if !channel.members.contains_key(addr) {
             log::debug!("{}: PART {:?}: Not on channel", addr, target);
             self.send_reply(addr, rpl::ERR_NOTONCHANNEL, &[target, lines::NOT_ON_CHANNEL]);
             return Err(());
@@ -1116,7 +1122,6 @@ impl StateInner {
         let mut response = ResponseBuffer::new();
         let client = &self.clients[&addr];
 
-        let channel = self.channels.get_mut(<&UniCase<str>>::from(target)).unwrap();
         channel.members.remove(&addr);
         if reason.is_empty() {
             response.prefixed_message(client.full_name(), Command::Part).param(target);
