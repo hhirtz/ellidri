@@ -6,7 +6,7 @@ use std::net::SocketAddr;
 /// Modes applied to clients on a per-channel basis.
 ///
 /// <https://tools.ietf.org/html/rfc2811.html#section-4.1>
-#[derive(Default)]
+#[derive(Clone, Copy, Default)]
 pub struct MemberModes {
     pub creator: bool,
     pub operator: bool,
@@ -14,7 +14,7 @@ pub struct MemberModes {
 }
 
 impl MemberModes {
-    pub fn symbol(&self) -> Option<char> {
+    pub fn symbol(self) -> Option<char> {
         if self.operator {
             Some('@')
         } else if self.voice {
@@ -40,6 +40,8 @@ pub struct Channel {
 
     pub user_limit: Option<usize>,
     pub key: Option<String>,
+
+    // TODO test performance with BTreeSet instead of HashSet
 
     // https://tools.ietf.org/html/rfc2811.html#section-4.3
     pub ban_mask: HashSet<String>,

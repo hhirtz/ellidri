@@ -78,6 +78,20 @@ fn find_channel<'a>(addr: &net::SocketAddr, domain: &str, clients: &ClientMap,
     }
 }
 
+fn find_member(addr: &net::SocketAddr, domain: &str, clients: &ClientMap, channel: &Channel,
+               channel_name: &str) -> std::result::Result<crate::channel::MemberModes, ()>
+{
+    match channel.members.get(addr) {
+        Some(modes) => Ok(*modes),
+        None => {
+            log::debug!("{}:         not on channel", addr);
+            send_reply(addr, domain, clients, rpl::ERR_NOTONCHANNEL,
+                       &[channel_name, lines::NOT_ON_CHANNEL]);
+            Err(())
+        }
+    }
+}
+
 fn find_nick<'a>(addr: &net::SocketAddr, domain: &str, clients: &'a ClientMap,
                  nick: &str) -> std::result::Result<(net::SocketAddr, &'a Client), ()>
 {
@@ -528,14 +542,8 @@ impl StateInner {
         let (target_addr, _) = find_nick(addr, &self.domain, &self.clients, target_nick)?;
 
         if let Some(channel) = self.channels.get(<&UniCase<str>>::from(channel_name)) {
-            let modes = channel.members.get(addr);
-            if modes.is_none() {
-                log::debug!("{}: INVITE {:?} {:?}: Not on channel", addr, target_nick, channel_name);
-                self.send_reply(addr, rpl::ERR_NOTONCHANNEL,
-                                &[channel_name, lines::NOT_ON_CHANNEL]);
-                return Err(());
-            }
-            if channel.invite_only && !modes.unwrap().operator {
+            let member_modes = find_member(addr, &self.domain, &self.clients, channel, channel_name)?;
+            if channel.invite_only && !member_modes.operator {
                 log::debug!("{}: INVITE {:?} {:?}: Not operator", addr, target_nick, channel_name);
                 self.send_reply(addr, rpl::ERR_CHANOPRIVSNEEDED,
                                 &[channel_name, lines::CHAN_O_PRIVS_NEEDED]);
@@ -628,15 +636,7 @@ impl StateInner {
 
     fn cmd_kick(&mut self, addr: &net::SocketAddr, channel_names: &str, nicks: &str, reason: &str) -> Result {
         let channel = find_channel(addr, &self.domain, &self.clients, &self.channels, channel_names)?;
-        let member_modes = match channel.members.get(addr) {
-            Some(member_modes) => member_modes,
-            None => {
-                log::debug!("{}: KICK {:?} {:?}: not on channel", addr, nicks, channel_names);
-                self.send_reply(addr, rpl::ERR_NOTONCHANNEL,
-                                &[channel_names, lines::NOT_ON_CHANNEL]);
-                return Err(());
-            }
-        };
+        let member_modes = find_member(addr, &self.domain, &self.clients, channel, channel_names)?;
         if !member_modes.operator {
             log::debug!("{}: KICK {:?} {:?}: not operator", addr, nicks, channel_names);
             self.send_reply(addr, rpl::ERR_CHANOPRIVSNEEDED,
@@ -772,17 +772,8 @@ impl StateInner {
                 return Err(());
             }
         };
-        let client_modes = match channel.members.get(addr) {
-            Some(client_modes) => client_modes,
-            None => {
-                log::debug!("{}: MODE {:?}: not in channel", addr, target);
-                let nick = self.clients[&addr].nick();
-                self.send_reply(addr, rpl::ERR_USERNOTINCHANNEL,
-                                &[nick, target, lines::USER_NOT_IN_CHANNEL]);
-                return Err(());
-            }
-        };
-        if modes::needs_chanop(modes) && !client_modes.operator {
+        let member_modes = find_member(addr, &self.domain, &self.clients, channel, target)?;
+        if modes::needs_chanop(modes) && !member_modes.operator {
             log::debug!("{}: MODE {:?} {:?}: not operator", addr, target, modes);
             self.send_reply(addr, rpl::ERR_CHANOPRIVSNEEDED, &[target, lines::CHAN_O_PRIVS_NEEDED]);
             return Err(());
@@ -1104,17 +1095,13 @@ impl StateInner {
                 return Err(());
             }
         };
-        if !channel.members.contains_key(addr) {
-            log::debug!("{}: PART {:?}: Not on channel", addr, target);
-            self.send_reply(addr, rpl::ERR_NOTONCHANNEL, &[target, lines::NOT_ON_CHANNEL]);
-            return Err(());
-        }
+        find_member(addr, &self.domain, &self.clients, channel, target)?;
 
         log::debug!("{}: PART {:?} {:?}", addr, target, reason);
         let mut response = ResponseBuffer::new();
         let client = &self.clients[&addr];
 
-        channel.members.remove(&addr);
+        channel.members.remove(addr);
         if reason.is_empty() {
             response.prefixed_message(client.full_name(), Command::Part).param(target);
         } else {
@@ -1230,15 +1217,8 @@ impl StateInner {
                 return Err(());
             }
         };
-        let modes = match channel.members.get(addr) {
-            Some(modes) => modes,
-            None => {
-                log::debug!("{}: TOPIC {:?}: not on channel", addr, target);
-                self.send_reply(addr, rpl::ERR_NOTONCHANNEL, &[target, lines::NOT_ON_CHANNEL]);
-                return Err(());
-            }
-        };
-        if !modes.operator && channel.topic_restricted {
+        let member_modes = find_member(addr, &self.domain, &self.clients, channel, target)?;
+        if !member_modes.operator && channel.topic_restricted {
             log::debug!("{}: TOPIC {:?}: not operator", addr, target);
             self.send_reply(addr, rpl::ERR_CHANOPRIVSNEEDED, &[target, lines::CHAN_O_PRIVS_NEEDED]);
             return Err(());
@@ -1258,10 +1238,8 @@ impl StateInner {
 
     fn cmd_topic_get(&self, addr: &net::SocketAddr, target: &str) -> Result {
         let channel = find_channel(addr, &self.domain, &self.clients, &self.channels, target)?;
-        if channel.secret && !channel.members.contains_key(addr) {
-            log::debug!("{}: TOPIC {:?}: Not on channel", addr, target);
-            self.send_reply(addr, rpl::ERR_NOTONCHANNEL, &[target, lines::NOT_ON_CHANNEL]);
-            return Err(());
+        if channel.secret {
+            find_member(addr, &self.domain, &self.clients, channel, target)?;
         }
 
         log::debug!("{}: TOPIC {:?}", addr, target);
