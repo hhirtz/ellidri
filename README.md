@@ -1,3 +1,5 @@
+[![builds.sr.ht status](https://builds.sr.ht/~taiite/ellidri.svg)](https://builds.sr.ht/~taiite/ellidri?)
+
 # kawai
 
 ellidri, your kawai IRC server.
