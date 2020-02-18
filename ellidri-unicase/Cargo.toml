@@ -3,5 +3,10 @@ name = "ellidri-unicase"
 version = "1.0.0"
 authors = ["Hubert Hirtz <hubert.hirtz@laposte.net>"]
 edition = "2018"
+description = "Case insensitive string comparison for ellidri"
+homepage = "https://git.sr.ht/~taiite/ellidri"
+repository = "https://git.sr.ht/~taiite/ellidri"
+readme = "README.md"
+license = "ISC"
 
 [dependencies]
