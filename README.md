@@ -14,9 +14,12 @@ ellidri, your kawai IRC server.
 
 ## Build and Install
 
-You'll need the Rust compiler and Cargo: <https://rustup.rs/>
+Prerequisites:
 
-Install ellidri with `cargo install`
+- The Rust compiler (at least version 1.41) and Cargo: <https://rustup.rs/>
+- On Linux, the OpenSSL library and its development files
+
+Install ellidri with `cargo install ellidri`
 
 Build it with `cargo build`.  Append the `--release` flag to build with
 optimizations enabled.

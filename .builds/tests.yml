@@ -1,0 +1,13 @@
+image: archlinux
+packages:
+    - rust
+    - openssl
+sources:
+    - https://git.sr.ht/~taiite/ellidri
+tasks:
+    - build: |
+        cd ellidri
+        cargo build
+    - test: |
+        cd ellidri
+        cargo test
