@@ -1,4 +1,10 @@
 //! Shared state and API to handle incoming commands.
+//!
+//! This module is split in several files:
+//!
+//! - `mod.rs`: public API of the server state and send utilities
+//! - `rfc2812.rs` : handlers for messages defined in the RFC 2812
+//! - `capabilities.rs` : handlers for the CAP command
 
 use crate::channel::Channel;
 use crate::client::{Client, MessageQueue, MessageQueueItem};
@@ -13,6 +19,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
+mod capabilities;
 mod rfc2812;
 
 const SERVER_INFO: &str = include_str!("info.txt");
