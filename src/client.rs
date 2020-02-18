@@ -17,7 +17,7 @@ impl From<Vec<u8>> for MessageQueueItem {
 
 impl From<ResponseBuffer> for MessageQueueItem {
     fn from(response: ResponseBuffer) -> Self {
-        Self::from(response.build())
+        Self::from(response.build().into_bytes())
     }
 }
 
