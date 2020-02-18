@@ -157,6 +157,8 @@ impl StateInner {
             channel.members.remove(&addr);
             !channel.members.is_empty()
         });
+
+        // TODO remove from channel invites
     }
 
     pub fn handle_message(&mut self, addr: &net::SocketAddr, msg: Message<'_>) {
@@ -289,6 +291,9 @@ impl StateInner {
         }
     }
 
+    // TODO replace those with write_* equivalents
+    // that take a responsebuffer instead of an address
+
     /// Creates a message from the given reply and parameters, and sends it to the given client.
     /// It also adds the needed client's nick as the first parameter.
     fn send_reply(&self, addr: &net::SocketAddr, r: Reply, params: &[&str]) {
@@ -387,9 +392,10 @@ impl StateInner {
     // ADMIN
 
     fn cmd_admin(&self, addr: &net::SocketAddr) -> bool {
-        log::debug!("{}: Request admin info", addr);
-        let client = &self.clients[&addr];
+        log::debug!("{}: ADMIN", addr);
         let mut response = ResponseBuffer::new();
+        let client = &self.clients[&addr];
+
         response.prefixed_message(&self.domain, rpl::ADMINME)
             .param(client.nick())
             .param(&self.domain)
@@ -411,8 +417,9 @@ impl StateInner {
 
     fn cmd_cap_list(&self, addr: &net::SocketAddr) -> bool {
         log::debug!("{}: CAP LIST", addr);
-        let client = &self.clients[addr];
         let mut response = ResponseBuffer::new();
+
+        let client = &self.clients[addr];
         client.write_enabled_capabilities(&mut response);
         client.send(MessageQueueItem::from(response));
         true
@@ -420,8 +427,9 @@ impl StateInner {
 
     fn cmd_cap_ls(&mut self, addr: &net::SocketAddr, version: &str) -> bool {
         log::debug!("{}: CAP LS {}", addr, version);
-        let client = self.clients.get_mut(addr).unwrap();
         let mut response = ResponseBuffer::new();
+
+        let client = self.clients.get_mut(addr).unwrap();
         client.set_cap_version(version);
         client.write_capabilities(&mut response);
         client.send(MessageQueueItem::from(response));
@@ -430,15 +438,15 @@ impl StateInner {
 
     fn cmd_cap_req(&mut self, addr: &net::SocketAddr, capabilities: &str) -> bool {
         log::debug!("{}: CAP REQ {}", addr, capabilities);
+        let mut response = ResponseBuffer::new();
         let client = self.clients.get_mut(addr).unwrap();
+
         if !cap::are_supported(capabilities) {
-            let mut response = ResponseBuffer::new();
             response.message(Command::Cap).param("NAK").trailing_param(capabilities);
             client.send(MessageQueueItem::from(response));
             return false;
         }
         client.update_capabilities(capabilities);
-        let mut response = ResponseBuffer::new();
         response.message(Command::Cap).param("ACK").trailing_param(capabilities);
         client.send(MessageQueueItem::from(response));
         true
@@ -451,7 +459,7 @@ impl StateInner {
             "LS" => self.cmd_cap_ls(addr, *params.get(1).unwrap_or(&"")),
             "REQ" => self.cmd_cap_req(addr, *params.get(1).unwrap_or(&"")),
             _ => {
-                log::debug!("{}: Bad CAP command: {:?}", addr, params[0]);
+                log::debug!("{}: CAP: Bad command {:?}", addr, params[0]);
                 self.send_reply(addr, rpl::ERR_INVALIDCAPCMD, &[params[0], lines::UNKNOWN_COMMAND]);
                 false
             }
@@ -461,9 +469,10 @@ impl StateInner {
     // INFO
 
     fn cmd_info(&self, addr: &net::SocketAddr) -> bool {
-        log::debug!("{}: Request server info", addr);
-        let client = &self.clients[&addr];
+        log::debug!("{}: INFO", addr);
         let mut response = ResponseBuffer::new();
+        let client = &self.clients[addr];
+
         for line in SERVER_INFO.lines() {
             response.prefixed_message(&self.domain, rpl::INFO)
                 .param(client.nick())
@@ -479,9 +488,11 @@ impl StateInner {
     // INVITE
 
     fn cmd_invite(&mut self, addr: &net::SocketAddr, target_nick: &str, channel_name: &str) -> bool {
-        let target_addr = self.clients.iter().find(|(_,c)| c.nick() == target_nick).map(|(a,_)| a);
+        // TODO helper function client_from_nick
+        let target_addr = self.clients.iter().find(|(_,c)| c.nick() == target_nick).map(|(a,_)| *a);
         if target_addr.is_none() {
-            log::debug!("{}: Can't invite {:?} to {:?}: Target nick doesn't exist", addr, target_nick, channel_name);
+            log::debug!("{}: INVITE {:?} {:?}: Target nick doesn't exist",
+                        addr, target_nick, channel_name);
             self.send_reply(addr, rpl::ERR_NOSUCHNICK, &[target_nick, lines::NO_SUCH_NICK]);
             return false;
         }
@@ -490,41 +501,43 @@ impl StateInner {
         if let Some(channel) = self.channels.get(<&UniCase<str>>::from(channel_name)) {
             let modes = channel.members.get(addr);
             if modes.is_none() {
-                log::debug!("{}: Can't invite {:?} to {:?}: Not on channel", addr, target_nick, channel_name);
+                log::debug!("{}: INVITE {:?} {:?}: Not on channel", addr, target_nick, channel_name);
                 self.send_reply(addr, rpl::ERR_NOTONCHANNEL,
-                    &[channel_name, lines::NOT_ON_CHANNEL]);
+                                &[channel_name, lines::NOT_ON_CHANNEL]);
                 return false;
             }
             if channel.invite_only && !modes.unwrap().operator {
-                log::debug!("{}: Can't invite {:?} to {:?}: Not operator", addr, target_nick, channel_name);
+                log::debug!("{}: INVITE {:?} {:?}: Not operator", addr, target_nick, channel_name);
                 self.send_reply(addr, rpl::ERR_CHANOPRIVSNEEDED,
-                    &[channel_name, lines::CHAN_O_PRIVS_NEEDED]);
+                                &[channel_name, lines::CHAN_O_PRIVS_NEEDED]);
                 return false;
             }
         }
 
-        log::debug!("{}: Invite {:?} to {:?}", addr, target_nick, channel_name);
-        let invited = if let Some(channel) = self.channels.get_mut(<&UniCase<str>>::from(channel_name)) {
-            channel.invites.insert(*target_addr)
-        } else {
-            true
+        let invited = match self.channels.get_mut(<&UniCase<str>>::from(channel_name)) {
+            Some(channel) => channel.invites.insert(target_addr),
+            None => true,
         };
-
-        if invited {
-            let client = &self.clients[&addr];
-            let mut response = ResponseBuffer::new();
-            response.prefixed_message(&self.domain, rpl::INVITING)
-                .param(client.nick())
-                .param(channel_name)
-                .param(target_nick);
-            client.send(MessageQueueItem::from(response));
-
-            let mut target_res = ResponseBuffer::new();
-            target_res.prefixed_message(client.full_name(), Command::Invite)
-                .param(target_nick)
-                .param(channel_name);
-            self.clients[target_addr].send(MessageQueueItem::from(target_res));
+        if !invited {
+            return false;
         }
+
+        log::debug!("{}: INVITE {:?} {:?}", addr, target_nick, channel_name);
+        let client = &self.clients[addr];
+        let mut response = ResponseBuffer::new();
+
+        response.prefixed_message(&self.domain, rpl::INVITING)
+            .param(client.nick())
+            .param(channel_name)
+            .param(target_nick);
+        client.send(MessageQueueItem::from(response));
+
+        let mut invite = ResponseBuffer::new();
+        invite.prefixed_message(client.full_name(), Command::Invite)
+            .param(target_nick)
+            .param(channel_name);
+        self.clients[&target_addr].send(MessageQueueItem::from(invite));
+
         true
     }
 
@@ -532,50 +545,53 @@ impl StateInner {
 
     fn cmd_join(&mut self, addr: &net::SocketAddr, target: &str, key: &str) -> bool {
         if !is_valid_channel_name(target) {
-            log::debug!("{}: Can't join {:?}: Invalid channel name", addr, target);
+            log::debug!("{}: JOIN {:?}: Invalid channel name", addr, target);
             self.send_reply(addr, rpl::ERR_NOSUCHCHANNEL, &[target, lines::NO_SUCH_CHANNEL]);
             return false;
         }
         if let Some(channel) = self.channels.get(<&UniCase<str>>::from(target)) {
             if channel.members.contains_key(addr) {
-                log::debug!("{}: Can't join {:?}: Already in channel", addr, target);
+                log::debug!("{}: JOIN {:?}: Already in channel", addr, target);
                 return false;
             }
             let nick = self.clients[&addr].nick();
             if channel.key.as_ref().map_or(false, |ck| key == ck) {
-                log::debug!("{}: Can't join {:?}: Bad key", addr, target);
+                log::debug!("{}: JOIN {:?}: Bad key", addr, target);
                 self.send_reply(addr, rpl::ERR_BADCHANKEY, &[target, lines::BAD_CHAN_KEY]);
                 return false;
             }
             if channel.user_limit.map_or(false, |user_limit| user_limit <= channel.members.len()) {
-                log::debug!("{}: Can't join {:?}: user limit reached", addr, target);
+                log::debug!("{}: JOIN {:?}: user limit reached", addr, target);
                 self.send_reply(addr, rpl::ERR_CHANNELISFULL, &[target, lines::CHANNEL_IS_FULL]);
                 return false;
             }
             if !channel.is_invited(addr, nick) {
-                log::debug!("{}: Can't join {:?}: not invited", addr, target);
+                log::debug!("{}: JOIN {:?}: not invited", addr, target);
                 self.send_reply(addr, rpl::ERR_INVITEONLYCHAN, &[target, lines::INVITE_ONLY_CHAN]);
                 return false;
             }
             if channel.is_banned(nick) {
-                log::debug!("{}: Can't join {:?}: Banned", addr, target);
+                log::debug!("{}: JOIN {:?}: Banned", addr, target);
                 self.send_reply(addr, rpl::ERR_BANNEDFROMCHAN, &[target, lines::BANNED_FROM_CHAN]);
                 return false;
             }
         }
 
-        log::debug!("{}: Join {}", addr, target);
+        log::debug!("{}: JOIN {}", addr, target);
+        let client = self.clients.get_mut(addr).unwrap();
+
         let default_chan_mode = &self.default_chan_mode;
         let channel = self.channels.entry(UniCase(target.to_owned()))
             .or_insert_with(|| Channel::new(&default_chan_mode));
         channel.add_member(*addr);
-        let client = self.clients.get_mut(addr).unwrap();
         client.update_idle_time();
+
         let mut join_response = ResponseBuffer::new();
         join_response.prefixed_message(client.full_name(), Command::Join).param(target);
         self.broadcast(target, MessageQueueItem::from(join_response));
         self.send_topic(addr, target);
         self.send_names(addr, target);
+
         true
     }
 
@@ -585,22 +601,26 @@ impl StateInner {
         let channel = match self.channels.get(<&UniCase<str>>::from(channel_names)) {
             Some(channel) => channel,
             None => {
-                log::debug!("{}: Can't kick {:?} from {:?}: channel doesn't exist", addr, nicks, channel_names);
-                self.send_reply(addr, rpl::ERR_NOSUCHCHANNEL, &[channel_names, lines::NO_SUCH_CHANNEL]);
+                log::debug!("{}: KICK {:?} from {:?}: channel doesn't exist",
+                            addr, nicks, channel_names);
+                self.send_reply(addr, rpl::ERR_NOSUCHCHANNEL,
+                                &[channel_names, lines::NO_SUCH_CHANNEL]);
                 return false;
             }
         };
         let member_modes = match channel.members.get(addr) {
             Some(member_modes) => member_modes,
             None => {
-                log::debug!("{}: Cant kick {:?} from {:?}: not on channel", addr, nicks, channel_names);
-                self.send_reply(addr, rpl::ERR_NOTONCHANNEL, &[channel_names, lines::NOT_ON_CHANNEL]);
+                log::debug!("{}: KICK {:?} {:?}: not on channel", addr, nicks, channel_names);
+                self.send_reply(addr, rpl::ERR_NOTONCHANNEL,
+                                &[channel_names, lines::NOT_ON_CHANNEL]);
                 return false;
             }
         };
         if !member_modes.operator {
-            log::debug!("{}: Cant kick {:?} from {:?}: not operator", addr, nicks, channel_names);
-            self.send_reply(addr, rpl::ERR_CHANOPRIVSNEEDED, &[channel_names, lines::CHAN_O_PRIVS_NEEDED]);
+            log::debug!("{}: KICK {:?} {:?}: not operator", addr, nicks, channel_names);
+            self.send_reply(addr, rpl::ERR_CHANOPRIVSNEEDED,
+                            &[channel_names, lines::CHAN_O_PRIVS_NEEDED]);
             return false;
         }
         let clients = &self.clients;
@@ -610,15 +630,17 @@ impl StateInner {
         let kicked_addrs = match kicked_addrs {
             Some(kicked_addrs) => kicked_addrs,
             None => {
-                log::debug!("{}: Cant kick {:?} from {:?}: targets not on channel", addr, nicks, channel_names);
+                log::debug!("{}: KICK {:?} {:?}: targets not on channel",
+                            addr, nicks, channel_names);
                 self.send_reply(addr, rpl::ERR_NOTONCHANNEL,
                                 &[nicks, channel_names, lines::USER_NOT_IN_CHANNEL]);
                 return false;
             }
         };
 
-        log::debug!("{}: Kick {:?} from {:?}", addr, nicks, channel_names);
+        log::debug!("{}: KICK {:?} {:?}", addr, nicks, channel_names);
         let client = &self.clients[addr];
+
         let mut kick_response = ResponseBuffer::new();
         {
             let msg = kick_response.prefixed_message(client.full_name(), Command::Kick)
@@ -642,11 +664,12 @@ impl StateInner {
 
     fn cmd_list(&self, addr: &net::SocketAddr, targets: &str) -> bool {
         log::debug!("{}: get list of {:?}", addr, targets);
-        let client = &self.clients[&addr];
         let mut response = ResponseBuffer::new();
+        let client = &self.clients[addr];
+
         if targets.is_empty() {
             for (name, channel) in &self.channels {
-                if channel.secret && !channel.members.contains_key(&addr) {
+                if channel.secret && !channel.members.contains_key(addr) {
                     continue;
                 }
                 let msg = response.prefixed_message(&self.domain, rpl::LIST)
@@ -657,7 +680,7 @@ impl StateInner {
         } else {
             for name in targets.split(',') {
                 if let Some(channel) = self.channels.get(<&UniCase<str>>::from(name)) {
-                    if channel.secret && !channel.members.contains_key(&addr) {
+                    if channel.secret && !channel.members.contains_key(addr) {
                         continue;
                     }
                     let msg = response.prefixed_message(&self.domain, rpl::LIST)
@@ -671,18 +694,20 @@ impl StateInner {
             .param(client.nick())
             .trailing_param(lines::END_OF_LIST);
         client.send(MessageQueueItem::from(response));
+
         true
     }
 
     // LUSERS
 
     fn cmd_lusers(&self, addr: &net::SocketAddr) -> bool {
-        log::debug!("{}: Request lusers", addr);
-        let client = &self.clients[&addr];
+        log::debug!("{}: LUSERS", addr);
         let mut response = ResponseBuffer::new();
-        let cs = self.clients.len();
-        lines::luser_client(response.prefixed_message(&self.domain, rpl::LUSERCLIENT)
-            .param(client.nick()), cs);
+        let client = &self.clients[&addr];
+
+        lines::luser_client(
+            response.prefixed_message(&self.domain, rpl::LUSERCLIENT).param(client.nick()),
+            self.clients.len());
         // TODO LUSEROP
         // TODO LUSERUNKNOWN
         if !self.channels.is_empty() {
@@ -691,59 +716,71 @@ impl StateInner {
                 .param(&self.channels.values().filter(|c| !c.secret).count().to_string())
                 .trailing_param(lines::LUSER_CHANNELS);
         }
-        lines::luser_me(response.prefixed_message(&self.domain, rpl::LUSERME).param(client.nick()), cs);
+        lines::luser_me(response.prefixed_message(&self.domain, rpl::LUSERME).param(client.nick()),
+                        self.clients.len());
         client.send(MessageQueueItem::from(response));
+
         true
     }
 
     // MODE
 
     fn cmd_mode_chan_get(&self, addr: &net::SocketAddr, target: &str) -> bool {
-        log::debug!("{}: getting modes of {:?}", addr, target);
-        if let Some(channel) = self.channels.get(<&UniCase<str>>::from(target)) {
-            let client = &self.clients[&addr];
-            let mut response = ResponseBuffer::new();
-            let msg = response.prefixed_message(&self.domain, rpl::CHANNELMODEIS)
-                .param(client.nick())
-                .param(target);
-            channel.modes(msg, channel.members.contains_key(&addr));
-            client.send(MessageQueueItem::from(response));
-        } else {
-            self.send_reply(addr, rpl::ERR_NOSUCHCHANNEL, &[target, lines::NO_SUCH_CHANNEL]);
-        }
+        let channel = match self.channels.get(<&UniCase<str>>::from(target)) {
+            Some(channel) => channel,
+            None => {
+                log::debug!("{}: MODE {:?}: no such channel", addr, target);
+                self.send_reply(addr, rpl::ERR_NOSUCHCHANNEL, &[target, lines::NO_SUCH_CHANNEL]);
+                return false;
+            }
+        };
+
+        log::debug!("{}: MODE {:?}", addr, target);
+        let mut response = ResponseBuffer::new();
+        let client = &self.clients[&addr];
+
+        let msg = response.prefixed_message(&self.domain, rpl::CHANNELMODEIS)
+            .param(client.nick())
+            .param(target);
+        channel.modes(msg, channel.members.contains_key(&addr));
+        client.send(MessageQueueItem::from(response));
+
         true
     }
 
     fn cmd_mode_chan_set(&mut self, addr: &net::SocketAddr, target: &str,
                                modes: &str, modeparams: &[&str]) -> bool
     {
-        let channel = self.channels.get_mut(<&UniCase<str>>::from(target));
-        if channel.is_none() {
-            log::debug!("{}: can't set modes of {:?}: no such channel", addr, target);
-            self.send_reply(addr, rpl::ERR_NOSUCHCHANNEL, &[target, lines::NO_SUCH_CHANNEL]);
-            return false;
-        }
-        let channel = channel.unwrap();
-        let client_modes = channel.members.get(addr);
-        if client_modes.is_none() {
-            log::debug!("{}: can't set modes of {:?}: not in channel", addr, target);
-            let nick = self.clients[&addr].nick();
-            self.send_reply(addr, rpl::ERR_USERNOTINCHANNEL,
-                            &[nick, target, lines::USER_NOT_IN_CHANNEL]);
-            return false;
-        }
-        let client_modes = client_modes.unwrap();
+        let channel = match self.channels.get_mut(<&UniCase<str>>::from(target)) {
+            Some(channel) => channel,
+            None => {
+                log::debug!("{}: MODE {:?}: no such channel", addr, target);
+                self.send_reply(addr, rpl::ERR_NOSUCHCHANNEL, &[target, lines::NO_SUCH_CHANNEL]);
+                return false;
+            }
+        };
+        let client_modes = match channel.members.get(addr) {
+            Some(client_modes) => client_modes,
+            None => {
+                log::debug!("{}: MODE {:?}: not in channel", addr, target);
+                let nick = self.clients[&addr].nick();
+                self.send_reply(addr, rpl::ERR_USERNOTINCHANNEL,
+                                &[nick, target, lines::USER_NOT_IN_CHANNEL]);
+                return false;
+            }
+        };
         if modes::needs_chanop(modes) && !client_modes.operator {
-            log::debug!("{}: can't set modes of {:?} to {:?}: not operator", addr, target, modes);
+            log::debug!("{}: MODE {:?} {:?}: not operator", addr, target, modes);
             self.send_reply(addr, rpl::ERR_CHANOPRIVSNEEDED, &[target, lines::CHAN_O_PRIVS_NEEDED]);
             return false;
         }
 
-        log::debug!("{}: settings modes of {:?} to {:?} (params eluded)", addr, target, modes);
-        let mut applied_modes = String::new();
-        let mut applied_modeparams = Vec::new();
+        log::debug!("{}: MODE {:?} {:?} (params eluded)", addr, target, modes);
         let mut response = ResponseBuffer::new();
         let clients = &self.clients;
+
+        let mut applied_modes = String::new();
+        let mut applied_modeparams = Vec::new();
         for maybe_change in modes::channel_query(modes, modeparams.iter().cloned()) { match maybe_change {
             Ok(modes::ChannelModeChange::GetBans) => {
                 response.reply_list(&self.domain, rpl::BANLIST, rpl::ENDOFBANLIST,
@@ -809,6 +846,7 @@ impl StateInner {
             }
             self.broadcast(target, MessageQueueItem::from(response));
         }
+
         true
     }
 
@@ -829,8 +867,9 @@ impl StateInner {
 
     fn cmd_mode_user_set(&mut self, addr: &net::SocketAddr, target: &str, modes: &str) -> bool {
         log::debug!("{}: setting user modes to {:?}", addr, modes);
-        let client = self.clients.get_mut(&addr).unwrap();
         let mut response = ResponseBuffer::new();
+        let client = self.clients.get_mut(&addr).unwrap();
+
         let mut applied_modes = String::new();
         for maybe_change in modes::user_query(modes) { match maybe_change {
             Ok(change) => if client.apply_mode_change(change) {
@@ -854,22 +893,25 @@ impl StateInner {
         if !response.is_empty() {
             client.send(MessageQueueItem::from(response));
         }
+
         true
     }
 
     fn cmd_mode_user_get(&self, addr: &net::SocketAddr) -> bool {
         log::debug!("{}: getting user modes", addr);
-        let client = &self.clients[&addr];
         let mut response = ResponseBuffer::new();
+        let client = &self.clients[&addr];
+
         let msg = response.prefixed_message(&self.domain, rpl::UMODEIS)
             .param(client.nick());
         client.write_modes(msg);
         client.send(MessageQueueItem::from(response));
+
         true
     }
 
     fn cmd_mode(&mut self, addr: &net::SocketAddr, target: &str,
-                          modes: &str, modeparams: &[&str]) -> bool
+                modes: &str, modeparams: &[&str]) -> bool
     {
         if is_valid_channel_name(target) {
             if modes.is_empty() {
@@ -892,10 +934,11 @@ impl StateInner {
     // MOTD
 
     fn cmd_motd(&self, addr: &net::SocketAddr) -> bool {
+        log::debug!("{}: MOTD", addr);
         let mut response = ResponseBuffer::new();
         let client = &self.clients[&addr];
+
         if let Some(ref motd) = self.motd {
-            log::debug!("{}: Sending motd", addr);
             lines::motd_start(response.prefixed_message(&self.domain, rpl::MOTDSTART).param(client.nick()),
                               &self.domain);
             for line in motd.lines() {
@@ -909,19 +952,20 @@ impl StateInner {
                 .param(client.nick())
                 .trailing_param(lines::END_OF_MOTD);
         } else {
-            log::debug!("{}: Sending no-motd error", addr);
             response.prefixed_message(&self.domain, rpl::ERR_NOMOTD)
                 .param(client.nick())
                 .trailing_param(lines::NO_MOTD);
         }
         client.send(MessageQueueItem::from(response));
+
         true
     }
 
     // NAMES
 
     fn cmd_names(&self, addr: &net::SocketAddr, targets: &str) -> bool {
-        log::debug!("{}: Request names of {:?}", addr, targets);
+        log::debug!("{}: NAMES {:?}", addr, targets);
+
         if targets.is_empty() || targets == "*" {
             self.send_reply(addr, rpl::ENDOFNAMES, &["*", lines::END_OF_NAMES]);
         } else {
@@ -929,6 +973,7 @@ impl StateInner {
                 self.send_names(addr, target);
             }
         }
+
         true
     }
 
@@ -936,46 +981,41 @@ impl StateInner {
 
     pub fn cmd_nick(&mut self, addr: &net::SocketAddr, nick: &str) -> bool {
         if !is_valid_nickname(nick) {
-            log::debug!("{}: Can't change nick to {:?}: Bad nickname", addr, nick);
-            let client = &self.clients[&addr];
-            let mut response = ResponseBuffer::new();
-            response.prefixed_message(&self.domain, rpl::ERR_ERRONEUSNICKNAME)
-                .param(client.nick())
-                .param(nick)
-                .trailing_param(lines::ERRONEOUS_NICNAME);
-            client.send(MessageQueueItem::from(response));
+            log::debug!("{}: NICK {:?}: Bad nickname", addr, nick);
+            self.send_reply(addr, rpl::ERR_ERRONEUSNICKNAME, &[nick, lines::ERRONEOUS_NICNAME]);
             return false;
         }
         if self.clients.values().any(|c| c.nick() == nick) {
-            log::debug!("{}: Can't change nick to {:?}: Already in use", addr, nick);
-            let client = &self.clients[&addr];
-            let mut response = ResponseBuffer::new();
-            response.prefixed_message(&self.domain, rpl::ERR_NICKNAMEINUSE)
-                .param(client.nick())
-                .param(nick)
-                .trailing_param(lines::NICKNAME_IN_USE);
-            client.send(MessageQueueItem::from(response));
+            log::debug!("{}: NICK {:?}: Already in use", addr, nick);
+            self.send_reply(addr, rpl::ERR_NICKNAMEINUSE, &[nick, lines::NICKNAME_IN_USE]);
             return false;
         }
 
-        log::debug!("{}: Changing nick to {:?}", addr, nick);
         let client = self.clients.get_mut(addr).unwrap();
+
+        if !client.is_registered() {
+            log::debug!("{}: NICK {:?}: Is not registered", addr, nick);
+            client.set_nick(nick);
+            return true;
+        }
+
+        log::debug!("{}: NICK {:?}", addr, nick);
+        let mut response = ResponseBuffer::new();
+
+        response.prefixed_message(client.full_name(), Command::Nick).param(nick);
+        let msg = MessageQueueItem::from(response);
+        client.send(msg.clone());
+
         client.set_nick(nick);
 
-        if client.is_registered() {
-            let mut response = ResponseBuffer::new();
-            response.prefixed_message(client.full_name(), Command::Nick).param(nick);
-            let msg = MessageQueueItem::from(response);
-
-            let mut noticed = self.channels.values()
-                .filter(|channel| channel.members.contains_key(addr))
-                .flat_map(|channel| channel.members.keys())
-                .collect::<HashSet<_>>();
-            noticed.insert(addr);
-            for client in noticed {
-                self.send(client, msg.clone());
-            }
+        let noticed = self.channels.values()
+            .filter(|channel| channel.members.contains_key(addr))
+            .flat_map(|channel| channel.members.keys())
+            .collect::<HashSet<_>>();
+        for addr in noticed {
+            self.send(addr, msg.clone());
         }
+
         true
     }
 
@@ -990,21 +1030,22 @@ impl StateInner {
             let channel = match self.channels.get(<&UniCase<str>>::from(target)) {
                 Some(channel) => channel,
                 None => {
-                    log::debug!("{}: Can't send notice to {:?}: No such channel", addr, target);
+                    log::debug!("{}: NOTICE {:?}: No such channel", addr, target);
                     self.send_reply(addr, rpl::ERR_NOSUCHNICK, &[target, lines::NO_SUCH_NICK]);
                     return false;
                 }
             };
 
             if !channel.can_talk(addr) {
-                log::debug!("{}: Can't send notice to {:?}", addr, target);
+                log::debug!("{}: NOTICE {:?}", addr, target);
                 self.send_reply(addr, rpl::ERR_CANNOTSENDTOCHAN,
                                 &[target, lines::CANNOT_SEND_TO_CHAN]);
                 return false;
             }
 
-            log::debug!("{}: notice to channel {:?}", addr, target);
+            log::debug!("{}: NOTICE {:?}", addr, target);
             let mut response = ResponseBuffer::new();
+
             response.prefixed_message(self.clients[addr].full_name(), Command::Notice)
                 .param(target)
                 .trailing_param(content);
@@ -1016,14 +1057,15 @@ impl StateInner {
             let target_client = match self.clients.values().find(|c| c.nick() == target) {
                 Some(target_client) => target_client,
                 None => {
-                    log::debug!("{}: Can't send notice to {:?}: No such channel", addr, target);
+                    log::debug!("{}: NOTICE {:?}: No such channel", addr, target);
                     self.send_reply(addr, rpl::ERR_NOSUCHNICK, &[target, lines::NO_SUCH_NICK]);
                     return false;
                 }
             };
 
-            log::debug!("{}: notice to user {:?}", addr, target);
+            log::debug!("{}: NOTICE {:?}", addr, target);
             let mut response = ResponseBuffer::new();
+
             response.prefixed_message(self.clients[addr].full_name(), Command::Notice)
                 .param(target)
                 .trailing_param(content);
@@ -1038,13 +1080,15 @@ impl StateInner {
     fn cmd_oper(&mut self, addr: &net::SocketAddr, name: &str, password: &str) -> bool {
         // TODO oper_hosts
         if !self.opers.iter().any(|(n, p)| n == name && p == password) {
+            log::debug!("{}: OPER {:?} {:?}: Password mismatch", addr, name, password);
             self.send_reply(addr, rpl::ERR_PASSWDMISMATCH, &[lines::PASSWORD_MISMATCH]);
             return false;
         }
-        log::debug!("{}: Log as operator", addr);
-        let client = self.clients.get_mut(&addr).unwrap();
-        client.operator = true;
+        log::debug!("{}: OPER", addr);
         let mut response = ResponseBuffer::new();
+        let client = self.clients.get_mut(&addr).unwrap();
+
+        client.operator = true;
         response.prefixed_message(&self.domain, Command::Mode)
             .param(client.nick())
             .param("+o");
@@ -1052,6 +1096,7 @@ impl StateInner {
             .param(client.nick())
             .param(lines::YOURE_OPER);
         client.send(MessageQueueItem::from(response));
+
         true
     }
 
@@ -1061,15 +1106,17 @@ impl StateInner {
         let is_on_channel = self.channels.get(<&UniCase<str>>::from(target))
             .map_or(false, |channel| channel.members.contains_key(&addr));
         if !is_on_channel {
+            log::debug!("{}: PART {:?}: Not on channel", addr, target);
             self.send_reply(addr, rpl::ERR_NOTONCHANNEL, &[target, lines::NOT_ON_CHANNEL]);
             return false;
         }
 
-        log::debug!("{}: part {:?} {:?}", addr, target, reason);
+        log::debug!("{}: PART {:?} {:?}", addr, target, reason);
+        let mut response = ResponseBuffer::new();
+        let client = &self.clients[&addr];
+
         let channel = self.channels.get_mut(<&UniCase<str>>::from(target)).unwrap();
         channel.members.remove(&addr);
-        let client = &self.clients[&addr];
-        let mut response = ResponseBuffer::new();
         if reason.is_empty() {
             response.prefixed_message(client.full_name(), Command::Part).param(target);
         } else {
@@ -1086,20 +1133,26 @@ impl StateInner {
 
     // PASS
 
-    fn cmd_pass(&mut self, addr: &net::SocketAddr, pass: &str) -> bool {
-        if self.password.as_ref().map_or(false, |p| p == pass) {
+    fn cmd_pass(&mut self, addr: &net::SocketAddr, password: &str) -> bool {
+        log::debug!("{}: PASS {:?}", addr, password);
+
+        if self.password.as_ref().map_or(false, |p| p == password) {
             self.clients.get_mut(&addr).unwrap().has_given_password = true;
         }
+
         true
     }
 
     // PING
 
     fn cmd_ping(&mut self, addr: &net::SocketAddr, payload: &str) -> bool {
-        let client = &self.clients[addr];
+        log::debug!("{}: PING {:?}", addr, payload);
         let mut response = ResponseBuffer::new();
+        let client = &self.clients[addr];
+
         response.prefixed_message(&self.domain, Command::Pong).trailing_param(payload);
         client.send(MessageQueueItem::from(response));
+
         true
     }
 
@@ -1114,21 +1167,22 @@ impl StateInner {
             let channel = match self.channels.get(<&UniCase<str>>::from(target)) {
                 Some(channel) => channel,
                 None => {
-                    log::debug!("{}: Can't send privmsg to {:?}: No such channel", addr, target);
+                    log::debug!("{}: PRIVMSG {:?}: No such channel", addr, target);
                     self.send_reply(addr, rpl::ERR_NOSUCHNICK, &[target, lines::NO_SUCH_NICK]);
                     return false;
                 }
             };
 
             if !channel.can_talk(addr) {
-                log::debug!("{}: Can't send privmsg to {:?}", addr, target);
+                log::debug!("{}: PRIVMSG {:?}", addr, target);
                 self.send_reply(addr, rpl::ERR_CANNOTSENDTOCHAN,
                                 &[target, lines::CANNOT_SEND_TO_CHAN]);
                 return false;
             }
 
-            log::debug!("{}: privmsg to channel {:?}", addr, target);
+            log::debug!("{}: PRIVMSG {:?}", addr, target);
             let mut response = ResponseBuffer::new();
+
             response.prefixed_message(self.clients[addr].full_name(), Command::PrivMsg)
                 .param(target)
                 .trailing_param(content);
@@ -1140,14 +1194,15 @@ impl StateInner {
             let target_client = match self.clients.values().find(|c| c.nick() == target) {
                 Some(target_client) => target_client,
                 None => {
-                    log::debug!("{}: Can't send privmsg to {:?}: No such channel", addr, target);
+                    log::debug!("{}: PRIVMSG {:?}: No such channel", addr, target);
                     self.send_reply(addr, rpl::ERR_NOSUCHNICK, &[target, lines::NO_SUCH_NICK]);
                     return false;
                 }
             };
 
-            log::debug!("{}: privmsg to user {:?}", addr, target);
+            log::debug!("{}: PRIVMSG {:?}", addr, target);
             let mut response = ResponseBuffer::new();
+
             response.prefixed_message(self.clients[addr].full_name(), Command::PrivMsg)
                 .param(target)
                 .trailing_param(content);
@@ -1160,19 +1215,21 @@ impl StateInner {
     // QUIT
 
     fn cmd_quit(&mut self, addr: &net::SocketAddr, reason: &str) -> bool {
-        log::debug!("{}: quit {:?}", addr, reason);
-        let client = self.clients.remove(addr).unwrap();
+        log::debug!("{}: QUIT {:?}", addr, reason);
         let mut response = ResponseBuffer::new();
+        let client = self.clients.remove(addr).unwrap();
+
         response.prefixed_message(&self.domain, "ERROR").trailing_param(lines::CLOSING_LINK);
         client.send(MessageQueueItem::from(response));
         self.remove_client(addr, client, if reason.is_empty() {None} else {Some(reason.to_owned())});
+
         false
     }
 
     // TIME
 
     fn cmd_time(&self, addr: &net::SocketAddr) -> bool {
-        log::debug!("{}: Request time", addr);
+        log::debug!("{}: TIME", addr);
         let time = time_str();
         self.send_reply(addr, rpl::TIME, &[&self.domain, &time]);
         true
@@ -1186,45 +1243,53 @@ impl StateInner {
                 if modes.operator || !channel.topic_restricted {
                     channel
                 } else {
-                    log::debug!("{}: Can't set topic of {:?}: not operator", addr, target);
+                    log::debug!("{}: TOPIC {:?}: not operator", addr, target);
                     self.send_reply(addr, rpl::ERR_CHANOPRIVSNEEDED,
                                     &[target, lines::CHAN_O_PRIVS_NEEDED]);
                     return false;
                 }
             } else {
-            log::debug!("{}: Can't set topic of {:?}: not on channel", addr, target);
+            log::debug!("{}: TOPIC {:?}: not on channel", addr, target);
                 self.send_reply(addr, rpl::ERR_NOTONCHANNEL,
                                 &[target, lines::NOT_ON_CHANNEL]);
                 return false;
             }
         } else {
-            log::debug!("{}: Can't set topic of {:?}: no such channel", addr, target);
+            log::debug!("{}: TOPIC {:?}: no such channel", addr, target);
             self.send_reply(addr, rpl::ERR_NOSUCHCHANNEL, &[target, lines::NO_SUCH_CHANNEL]);
             return false;
         };
-        log::debug!("{}: Set topic of {:?} to {:?}", addr, target, topic);
-        if topic.is_empty() {
-            channel.topic = None;
-        } else {
-            channel.topic = Some(topic.to_owned());
-        }
+
+        log::debug!("{}: TOPIC {:?} {:?}", addr, target, topic);
         let mut response = ResponseBuffer::new();
+
+        channel.topic = if topic.is_empty() { None } else { Some(topic.to_owned()) };
         response.prefixed_message(self.clients[&addr].full_name(), Command::Topic)
             .param(target)
             .trailing_param(topic);
         self.broadcast(target, MessageQueueItem::from(response));
+
         true
     }
 
     fn cmd_topic_get(&self, addr: &net::SocketAddr, target: &str) -> bool {
-        log::debug!("{}: get topic of {:?}", addr, target);
-        if let Some(channel) = self.channels.get(<&UniCase<str>>::from(target)) {
-            if channel.members.contains_key(&addr) {
-                self.send_topic(addr, target);
+        let channel = match self.channels.get(<&UniCase<str>>::from(target)) {
+            Some(channel) => channel,
+            None => {
+                log::debug!("{}: TOPIC {:?}: No such channel", addr, target);
+                self.send_reply(addr, rpl::ERR_NOSUCHCHANNEL, &[target, lines::NO_SUCH_CHANNEL]);
                 return false;
             }
+        };
+        if channel.secret && !channel.members.contains_key(addr) {
+            log::debug!("{}: TOPIC {:?}: Not on channel", addr, target);
+            self.send_reply(addr, rpl::ERR_NOTONCHANNEL, &[target, lines::NOT_ON_CHANNEL]);
+            return false;
         }
-        self.send_reply(addr, rpl::ERR_NOTONCHANNEL, &[target, lines::NOT_ON_CHANNEL]);
+
+        log::debug!("{}: TOPIC {:?}", addr, target);
+        self.send_topic(addr, target);
+
         true
     }
 
@@ -1239,9 +1304,9 @@ impl StateInner {
     // USER
 
     fn cmd_user(&mut self, addr: &net::SocketAddr, user: &str, real: &str) -> bool {
-        log::debug!("{}: Register as {}, '{}'", addr, user, real);
         let client = self.clients.get_mut(&addr).unwrap();
         if self.password.is_some() && !client.has_given_password {
+            log::debug!("{}: USER {:?} _ _ {:?}: Password mismatch", addr, user, real);
             let mut response = ResponseBuffer::new();
             response.prefixed_message(&self.domain, rpl::ERR_PASSWDMISMATCH)
                 .param(client.nick())
@@ -1249,33 +1314,39 @@ impl StateInner {
             client.send(MessageQueueItem::from(response));
             return false;
         }
+
+        log::debug!("{}: USER {:?} _ _ {:?}", addr, user, real);
         client.set_user_real(user, real);
+
         true
     }
 
     // VERSION
 
     fn cmd_version(&self, addr: &net::SocketAddr) -> bool {
-        log::debug!("{}: Request version", addr);
-        let client = &self.clients[&addr];
+        log::debug!("{}: VERSION", addr);
         let mut response = ResponseBuffer::new();
+        let client = &self.clients[&addr];
+
         response.prefixed_message(&self.domain, rpl::VERSION)
             .param(client.nick())
             .param(SERVER_VERSION)
             .param(&self.domain);
         self.send_i_support(&mut response, client.nick());
         client.send(MessageQueueItem::from(response));
+
         true
     }
 
     // WHO
 
     fn cmd_who(&self, addr: &net::SocketAddr, mask: &str, o: &str) -> bool {
-        log::debug!("{}: WHO request of {:?}", addr, mask);
+        log::debug!("{}: WHO {:?}", addr, mask);
+        let mut response = ResponseBuffer::new();
+
         let mask = if mask.is_empty() {"*"} else {mask};
         let o = o == "o";  // best line
         let client_nick = self.clients[addr].nick();
-        let mut response = ResponseBuffer::new();
         for client in self.clients.values() {
             if client.nick() != mask || (o && !client.operator) {
                 continue;
@@ -1295,6 +1366,7 @@ impl StateInner {
             .param(mask)
             .trailing_param(lines::END_OF_WHO);
         self.send(addr, MessageQueueItem::from(response));
+
         true
     }
 
@@ -1306,14 +1378,15 @@ impl StateInner {
         let target_client = match target_client {
             Some(target_client) => target_client,
             None => {
-                log::debug!("{}: Can't see WHOIS of {:?}: nick doesn't exist", addr, nick);
+                log::debug!("{}: WHOIS {:?}: nick doesn't exist", addr, nick);
                 self.send_reply(addr, rpl::ERR_NOSUCHNICK, &[nick, lines::NO_SUCH_NICK]);
                 return false;
             }
         };
 
-        log::debug!("{}: WHOIS request of {:?}", addr, nick);
+        log::debug!("{}: WHOIS {:?}", addr, nick);
         let client = &self.clients[addr];
+
         let mut response = ResponseBuffer::new();
         response.prefixed_message(&self.domain, rpl::WHOISUSER)
             .param(client.nick())
@@ -1338,6 +1411,7 @@ impl StateInner {
             .param(target_client.nick())
             .trailing_param(lines::END_OF_WHOIS);
         client.send(MessageQueueItem::from(response));
+
         true
     }
 }
