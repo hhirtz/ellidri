@@ -345,18 +345,7 @@ impl StateInner {
     /// Creates a message from the given reply and parameters, and sends it to the given client.
     /// It also adds the needed client's nick as the first parameter.
     fn send_reply(&self, addr: &net::SocketAddr, r: Reply, params: &[&str]) {
-        let client = &self.clients[addr];
-        let mut response = ResponseBuffer::new();
-        {
-            let mut msg = response.prefixed_message(&self.domain, r).param(client.nick());
-            if !params.is_empty() {
-                for p in &params[0..params.len() - 1] {
-                    msg = msg.param(p);
-                }
-                msg.trailing_param(params[params.len() - 1]);
-            }
-        }
-        client.send(MessageQueueItem::from(response));
+        send_reply(addr, &self.domain, &self.clients, r, params);
     }
 
     fn send_i_support(&self, response: &mut ResponseBuffer, nick: &str) {
