@@ -112,22 +112,27 @@ impl StateInner {
     pub fn peer_quit(&mut self, addr: &net::SocketAddr, err: Option<io::Error>) {
         log::debug!("{}: Disconnected", addr);
         if let Some(client) = self.clients.remove(addr) {
-            self.remove_client(addr, client, err.map(|err| err.to_string()));
+            if let Some(err) = err {
+                let s = err.to_string();
+                self.remove_client(addr, client, Some(s.as_ref()));
+            } else {
+                self.remove_client(addr, client, None);
+            }
         }
     }
 
-    fn remove_client(&mut self, addr: &net::SocketAddr, client: Client, reason: Option<String>) {
+    fn remove_client(&mut self, addr: &net::SocketAddr, client: Client, reason: Option<&str>) {
         let mut response = ResponseBuffer::new();
         {
             let msg = response.prefixed_message(client.full_name(), Command::Quit);
             if let Some(reason) = reason {
-                msg.trailing_param(&reason);
+                msg.trailing_param(reason);
             }
         }
         let msg = MessageQueueItem::from(response);
 
         for channel in self.channels.values() {
-            if channel.members.contains_key(&addr) {
+            if channel.members.contains_key(addr) {
                 for member in channel.members.keys() {
                     self.send(member, msg.clone());
                 }
