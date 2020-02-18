@@ -652,7 +652,7 @@ impl StateInner {
             None => {
                 log::debug!("{}: KICK {:?} {:?}: targets not on channel",
                             addr, nicks, channel_names);
-                self.send_reply(addr, rpl::ERR_NOTONCHANNEL,
+                self.send_reply(addr, rpl::ERR_USERNOTINCHANNEL,
                                 &[nicks, channel_names, lines::USER_NOT_IN_CHANNEL]);
                 return Err(());
             }
