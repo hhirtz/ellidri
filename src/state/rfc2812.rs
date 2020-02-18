@@ -13,16 +13,20 @@ use std::collections::HashSet;
 use std::net;
 use super::{Result, find_channel, find_member, find_nick};
 
+/// Whether a string is accepted as a channel name by ellidri or not.
 fn is_valid_channel_name(s: &str) -> bool {
     // https://tools.ietf.org/html/rfc2811.html#section-2.1
     let ctrl_g = 7 as char;
+    if s.is_empty() {
+        return false;
+    }
     let first = s.as_bytes()[0];
-    !s.is_empty()
-        && s.len() <= super::MAX_CHANNEL_NAME_LENGTH
+    s.len() <= super::MAX_CHANNEL_NAME_LENGTH
         && (first == b'#' || first == b'&' || first == b'!' || first == b'+')
         && s.chars().all(|c| c != ' ' && c != ',' && c != ctrl_g && c != ':')
 }
 
+/// Whether a string is accepted as a nickname by ellidri or not.
 fn is_valid_nickname(s: &str) -> bool {
     let s = s.as_bytes();
     let is_valid_nickname_char = |&c: &u8| {
@@ -33,7 +37,8 @@ fn is_valid_nickname(s: &str) -> bool {
             || (0x5b <= c && c <= 0x60)
             || (0x7b <= c && c <= 0x7d)
     };
-    s.len() <= super::MAX_NICKNAME_LENGTH
+    !s.is_empty()
+        && s.len() <= super::MAX_NICKNAME_LENGTH
         && s.iter().all(is_valid_nickname_char)
         && s[0] != b'-' && !(b'0' <= s[0] && s[0] <= b'9')
 }
@@ -906,5 +911,32 @@ impl super::StateInner {
         client.send(MessageQueueItem::from(response));
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_is_valid_channel_name() {
+        assert!(is_valid_channel_name("#Channel9"));
+
+        assert!(!is_valid_channel_name(""));
+        assert!(!is_valid_channel_name("channel"));
+        assert!(!is_valid_channel_name("#chan nel"));
+    }
+
+    #[test]
+    fn test_is_valid_nickname() {
+        assert!(is_valid_nickname("nickname"));
+        assert!(is_valid_nickname("my{}_\\^"));
+        assert!(is_valid_nickname("brice007"));
+
+        assert!(!is_valid_nickname(""));
+        assert!(!is_valid_nickname(" space "));
+        assert!(!is_valid_nickname("sp ace"));
+        assert!(!is_valid_nickname("007brice"));
+        assert!(!is_valid_nickname("longnicknameverylongohwowthisisalongnickname"));
     }
 }
