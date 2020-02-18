@@ -43,7 +43,7 @@ pub fn start() {
         env::set_var("RUST_BACKTRACE", "1");
     }
 
-    let c = config::from_file(config_path);
+    let cfg = config::from_file(config_path);
 
     let log_settings = env_logger::Env::new()
         .filter_or("ELLIDRI_LOG", "ellidri=debug")
@@ -55,15 +55,11 @@ pub fn start() {
         })
         .init();
 
-    let shared = State::new(c.srv);
-    let mut runtime = tokio::runtime::Runtime::new()
-        .unwrap_or_else(|err| {
-            log::error!("Failed to start the tokio runtime: {}", err);
-            process::exit(1);
-        });
+    let mut runtime = runtime(&cfg);
+    let shared = State::new(cfg.srv);
 
     let mut store = net::TlsIdentityStore::default();
-    for config::Binding { address, tls_identity } in c.bindings {
+    for config::Binding { address, tls_identity } in cfg.bindings {
         if let Some(identity_path) = tls_identity {
             let acceptor = store.acceptor(identity_path);
             let server = net::listen_tls(address, shared.clone(), acceptor);
@@ -77,6 +73,33 @@ pub fn start() {
     }
 
     runtime.block_on(infinite());
+}
+
+#[cfg(feature = "threads")]
+fn runtime(cfg: &config::Config) -> tokio::runtime::Runtime {
+    let mut builder = tokio::runtime::Builder::new();
+
+    if let Some(workers) = cfg.workers {
+        builder.core_threads(workers);
+    }
+
+    builder
+        .threaded_scheduler()
+        .enable_io()
+        .build()
+        .unwrap_or_else(|err| {
+            log::error!("Failed to start the tokio runtime: {}", err);
+            process::exit(1);
+        })
+}
+
+#[cfg(not(feature = "threads"))]
+fn runtime(_cfg: &config::Config) -> tokio::runtime::Runtime {
+    tokio::runtime::Runtime::new()
+        .unwrap_or_else(|err| {
+            log::error!("Failed to start the tokio runtime: {}", err);
+            process::exit(1);
+        })
 }
 
 fn infinite() -> impl std::future::Future<Output=()> {

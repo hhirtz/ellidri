@@ -16,6 +16,11 @@ categories = ["network-programming"]
 license = "ISC"
 
 
+[features]
+default = ["threads"]
+threads = ["tokio/rt-threaded"]
+
+
 [dependencies]
 # Runtime
 futures = { version = "0.3", default-features = false }
