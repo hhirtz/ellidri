@@ -47,6 +47,9 @@ fn is_valid_nickname(s: &str) -> bool {
         && s[0] != b'-' && !(b'0' <= s[0] && s[0] <= b'9')
 }
 
+/// Sends a reply to the client.
+///
+/// See `StateInner::send_reply` for more information.
 fn send_reply<'a>(addr: &net::SocketAddr, domain: &str, clients: &'a ClientMap,
                   r: Reply, params: &[&str])
 {
@@ -64,6 +67,8 @@ fn send_reply<'a>(addr: &net::SocketAddr, domain: &str, clients: &'a ClientMap,
     client.send(MessageQueueItem::from(response));
 }
 
+/// Returns `Ok(channel)` when `name` is an existing channel name.  Otherwise returns `Err(())` and
+/// send an error to the client.
 fn find_channel<'a>(addr: &net::SocketAddr, domain: &str, clients: &ClientMap,
                     channels: &'a ChannelMap, name: &str) -> std::result::Result<&'a Channel, ()>
 {
@@ -78,6 +83,10 @@ fn find_channel<'a>(addr: &net::SocketAddr, domain: &str, clients: &ClientMap,
     }
 }
 
+/// Returns `Ok(member_modes)` when the client identified by `addr` is in the given `channel`.
+/// Otherwise returns `Err(())` and send an error to the client.
+///
+/// `channel_name` is needed for the error reply.
 fn find_member(addr: &net::SocketAddr, domain: &str, clients: &ClientMap, channel: &Channel,
                channel_name: &str) -> std::result::Result<crate::channel::MemberModes, ()>
 {
@@ -92,10 +101,12 @@ fn find_member(addr: &net::SocketAddr, domain: &str, clients: &ClientMap, channe
     }
 }
 
+/// Returns `Ok((address, client))` when the client identified by the nickname `nick` is connected
+/// and registered.  Otherwise returns `Err(())` and send an error to the client.
 fn find_nick<'a>(addr: &net::SocketAddr, domain: &str, clients: &'a ClientMap,
                  nick: &str) -> std::result::Result<(net::SocketAddr, &'a Client), ()>
 {
-    match clients.iter().find(|(_, client)| client.nick() == nick) {
+    match clients.iter().find(|(_, client)| client.nick() == nick && client.is_registered()) {
         Some((addr, client)) => Ok((*addr, client)),
         None => {
             log::debug!("{}:         nick doesn't exist", addr);
