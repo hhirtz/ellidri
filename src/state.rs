@@ -1232,27 +1232,27 @@ impl StateInner {
     // TOPIC
 
     fn cmd_topic_set(&mut self, addr: &net::SocketAddr, target: &str, topic: &str) -> Result {
-        let channel = if let Some(channel) = self.channels.get_mut(<&UniCase<str>>::from(target)) {
-            if let Some(modes) = channel.members.get(&addr) {
-                if modes.operator || !channel.topic_restricted {
-                    channel
-                } else {
-                    log::debug!("{}: TOPIC {:?}: not operator", addr, target);
-                    self.send_reply(addr, rpl::ERR_CHANOPRIVSNEEDED,
-                                    &[target, lines::CHAN_O_PRIVS_NEEDED]);
-                    return Err(());
-                }
-            } else {
-            log::debug!("{}: TOPIC {:?}: not on channel", addr, target);
-                self.send_reply(addr, rpl::ERR_NOTONCHANNEL,
-                                &[target, lines::NOT_ON_CHANNEL]);
+        let channel = match self.channels.get_mut(<&UniCase<str>>::from(target)) {
+            Some(channel) => channel,
+            None => {
+                log::debug!("{}: TOPIC {:?}: no such channel", addr, target);
+                self.send_reply(addr, rpl::ERR_NOSUCHCHANNEL, &[target, lines::NO_SUCH_CHANNEL]);
                 return Err(());
             }
-        } else {
-            log::debug!("{}: TOPIC {:?}: no such channel", addr, target);
-            self.send_reply(addr, rpl::ERR_NOSUCHCHANNEL, &[target, lines::NO_SUCH_CHANNEL]);
-            return Err(());
         };
+        let modes = match channel.members.get(addr) {
+            Some(modes) => modes,
+            None => {
+                log::debug!("{}: TOPIC {:?}: not on channel", addr, target);
+                self.send_reply(addr, rpl::ERR_NOTONCHANNEL, &[target, lines::NOT_ON_CHANNEL]);
+                return Err(());
+            }
+        };
+        if !modes.operator && channel.topic_restricted {
+            log::debug!("{}: TOPIC {:?}: not operator", addr, target);
+            self.send_reply(addr, rpl::ERR_CHANOPRIVSNEEDED, &[target, lines::CHAN_O_PRIVS_NEEDED]);
+            return Err(());
+        }
 
         log::debug!("{}: TOPIC {:?} {:?}", addr, target, topic);
         let mut response = ResponseBuffer::new();
