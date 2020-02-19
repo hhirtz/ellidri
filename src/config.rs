@@ -51,7 +51,7 @@ fn add_setting(config: &mut Config, key: &str, value: &str, lineno: u32) {
         }
         let id = value.parse().unwrap_or_else(|_| format_error(lineno, "expected path"));
         config.bindings[last].tls_identity = Some(id);
-    } else if key == "workers" {
+    } else if cfg!(feature = "threads") && key == "workers" {
         if config.workers.is_some() {
             format_error(lineno, "duplicate workers setting");
         }
@@ -106,7 +106,7 @@ fn add_setting(config: &mut Config, key: &str, value: &str, lineno: u32) {
         }
         config.srv.org_mail.push_str(value);
     } else {
-        format_error(lineno, "unexpected setting");
+        format_error(lineno, "unknown setting");
     }
 }
 
