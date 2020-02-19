@@ -8,18 +8,22 @@ ellidri, your kawai IRC server.
 
 ## Features
 
-- RFC [1459][0] and [2812][1] compliance (almost!)
+- RFC [1459][0] and [2812][1] compliance (almost! see [#1][2])
+- TLS support
+- Multiple listening ports
 - Capabilities (version 302)
+- kawai messages
 
 [0]: https://tools.ietf.org/html/rfc1459
 [1]: https://tools.ietf.org/html/rfc2812
+[2]: https://todo.sr.ht/~taiite/ellidri/1
 
 
 ## Build and Install
 
 Prerequisites:
 
-- The Rust compiler (at least version 1.41) and Cargo: <https://rustup.rs/>
+- The Rust compiler (at least version 1.39) and Cargo: <https://rustup.rs/>
 - On Linux, the OpenSSL library and its development files
 
 Install ellidri with `cargo install ellidri`
