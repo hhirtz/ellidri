@@ -29,7 +29,7 @@ const MAX_NICKNAME_LENGTH: usize = 9;
 
 type ChannelMap = HashMap<UniCase<String>, Channel>;
 type ClientMap = HashMap<net::SocketAddr, Client>;
-type Result = std::result::Result<(), ()>;
+type HandlerResult = Result<(), ()>;
 
 /// Reference-counted pointer to the shared state of the IRC server.
 #[derive(Clone)]
@@ -270,8 +270,8 @@ impl StateInner {
 /// Sends a reply to the client.
 ///
 /// See `StateInner::send_reply` for more information.
-fn send_reply<'a>(addr: &net::SocketAddr, domain: &str, clients: &'a ClientMap,
-                  r: Reply, params: &[&str])
+fn send_reply(addr: &net::SocketAddr, domain: &str, clients: &ClientMap,
+              r: Reply, params: &[&str])
 {
     let client = &clients[addr];
     let mut response = ResponseBuffer::new();
@@ -287,10 +287,12 @@ fn send_reply<'a>(addr: &net::SocketAddr, domain: &str, clients: &'a ClientMap,
     client.send(MessageQueueItem::from(response));
 }
 
+// TODO update logging in command handlers
+
 /// Returns `Ok(channel)` when `name` is an existing channel name.  Otherwise returns `Err(())` and
 /// send an error to the client.
 fn find_channel<'a>(addr: &net::SocketAddr, domain: &str, clients: &ClientMap,
-                    channels: &'a ChannelMap, name: &str) -> std::result::Result<&'a Channel, ()>
+                    channels: &'a ChannelMap, name: &str) -> Result<&'a Channel, ()>
 {
     match channels.get(<&UniCase<str>>::from(name)) {
         Some(channel) => Ok(channel),
@@ -308,7 +310,7 @@ fn find_channel<'a>(addr: &net::SocketAddr, domain: &str, clients: &ClientMap,
 ///
 /// `channel_name` is needed for the error reply.
 fn find_member(addr: &net::SocketAddr, domain: &str, clients: &ClientMap, channel: &Channel,
-               channel_name: &str) -> std::result::Result<crate::channel::MemberModes, ()>
+               channel_name: &str) -> Result<crate::channel::MemberModes, ()>
 {
     match channel.members.get(addr) {
         Some(modes) => Ok(*modes),
@@ -324,7 +326,7 @@ fn find_member(addr: &net::SocketAddr, domain: &str, clients: &ClientMap, channe
 /// Returns `Ok((address, client))` when the client identified by the nickname `nick` is connected
 /// and registered.  Otherwise returns `Err(())` and send an error to the client.
 fn find_nick<'a>(addr: &net::SocketAddr, domain: &str, clients: &'a ClientMap,
-                 nick: &str) -> std::result::Result<(net::SocketAddr, &'a Client), ()>
+                 nick: &str) -> Result<(net::SocketAddr, &'a Client), ()>
 {
     match clients.iter().find(|(_, client)| client.nick() == nick && client.is_registered()) {
         Some((addr, client)) => Ok((*addr, client)),

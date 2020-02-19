@@ -11,7 +11,7 @@ use crate::util::time_str;
 use ellidri_unicase::UniCase;
 use std::collections::HashSet;
 use std::net;
-use super::{Result, find_channel, find_member, find_nick};
+use super::{HandlerResult as Result, find_channel, find_member, find_nick};
 
 /// Whether a string is accepted as a channel name by ellidri or not.
 fn is_valid_channel_name(s: &str) -> bool {

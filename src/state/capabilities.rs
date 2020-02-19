@@ -6,7 +6,7 @@ use crate::client::{cap, MessageQueueItem};
 use crate::lines;
 use crate::message::{Command, rpl, ResponseBuffer};
 use std::net;
-use super::Result;
+use super::HandlerResult as Result;
 
 impl super::StateInner {
     fn cmd_cap_list(&self, addr: &net::SocketAddr) -> Result {
