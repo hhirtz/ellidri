@@ -1,4 +1,5 @@
 [![builds.sr.ht status](https://builds.sr.ht/~taiite/ellidri.svg)](https://builds.sr.ht/~taiite/ellidri?)
+[![link to crates.io](https://img.shields.io/crates/v/ellidri.svg)](https://crates.io/crates/ellidri)
 
 # kawai
 
@@ -43,6 +44,16 @@ An example configuration file with all settings and their defaults can be found
 in `doc/ellidri.conf`.
 
 To start ellidri, pass the path of the configuration file as its first argument.
+
+
+## Contributing
+
+Patches are welcome!  Here are some links to get started:
+
+- Documentation: <https://docs.rs/ellidri>
+- Git repository: <https://git.sr.ht/~taiite/ellidri>
+- Send patches to the mailing list: <https://lists.sr.ht/~taiite/public-inbox>
+- Report bugs on the issue tracker: <https://todo.sr.ht/~taiite/ellidri>
 
 
 ## License
