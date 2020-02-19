@@ -224,6 +224,8 @@ impl StateInner {
             return;
         }
 
+        // TODO intialize a responsebuffer because of labeled-response's ACK
+
         let ps = msg.params;
         let n = msg.num_params;
         let cmd_result = match command {
@@ -369,6 +371,7 @@ impl StateInner {
             .param(nick)
             .param("CASEMAPPING=ascii")
             .param(&format!("CHANLEN={}", MAX_CHANNEL_NAME_LENGTH))
+            .param("CHANTYPES=#&")
             .param(modes::CHANMODES)
             .param("EXCEPTS")
             .param("INVEX")

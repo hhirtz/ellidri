@@ -22,7 +22,7 @@ fn is_valid_channel_name(s: &str) -> bool {
     }
     let first = s.as_bytes()[0];
     s.len() <= super::MAX_CHANNEL_NAME_LENGTH
-        && (first == b'#' || first == b'&' || first == b'!' || first == b'+')
+        && (first == b'#' || first == b'&')
         && s.chars().all(|c| c != ' ' && c != ',' && c != ctrl_g && c != ':')
 }
 
