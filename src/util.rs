@@ -5,7 +5,11 @@ pub fn time_str() -> String {
 }
 
 pub fn time() -> u64 {
-    time::SystemTime::now()
-        .duration_since(time::UNIX_EPOCH)
-        .map_or_else(|_| { log::error!("Computer clock set before 01/01/1970?"); 0 }, |d| d.as_secs())
+    match time::SystemTime::now().duration_since(time::UNIX_EPOCH) {
+        Ok(unix_time) => unix_time.as_secs(),
+        Err(_) => {
+            log::error!("Computer clock set before 01/01/1970?");
+            0
+        }
+    }
 }
