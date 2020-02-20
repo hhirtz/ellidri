@@ -1,6 +1,6 @@
 //! Client management and connection state.
 
-use crate::message::{Command, MessageBuffer, ResponseBuffer};
+use crate::message::{Buffer, Command, MessageBuffer, ReplyBuffer};
 use crate::modes;
 use crate::util::time;
 use std::sync::Arc;
@@ -15,8 +15,14 @@ impl From<Vec<u8>> for MessageQueueItem {
     }
 }
 
-impl From<ResponseBuffer> for MessageQueueItem {
-    fn from(response: ResponseBuffer) -> Self {
+impl From<Buffer> for MessageQueueItem {
+    fn from(response: Buffer) -> Self {
+        Self::from(response.build().into_bytes())
+    }
+}
+
+impl From<ReplyBuffer> for MessageQueueItem {
+    fn from(response: ReplyBuffer) -> Self {
         Self::from(response.build().into_bytes())
     }
 }
@@ -243,7 +249,7 @@ impl Client {
         }
     }
 
-    pub fn write_enabled_capabilities(&self, response: &mut ResponseBuffer) {
+    pub fn write_enabled_capabilities(&self, response: &mut Buffer) {
         let mut msg = response.message(Command::Cap).param(&self.nick);
         let trailing = msg.raw_trailing_param();
         if self.capabilities.cap_notify {
@@ -253,7 +259,7 @@ impl Client {
         trailing.pop();
     }
 
-    pub fn write_capabilities(&self, response: &mut ResponseBuffer) {
+    pub fn write_capabilities(&self, response: &mut Buffer) {
         response.message(Command::Cap).param(&self.nick).param("LS").trailing_param(cap::LS);
     }
 
@@ -282,8 +288,10 @@ impl Client {
     /// Add a message to the client message queue.
     ///
     /// Use this function to send messages to the client.
-    pub fn send(&self, msg: MessageQueueItem) {
-        let _ = self.queue.send(msg);
+    pub fn send<M>(&self, msg: M)
+        where M: Into<MessageQueueItem>
+    {
+        let _ = self.queue.send(msg.into());
     }
 
     pub fn full_name(&self) -> &str {

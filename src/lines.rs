@@ -110,11 +110,8 @@ pub const WHOIS_IDLE: &str =
 
 // Welcome messages
 
-pub const WELCOME: &str =
-"Welcome home, senpai";
-
 pub const YOUR_HOST: &str =
-"Your host is ellidri, running the best version!";
+concat!("Your host is ellidri, running version ", crate::server_version!());
 
 pub const I_SUPPORT: &str =
 "are allowed by ellidri";
@@ -146,4 +143,10 @@ pub fn motd_start(mut r: MessageBuffer<'_>, domain: &str) {
     trailing.push_str("- ");
     trailing.push_str(domain);
     trailing.push_str(" message of the day -");
+}
+
+pub fn welcome(mut r: MessageBuffer<'_>, name: &str) {
+    let trailing = r.raw_trailing_param();
+    trailing.push_str("Welcome home, ");
+    trailing.push_str(name);
 }

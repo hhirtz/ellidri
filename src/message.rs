@@ -1,11 +1,12 @@
 //! Message parsing and building.
 
 pub use rpl::Reply;
+use std::cell::RefCell;
 
 /// The recommended length of a message.
 ///
-/// `Message::parse` can parse messages longer than that.  It is used by `ResponseBuffer` to avoid
-/// multiple allocations when building the same message.
+/// `Message::parse` can parse messages longer than that.  It is used by `Buffer` to avoid multiple
+/// allocations when building the same message.
 pub const MAX_MESSAGE_LENGTH: usize = 512;
 
 /// The number of elements in `Message::params`.
@@ -278,7 +279,7 @@ macro_rules! commands {
         impl From<&'static str> for Command {
             /// `&'static str`s are converted to the `Command::Reply` variant.
             ///
-            /// This trait is used by `ResponseBuffer` to accept both `Command` and `Reply` when
+            /// This trait is used by `Buffer` to accept both `Command` and `Reply` when
             /// building messages.
             fn from(reply: &'static str) -> Command {
                 Command::Reply(reply)
@@ -318,7 +319,7 @@ commands! {
 
 /// An IRC message.
 ///
-/// See `Message::parse` for documentation on how to read IRC messages, and `ResponseBuffer` for
+/// See `Message::parse` for documentation on how to read IRC messages, and `Buffer` for
 /// how to create messages.
 ///
 /// See the RFC 2812 for a complete description of IRC messages:
@@ -459,7 +460,7 @@ impl<'a> Message<'a> {
 
 /// Helper to build an IRC message.
 ///
-/// Created by `ResponseBuffer::message` and `ResponseBuffer::prefixed_message`.
+/// Created by `Buffer::message` and `Buffer::prefixed_message`.
 pub struct MessageBuffer<'a> {
     buf: &'a mut String,
 }
@@ -492,8 +493,8 @@ impl<'a> MessageBuffer<'a> {
     /// # Example
     ///
     /// ```rust
-    /// # use ellidri::message::{Command, ResponseBuffer};
-    /// let mut response = ResponseBuffer::new();
+    /// # use ellidri::message::{Command, Buffer};
+    /// let mut response = Buffer::new();
     ///
     /// response.message(Command::Quit)
     ///     .param("  chiao ");
@@ -521,8 +522,8 @@ impl<'a> MessageBuffer<'a> {
     /// # Example
     ///
     /// ```rust
-    /// # use ellidri::message::{Command, ResponseBuffer};
-    /// let mut response = ResponseBuffer::new();
+    /// # use ellidri::message::{Command, Buffer};
+    /// let mut response = Buffer::new();
     ///
     /// response.message(Command::Quit)
     ///     .trailing_param("long quit message");
@@ -541,8 +542,8 @@ impl<'a> MessageBuffer<'a> {
     /// # Example
     ///
     /// ```rust
-    /// # use ellidri::message::{Command, ResponseBuffer};
-    /// let mut response = ResponseBuffer::new();
+    /// # use ellidri::message::{Command, Buffer};
+    /// let mut response = Buffer::new();
     /// {
     ///     let mut msg = response.message(Command::Mode)
     ///         .param("#my_channel");
@@ -564,8 +565,8 @@ impl<'a> MessageBuffer<'a> {
     /// # Example
     ///
     /// ```rust
-    /// # use ellidri::message::{ResponseBuffer, rpl};
-    /// let mut response = ResponseBuffer::new();
+    /// # use ellidri::message::{Buffer, rpl};
+    /// let mut response = Buffer::new();
     /// {
     ///     let mut msg = response.prefixed_message("ellidri.dev", rpl::NAMREPLY)
     ///         .param("ser");
@@ -587,7 +588,7 @@ impl<'a> MessageBuffer<'a> {
 impl<'a> Drop for MessageBuffer<'a> {
     /// Automagically append "\r\n" when the `MessageBuffer` is dropped.
     fn drop(&mut self) {
-        // TODO move this into ResponseBuffer (with checks for "\n" at the end of the buffer or something)
+        // TODO move this into Buffer (with checks for "\n" at the end of the buffer or something)
         self.buf.push('\r');
         self.buf.push('\n');
     }
@@ -595,13 +596,14 @@ impl<'a> Drop for MessageBuffer<'a> {
 
 /// Helper to build IRC messages.
 ///
-/// The `ResponseBuffer` is used to ease the creation of strings representing valid IRC messages.
+/// The `Buffer` is used to ease the creation of strings representing valid IRC messages.  If you
+/// mainly need to send replies, `ReplyBuffer` might be a better fit for you.
 ///
 /// # Example
 ///
 /// ```rust
-/// # use ellidri::message::{Command, ResponseBuffer, rpl};
-/// let mut response = ResponseBuffer::new();
+/// # use ellidri::message::{Command, Buffer, rpl};
+/// let mut response = Buffer::new();
 ///
 /// response.message(Command::Topic).param("#hall");
 /// response.prefixed_message("ellidri.dev", rpl::TOPIC)
@@ -615,21 +617,21 @@ impl<'a> Drop for MessageBuffer<'a> {
 ///
 /// # On allocation
 ///
-/// Allocation only occurs on `ResponseBuffer::message` and `ResponseBuffer::prefixed_message`
+/// Allocation only occurs on `Buffer::message` and `Buffer::prefixed_message`
 /// calls.  These functions reserve
 #[derive(Debug)]
-pub struct ResponseBuffer {
+pub struct Buffer {
     buf: String,
 }
 
-impl Default for ResponseBuffer {
+impl Default for Buffer {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl ResponseBuffer {
-    /// Creates a `ResponseBuffer`.  Does not allocate.
+impl Buffer {
+    /// Creates a `Buffer`.  Does not allocate.
     pub fn new() -> Self {
         Self {
             buf: String::new(),
@@ -641,9 +643,9 @@ impl ResponseBuffer {
     /// # Example
     ///
     /// ```rust
-    /// # use ellidri::message::{Command, ResponseBuffer};
-    /// let empty = ResponseBuffer::new();
-    /// let mut not_empty = ResponseBuffer::new();
+    /// # use ellidri::message::{Command, Buffer};
+    /// let empty = Buffer::new();
+    /// let mut not_empty = Buffer::new();
     ///
     /// not_empty.message(Command::Motd);
     ///
@@ -661,8 +663,8 @@ impl ResponseBuffer {
     /// # Example
     ///
     /// ```rust
-    /// # use ellidri::message::{Command, ResponseBuffer};
-    /// let mut response = ResponseBuffer::new();
+    /// # use ellidri::message::{Command, Buffer};
+    /// let mut response = Buffer::new();
     ///
     /// response.message(Command::Motd);
     ///
@@ -682,8 +684,8 @@ impl ResponseBuffer {
     /// # Example
     ///
     /// ```rust
-    /// # use ellidri::message::{Command, ResponseBuffer};
-    /// let mut response = ResponseBuffer::new();
+    /// # use ellidri::message::{Command, Buffer};
+    /// let mut response = Buffer::new();
     ///
     /// response.prefixed_message("unneeded_prefix", Command::Admin);
     ///
@@ -696,25 +698,112 @@ impl ResponseBuffer {
         MessageBuffer::with_prefix(&mut self.buf, prefix, command)
     }
 
-    /// Maybe this should be reworked.
-    ///
-    /// It's used to print ban/invite/except lists.
-    pub fn reply_list<I, F>(&mut self, prefix: &str, item_reply: Reply, end_reply: Reply,
-                            end_line: &str, list: I, mut map: F)
-        where I: IntoIterator,
-              I::Item: AsRef<str>,
-              F: FnMut(MessageBuffer<'_>) -> MessageBuffer<'_>
-    {
-        for item in list {
-            map(self.prefixed_message(prefix, item_reply))
-                .param(item.as_ref());
-        }
-        map(self.prefixed_message(prefix, end_reply))
-            .trailing_param(end_line);
-    }
-
-    /// Consumes the `ResponseBuffer` and returns the underlying `String`.
+    /// Consumes the `Buffer` and returns the underlying `String`.
     pub fn build(self) -> String {
         self.buf
+    }
+}
+
+thread_local! {
+    static DOMAIN: RefCell<String> = RefCell::new(String::new());
+    static NICKNAME: RefCell<String> = RefCell::new(String::new());
+}
+
+/// An helper to build IRC replies.
+///
+/// IRC replies are IRC messages that have the domain of the server as prefix, and the nickname of
+/// the client as first parameter.
+///
+/// # Usage note
+///
+/// This buffer uses thread-local storage to store the domain and the nickname, to reduce the
+/// number of allocations.  Therefore, the user must not make two `ReplyBuffer`s at the same time,
+/// otherwise nicknames and domains will be mixed.
+pub struct ReplyBuffer {
+    buf: Buffer,
+}
+
+impl ReplyBuffer {
+    /// Creates a new `ReplyBuffer` and initialize the thread-local storage with the given domain
+    /// and nickname.
+    pub fn new(domain: &str, nickname: &str) -> ReplyBuffer {
+        DOMAIN.with(|s| {
+            let mut s = s.borrow_mut();
+            s.clear();
+            s.push_str(domain);
+        });
+        NICKNAME.with(|n| {
+            let mut n = n.borrow_mut();
+            n.clear();
+            n.push_str(nickname);
+        });
+        ReplyBuffer {
+            buf: Buffer::new(),
+        }
+    }
+
+    /// Whether the buffer has messages in it or not.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// # use ellidri::message::{ReplyBuffer, rpl};
+    /// let empty = ReplyBuffer::new("ellidri.dev", "ser");
+    /// let mut not_empty = ReplyBuffer::new("ellidri.dev", "ser");
+    ///
+    /// not_empty.reply(rpl::ERR_NOMOTD);
+    ///
+    /// assert_eq!(empty.is_empty(), true);
+    /// assert_eq!(not_empty.is_empty(), false);
+    /// ```
+    pub fn is_empty(&self) -> bool {
+        self.buf.is_empty()
+    }
+
+    /// Appends a reply to the buffer.
+    ///
+    /// This will push the domain, the reply and the nickname of the client, and then return the
+    /// resulting `MessageBuffer`.
+    ///
+    /// This function may allocate to reserve space for the message.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// # use ellidri::message::{Command, Buffer};
+    /// let mut response = Buffer::new("ellidri.dev", "ser");
+    ///
+    /// response.reply(rpl::WELCOME).trailing_param("Welcome to IRC, ser");
+    ///
+    /// assert_eq!(&response.build(), ":ellidri.dev 001 ser :Welcome to IRC, ser\r\n");
+    /// ```
+    pub fn reply(&mut self, r: Reply) -> MessageBuffer<'_> {
+        let msg = DOMAIN.with(move |s| self.buf.prefixed_message(&s.borrow(), r));
+        NICKNAME.with(|s| msg.param(&s.borrow()))
+    }
+
+    /// Appends a prefixed message like you would do with a `ResponseBuffer`.
+    ///
+    /// This function may allocate to reserve space for the message.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// # use ellidri::message::{Command, Buffer};
+    /// let mut response = Buffer::new("ellidri.dev", "ser");
+    ///
+    /// response.prefixed_message("unneeded_prefix", Command::Admin);
+    ///
+    /// assert_eq!(&response.build(), ":unneeded_prefix Admin\r\n");
+    /// ```
+    pub fn prefixed_message<C>(&mut self, prefix: &str, command: C) -> MessageBuffer<'_>
+        where C: Into<Command>
+    {
+        self.buf.prefixed_message(prefix, command)
+    }
+
+    /// Consumes the buffer and returns the underlying `String`.
+    pub fn build(self) -> String {
+        self.buf.build()
     }
 }
