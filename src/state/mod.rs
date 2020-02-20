@@ -33,27 +33,89 @@ type ChannelMap = HashMap<UniCase<String>, Channel>;
 type ClientMap = HashMap<net::SocketAddr, Client>;
 type HandlerResult = Result<(), ()>;
 
-/// Reference-counted pointer to the shared state of the IRC server.
+/// State of an IRC network.
+///
+/// This is used by ellidri to maintain a consistent state of the network.  Note that this is just
+/// an `Arc` to the real data, so it's cheap to clone and clones share the same data.
+///
+/// At the time of writing, this only support the client-to-server API, so the network can only
+/// consist of one server.  Maybe in the long term it will support incoming messages from other
+/// servers.
+///
+/// The API is designed with `async` support only, because this type heavily relies on [tokio][1].
+///
+/// # Example
+///
+/// ```rust
+/// # use ellidri::State;
+/// # use ellidri::config::StateConfig;
+/// # use ellidri::message::Message;
+/// # fn main() {
+/// # tokio::runtime::Runtime::new().unwrap().block_on(async {
+/// // Initialize a `StateConfig` and create the state
+/// let state = State::new(StateConfig {
+///     domain: "ellidri.dev".to_owned(),
+///     ..StateConfig::default()
+/// });
+///
+/// // Each client is identified by its address
+/// let client_addr = std::net::SocketAddr::from(([127, 0, 0, 1], 12345));
+///
+/// // The state uses a MPSC queue and pushes the messages meant to be sent
+/// // to the client onto the queue.
+/// let (msg_queue, mut outgoing_msgs) = tokio::sync::mpsc::unbounded_channel();
+/// state.peer_joined(client_addr, msg_queue).await;
+///
+/// // `handle_message` is used to pass messages from the client to the state.
+/// let nick = Message::parse("NICK ser\r\n").unwrap();
+/// let user = Message::parse("USER ser 0 * :ser\r\n").unwrap();
+/// state.handle_message(&client_addr, nick).await;
+/// state.handle_message(&client_addr, user).await;
+///
+/// // The user has registered, so the state should have pushed
+/// // the welcome message, the motd, etc. onto the queue.
+/// // It is safe to unwrap here while the peer is saved in the state.
+/// let msg = outgoing_msgs.recv().await.unwrap();
+///
+/// // Outgoing messages implement `AsRef<[u8]>`, so they can be used with `std::io::Write`.
+/// // Note that one call to `recv` can contain multiple IRC messages.
+/// let mut lines = msg.as_ref().split(|c| *c == b'\n');
+///
+/// // The first IRC message from the server is RPL_WELCOME.
+/// assert_eq!(lines.next().unwrap(),
+///            &b":ellidri.dev 001 ser :Welcome home, ser!ser@127.0.0.1\r"[..]);
+/// # });
+/// # }
+/// ```
+///
+/// [1]: https://tokio.rs
 #[derive(Clone)]
 pub struct State(Arc<Mutex<StateInner>>);
 
 impl State {
+    /// Intialize the IRC state from the given configuration.
     pub fn new(config: StateConfig) -> Self {
         let inner = StateInner::new(config);
         Self(Arc::new(Mutex::new(inner)))
     }
 
-    /// Called when the connection to a new peer is created.
+    /// Adds a new connection to the state.
+    ///
+    /// Each connection is identified by its address.  The queue is used to push messages back to
+    /// the peer.
     pub async fn peer_joined(&self, addr: net::SocketAddr, queue: MessageQueue) {
         self.0.lock().await.peer_joined(addr, queue);
     }
 
-    /// Called when the connection to a peer is closed.
+    /// Removes the given connection from the state, with an optional error.
+    ///
+    /// If the peer has quit unexpctedly, `err` should be set to `Some` and reflect the cause of
+    /// the quit, so that other peers can be correctly informed.
     pub async fn peer_quit(&self, addr: &net::SocketAddr, err: Option<io::Error>) {
         self.0.lock().await.peer_quit(addr, err);
     }
 
-    /// Called when a connected peer sends a message.
+    /// Updates the state according to the given message from the given client.
     pub async fn handle_message(&self, addr: &net::SocketAddr, msg: Message<'_>) {
         self.0.lock().await.handle_message(addr, msg);
     }

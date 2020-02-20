@@ -19,7 +19,7 @@
 #![warn(clippy::all, rust_2018_idioms)]
 #![allow(clippy::filter_map, clippy::find_map, clippy::shadow_unrelated, clippy::use_self)]
 
-use crate::state::State;
+pub use crate::state::State;
 use std::{env, process};
 
 mod channel;

@@ -1,5 +1,12 @@
+//! Configuration parsing and structures.
+//!
+//! See [`doc/ellidri.conf`][1] on the repository for an explanation of each setting.
+//!
+//! [1]: https://git.sr.ht/~taiite/ellidri/tree/master/doc/ellidri.conf
+
 use std::{fs, net, path, process};
 
+/// Settings for `State`.
 #[derive(Default)]
 pub struct StateConfig {
     pub domain: String,
@@ -14,11 +21,13 @@ pub struct StateConfig {
     pub org_mail: String,
 }
 
+/// Listening address + port + optional TLS settings.
 pub struct Binding {
     pub address: net::SocketAddr,
     pub tls_identity: Option<path::PathBuf>,
 }
 
+/// The whole configuration.
 #[derive(Default)]
 pub struct Config {
     pub bindings: Vec<Binding>,
@@ -135,6 +144,9 @@ fn validate(config: &mut Config) {
     }
 }
 
+/// Reads the configuration file at the given path.
+///
+/// Exits the program on failure (this behavior could change).
 pub fn from_file(filename: String) -> Config {
     let contents = fs::read_to_string(&filename).unwrap_or_else(|err| {
         eprintln!("Could not open {:?}: {}", filename, err);

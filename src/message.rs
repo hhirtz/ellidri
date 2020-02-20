@@ -770,8 +770,8 @@ impl ReplyBuffer {
     /// # Example
     ///
     /// ```rust
-    /// # use ellidri::message::{Command, Buffer};
-    /// let mut response = Buffer::new("ellidri.dev", "ser");
+    /// # use ellidri::message::{Command, ReplyBuffer, rpl};
+    /// let mut response = ReplyBuffer::new("ellidri.dev", "ser");
     ///
     /// response.reply(rpl::WELCOME).trailing_param("Welcome to IRC, ser");
     ///
@@ -782,15 +782,15 @@ impl ReplyBuffer {
         NICKNAME.with(|s| msg.param(&s.borrow()))
     }
 
-    /// Appends a prefixed message like you would do with a `ResponseBuffer`.
+    /// Appends a prefixed message like you would do with a `Buffer`.
     ///
     /// This function may allocate to reserve space for the message.
     ///
     /// # Example
     ///
     /// ```rust
-    /// # use ellidri::message::{Command, Buffer};
-    /// let mut response = Buffer::new("ellidri.dev", "ser");
+    /// # use ellidri::message::{Command, ReplyBuffer};
+    /// let mut response = ReplyBuffer::new("ellidri.dev", "ser");
     ///
     /// response.prefixed_message("unneeded_prefix", Command::Admin);
     ///

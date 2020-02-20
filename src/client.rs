@@ -6,7 +6,7 @@ use crate::util::time;
 use std::sync::Arc;
 use tokio::sync::mpsc;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct MessageQueueItem(Arc<[u8]>);
 
 impl From<Vec<u8>> for MessageQueueItem {
