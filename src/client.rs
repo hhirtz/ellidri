@@ -7,29 +7,35 @@ use std::sync::Arc;
 use tokio::sync::mpsc;
 
 #[derive(Clone, Debug)]
-pub struct MessageQueueItem(Arc<[u8]>);
+pub struct MessageQueueItem(Arc<str>);
 
-impl From<Vec<u8>> for MessageQueueItem {
-    fn from(bytes: Vec<u8>) -> Self {
+impl From<String> for MessageQueueItem {
+    fn from(bytes: String) -> Self {
         Self(Arc::from(bytes))
     }
 }
 
 impl From<Buffer> for MessageQueueItem {
     fn from(response: Buffer) -> Self {
-        Self::from(response.build().into_bytes())
+        Self(Arc::from(response.build()))
     }
 }
 
 impl From<ReplyBuffer> for MessageQueueItem {
     fn from(response: ReplyBuffer) -> Self {
-        Self::from(response.build().into_bytes())
+        Self(Arc::from(response.build()))
+    }
+}
+
+impl AsRef<str> for MessageQueueItem {
+    fn as_ref(&self) -> &str {
+        self.0.as_ref()
     }
 }
 
 impl AsRef<[u8]> for MessageQueueItem {
     fn as_ref(&self) -> &[u8] {
-        self.0.as_ref()
+        self.0.as_ref().as_bytes()
     }
 }
 

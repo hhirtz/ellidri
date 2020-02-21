@@ -69,6 +69,7 @@ impl super::StateInner {
 
     // INVITE
 
+    // TODO 443 USERONCHANNEL
     pub fn cmd_invite(&mut self, addr: &net::SocketAddr, rb: &mut ReplyBuffer,
                       nick: &str, channel_name: &str) -> Result
     {

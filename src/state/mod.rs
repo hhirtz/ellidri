@@ -56,13 +56,13 @@ type HandlerResult = Result<(), ()>;
 /// # use ellidri::config::StateConfig;
 /// # use ellidri::message::Message;
 /// # tokio::runtime::Runtime::new().unwrap().block_on(async {
-/// // Initialize a `StateConfig` and create the state
+/// // Initialize a `StateConfig` and create the state.
 /// let state = State::new(StateConfig {
 ///     domain: "ellidri.dev".to_owned(),
 ///     ..StateConfig::default()
 /// });
 ///
-/// // Each client is identified by its address
+/// // Each client is identified by its address.
 /// let client_addr = std::net::SocketAddr::from(([127, 0, 0, 1], 12345));
 ///
 /// // The state uses a MPSC queue and pushes the messages meant to be sent
@@ -82,12 +82,14 @@ type HandlerResult = Result<(), ()>;
 /// let msg = outgoing_msgs.recv().await.unwrap();
 ///
 /// // Outgoing messages implement `AsRef<[u8]>`, so they can be used with `std::io::Write`.
+/// // They also implement `AsRef<str>` because they are UTF-8 encoded.
 /// // Note that one call to `recv` can contain multiple IRC messages.
-/// let mut lines = msg.as_ref().split(|c| *c == b'\n');
+/// let msg: &str = msg.as_ref();
+/// let mut lines = msg.split("\r\n");
 ///
 /// // The first IRC message from the server is RPL_WELCOME.
 /// assert_eq!(lines.next().unwrap(),
-///            &b":ellidri.dev 001 ser :Welcome home, ser!ser@127.0.0.1\r"[..]);
+///            ":ellidri.dev 001 ser :Welcome home, ser!ser@127.0.0.1");
 /// # });
 /// ```
 ///
