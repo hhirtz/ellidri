@@ -25,7 +25,12 @@ mod rfc2812;
 #[macro_export]
 macro_rules! server_version(() => {concat!(env!("CARGO_PKG_NAME"), "-", env!("CARGO_PKG_VERSION"))});
 
+/// Information about ellidri from an IRC client perspective.
+///
+/// Sent to client with the INFO command.
 const SERVER_INFO: &str = include_str!("info.txt");
+
+// TODO make those configurable at runtime
 const MAX_CHANNEL_NAME_LENGTH: usize = 50;
 const MAX_NICKNAME_LENGTH: usize = 9;
 
@@ -50,7 +55,6 @@ type HandlerResult = Result<(), ()>;
 /// # use ellidri::State;
 /// # use ellidri::config::StateConfig;
 /// # use ellidri::message::Message;
-/// # fn main() {
 /// # tokio::runtime::Runtime::new().unwrap().block_on(async {
 /// // Initialize a `StateConfig` and create the state
 /// let state = State::new(StateConfig {
@@ -85,7 +89,6 @@ type HandlerResult = Result<(), ()>;
 /// assert_eq!(lines.next().unwrap(),
 ///            &b":ellidri.dev 001 ser :Welcome home, ser!ser@127.0.0.1\r"[..]);
 /// # });
-/// # }
 /// ```
 ///
 /// [1]: https://tokio.rs
@@ -126,12 +129,19 @@ struct StateInner {
     /// The domain of the server. This string is used as a prefix for replies sent to clients.
     domain: String,
 
-    /// Information about the administrators of the server. Sent as a reply to the ADMIN command.
+    /// `org_name`, `org_location` and `org_mail` contain information about the administrators of
+    /// the server.
+    ///
+    /// Sent as a reply to the ADMIN command.  See the sample configuration file `doc/ellidri.conf`
+    /// for the meaning of each value.
     org_name: String,
     org_location: String,
     org_mail: String,
 
+    /// HashMap to associate a socket address to each client.
     clients: ClientMap,
+
+    /// HashMap to associate the name of each channel with their metadata.
     channels: ChannelMap,
 
     /// The formatted time when this instance is created. It is sent to the client when they
@@ -192,6 +202,14 @@ impl StateInner {
         }
     }
 
+    /// This function is called by `peer_quit` and `cmd_quit` to do the various cleanup needed when
+    /// a client disconnects:
+    ///
+    /// - remove the client from `StateInner::clients`,
+    /// - remove the client from each channel it was in,
+    /// - send a QUIT message to all cilents in these channels,
+    /// - TODO: remove the client from channel invites,
+    /// - remove empty channels
     fn remove_client(&mut self, addr: &net::SocketAddr, client: Client, reason: Option<&str>) {
         let mut response = Buffer::new();
         {
@@ -214,11 +232,10 @@ impl StateInner {
             channel.members.remove(addr);
             !channel.members.is_empty()
         });
-
-        // TODO remove from channel invites
     }
 
     pub fn handle_message(&mut self, addr: &net::SocketAddr, msg: Message<'_>) {
+        // TODO unwrap clients.get(addr) when ellidr close the connection to clients that have quit?
         let client = match self.clients.get(addr) {
             Some(client) => client,
             None => return,
@@ -274,32 +291,33 @@ impl StateInner {
 
         let ps = msg.params;
         let n = msg.num_params;
+        log::debug!("{}: {} {:?}", addr, command, &ps[..n]);
         let cmd_result = match command {
-            Command::Admin => self.cmd_admin(addr, &mut rb),
+            Command::Admin => self.cmd_admin(&mut rb),
             Command::Cap => self.cmd_cap(addr, &mut rb, &ps[..n]),
-            Command::Info => self.cmd_info(addr, &mut rb),
+            Command::Info => self.cmd_info(&mut rb),
             Command::Invite => self.cmd_invite(addr, &mut rb, ps[0], ps[1]),
             Command::Join => self.cmd_join(addr, &mut rb, ps[0], ps[1]),
             Command::Kick => self.cmd_kick(addr, &mut rb, ps[0], ps[1], ps[2]),
             Command::List => self.cmd_list(addr, &mut rb, ps[0]),
-            Command::Lusers => self.cmd_lusers(addr, &mut rb),
+            Command::Lusers => self.cmd_lusers(&mut rb),
             Command::Mode => self.cmd_mode(addr, &mut rb, ps[0], ps[1], &ps[2..cmp::max(2, n)]),
-            Command::Motd => self.cmd_motd(addr, &mut rb),
+            Command::Motd => self.cmd_motd(&mut rb),
             Command::Names => self.cmd_names(addr, &mut rb, ps[0]),
             Command::Nick => self.cmd_nick(addr, &mut rb, ps[0]),
             Command::Notice => self.cmd_notice(addr, &mut rb, ps[0], ps[1]),
             Command::Oper => self.cmd_oper(addr, &mut rb, ps[0], ps[1]),
             Command::Part => self.cmd_part(addr, &mut rb, ps[0], ps[1]),
             Command::Pass => self.cmd_pass(addr, ps[0]),
-            Command::Ping => self.cmd_ping(addr, &mut rb, ps[0]),
+            Command::Ping => self.cmd_ping(&mut rb, ps[0]),
             Command::Pong => Ok(()),
             Command::PrivMsg => self.cmd_privmsg(addr, &mut rb, ps[0], ps[1]),
             Command::Quit => self.cmd_quit(addr, ps[0]),
-            Command::Time => self.cmd_time(addr, &mut rb),
+            Command::Time => self.cmd_time(&mut rb),
             Command::Topic => self.cmd_topic(addr, &mut rb, ps[0], if n == 1 {None} else {Some(ps[1])}),
             Command::User => self.cmd_user(addr, &mut rb, ps[0], ps[3]),
-            Command::Version => self.cmd_version(addr, &mut rb),
-            Command::Who => self.cmd_who(addr, &mut rb, ps[0], ps[1]),
+            Command::Version => self.cmd_version(&mut rb),
+            Command::Who => self.cmd_who(&mut rb, ps[0], ps[1]),
             Command::Whois => self.cmd_whois(addr, &mut rb, ps[0]),
             Command::Reply(_) => Ok(()),
         };

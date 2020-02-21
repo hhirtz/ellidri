@@ -1,6 +1,7 @@
 //! Message parsing and building.
 
 pub use rpl::Reply;
+use std::fmt;
 use std::cell::RefCell;
 
 /// The recommended length of a message.
@@ -283,6 +284,12 @@ macro_rules! commands {
             /// building messages.
             fn from(reply: &'static str) -> Command {
                 Command::Reply(reply)
+            }
+        }
+
+        impl fmt::Display for Command {
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                self.as_str().fmt(f)
             }
         }
     }
@@ -617,8 +624,8 @@ impl<'a> Drop for MessageBuffer<'a> {
 ///
 /// # On allocation
 ///
-/// Allocation only occurs on `Buffer::message` and `Buffer::prefixed_message`
-/// calls.  These functions reserve
+/// Allocation only occurs on `Buffer::message` and `Buffer::prefixed_message` calls.  These
+/// functions reseve `MAX_MESSAGE_LENGTH` prior to writing on the internal buffer.
 #[derive(Debug)]
 pub struct Buffer {
     buf: String,
