@@ -1,9 +1,9 @@
 [![builds.sr.ht status](https://builds.sr.ht/~taiite/ellidri.svg)](https://builds.sr.ht/~taiite/ellidri?)
 [![link to crates.io](https://img.shields.io/crates/v/ellidri.svg)](https://crates.io/crates/ellidri)
 
-# kawai
+# kawaii
 
-ellidri, your kawai IRC server.
+ellidri, your kawaii IRC server.
 
 
 ## Features
@@ -12,7 +12,7 @@ ellidri, your kawai IRC server.
 - TLS support
 - Multiple listening ports
 - Capabilities (version 302)
-- kawai messages
+- kawaii messages
 
 [0]: https://tools.ietf.org/html/rfc1459
 [1]: https://tools.ietf.org/html/rfc2812
