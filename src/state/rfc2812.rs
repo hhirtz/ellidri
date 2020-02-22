@@ -505,20 +505,26 @@ impl super::StateInner {
 
             let mut response = Buffer::new();
 
-            response.prefixed_message(self.clients[addr].full_name(), cmd)
+            let client = &self.clients[addr];
+            response.prefixed_message(client.full_name(), cmd)
                 .param(target)
                 .trailing_param(content);
             let msg = MessageQueueItem::from(response);
             channel.members.keys()
-                .filter(|&a| a != addr)
+                .filter(|&a| client.capabilities.echo_message || a != addr)
                 .for_each(|member| self.send(member, msg.clone()));
         } else {
             let (_, target_client) = find_nick(addr, rb, &self.clients, target)?;
+            let client = &self.clients[addr];
             let mut response = Buffer::new();
-            response.prefixed_message(self.clients[addr].full_name(), cmd)
+            response.prefixed_message(client.full_name(), cmd)
                 .param(target)
                 .trailing_param(content);
-            target_client.send(response);
+            let msg = MessageQueueItem::from(response);
+            if client.capabilities.echo_message {
+                client.send(msg.clone());
+            }
+            target_client.send(msg);
         }
         self.clients.get_mut(addr).unwrap().update_idle_time();
 

@@ -130,21 +130,24 @@ impl ConnectionState {
     }
 }
 
+// TODO factorize this with a macro?
 pub mod cap {
     use std::collections::HashSet;
 
     pub const CAP_NOTIFY: &str   = "cap-notify";
+    pub const ECHO_MESSAGE: &str = "echo-message";
     pub const MESSAGE_TAGS: &str = "message-tags";
 
     // TODO replace with const fn
     lazy_static::lazy_static! {
         pub static ref ALL: HashSet<&'static str> =
             [ CAP_NOTIFY
+            , ECHO_MESSAGE
             , MESSAGE_TAGS
             ].iter().cloned().collect();
     }
 
-    pub const LS: &str = "message-tags";
+    pub const LS: &str = "cap-notify echo-message message-tags";
 
     pub fn are_supported(capabilities: &str) -> bool {
         super::cap_query(capabilities).all(|(cap,  _)| ALL.contains(cap))
@@ -156,6 +159,7 @@ pub mod cap {
 pub struct Capabilities {
     pub v302: bool,
     pub cap_notify: bool,
+    pub echo_message: bool,
     pub message_tags: bool,
 }
 
@@ -179,7 +183,7 @@ pub struct Client {
     /// currently unbounded, meaning sending messages to this channel do not block.
     queue: MessageQueue,
 
-    capabilities: Capabilities,
+    pub capabilities: Capabilities,
     state: ConnectionState,
 
     nick: String,
@@ -239,10 +243,12 @@ impl Client {
         self.state
     }
 
+    // TODO factorize this with a macro?
     pub fn update_capabilities(&mut self, capabilities: &str) {
         for (capability, enable) in cap_query(capabilities) {
             match capability {
                 cap::CAP_NOTIFY => self.capabilities.cap_notify = enable,
+                cap::ECHO_MESSAGE => self.capabilities.echo_message = enable,
                 cap::MESSAGE_TAGS => self.capabilities.message_tags = enable,
                 _ => {}
             }
@@ -252,21 +258,31 @@ impl Client {
     pub fn set_cap_version(&mut self, version: &str) {
         if version == "302" {
             self.capabilities.v302 = true;
+            self.capabilities.cap_notify = true;
         }
     }
 
-    pub fn write_enabled_capabilities(&self, response: &mut Buffer) {
-        let mut msg = response.message(Command::Cap).param(&self.nick);
+    // TODO factorize this with a macro?
+    pub fn write_enabled_capabilities(&self, response: &mut ReplyBuffer) {
+        let mut msg = response.reply(Command::Cap).param("LIST");
         let trailing = msg.raw_trailing_param();
         if self.capabilities.cap_notify {
-            trailing.push_str("cap-notify");
+            trailing.push_str(cap::CAP_NOTIFY);
+            trailing.push(' ');
+        }
+        if self.capabilities.echo_message {
+            trailing.push_str(cap::ECHO_MESSAGE);
+            trailing.push(' ');
+        }
+        if self.capabilities.message_tags {
+            trailing.push_str(cap::MESSAGE_TAGS);
             trailing.push(' ');
         }
         trailing.pop();
     }
 
-    pub fn write_capabilities(&self, response: &mut Buffer) {
-        response.message(Command::Cap).param(&self.nick).param("LS").trailing_param(cap::LS);
+    pub fn write_capabilities(&self, response: &mut ReplyBuffer) {
+        response.reply(Command::Cap).param("LS").trailing_param(cap::LS);
     }
 
     /// Change the connection state of the client given the command it just sent.

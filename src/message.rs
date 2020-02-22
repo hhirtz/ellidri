@@ -806,7 +806,9 @@ impl ReplyBuffer {
     ///
     /// assert_eq!(&response.build(), ":ellidri.dev 001 ser :Welcome to IRC, ser\r\n");
     /// ```
-    pub fn reply(&mut self, r: Reply) -> MessageBuffer<'_> {
+    pub fn reply<C>(&mut self, r: C) -> MessageBuffer<'_>
+        where C: Into<Command>
+    {
         let msg = DOMAIN.with(move |s| self.buf.prefixed_message(&s.borrow(), r));
         NICKNAME.with(|s| msg.param(&s.borrow()))
     }
