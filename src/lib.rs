@@ -1,4 +1,4 @@
-//! ellidri, the *kawai* IRC server.
+//! ellidri, your *kawaii* IRC server.
 //!
 //! # Usage
 //!
