@@ -766,7 +766,6 @@ impl super::StateInner {
 mod tests {
     use super::*;
     use super::super::test;
-    use crate::assert_msg;
     use crate::message::Command;
 
     #[test]
@@ -794,29 +793,110 @@ mod tests {
     #[test]
     fn test_cmd_invite() {
         let mut state = test::simple_state();
+        let mut buf = String::with_capacity(512);
+
         let (a1, mut q1) = test::add_registered_client(&mut state, "c1");
-        let (_, mut q2) = test::add_registered_client(&mut state, "c2");
-        let messages = [
-            (&a1, "INVITE c2 #channel")
-        ];
-
         test::flush(&mut q1);
+        let (a2, mut q2) = test::add_registered_client(&mut state, "c2");
         test::flush(&mut q2);
-        test::sequence(&mut state, &messages);
+        let (a3, mut q3) = test::add_registered_client(&mut state, "c3");
+        test::flush(&mut q3);
 
-        let mut buf = String::with_capacity(2048);
-        {
-            test::collect(&mut buf, &mut q1);
-            let mut msgs = test::messages(&buf);
-            let msg = msgs.next().unwrap();
-            assert_msg!(msg, Some(test::DOMAIN), Err(rpl::INVITING), "c1", "#channel", "c2");
-        }
+        test::handle_message(&mut state, &a1, "INVITE whoops #channel");
+        test::collect(&mut buf, &mut q1);
+        test::collect(&mut buf, &mut q2);
+        test::collect(&mut buf, &mut q3);
+        test::assert_msgs(&buf, &[
+            (Some(test::DOMAIN), Err(rpl::ERR_NOSUCHNICK), &["c1", "whoops", lines::NO_SUCH_NICK]),
+        ]);
+
+        test::handle_message(&mut state, &a1, "INVITE c2 #channel");
         buf.clear();
-        {
-            test::collect(&mut buf, &mut q2);
-            let mut msgs = test::messages(&buf);
-            let msg = msgs.next().unwrap();
-            assert_msg!(msg, Some("c1!X@127.0.0.1"), Ok(Command::Invite), "c2", "#channel");
-        }
+        test::collect(&mut buf, &mut q1);
+        test::collect(&mut buf, &mut q2);
+        test::collect(&mut buf, &mut q3);
+        test::assert_msgs(&buf, &[
+            (Some(test::DOMAIN), Err(rpl::INVITING), &["c1", "#channel", "c2"]),
+            (Some("c1!X@127.0.0.1"), Ok(Command::Invite), &["c2", "#channel"]),
+        ]);
+
+        test::handle_message(&mut state, &a1, "JOIN #channel");
+        buf.clear();
+        test::collect(&mut buf, &mut q1);
+        test::collect(&mut buf, &mut q2);
+        test::collect(&mut buf, &mut q3);
+        test::assert_msgs(&buf, &[
+            (Some("c1!X@127.0.0.1"), Ok(Command::Join), &["#channel"]),
+            (Some(test::DOMAIN), Err(rpl::NOTOPIC), &["c1", "#channel", lines::NO_TOPIC]),
+            (Some(test::DOMAIN), Err(rpl::NAMREPLY), &["c1", "=", "#channel", "@c1"]),
+            (Some(test::DOMAIN), Err(rpl::ENDOFNAMES), &["c1", "#channel", lines::END_OF_NAMES]),
+        ]);
+        assert_eq!(state.channels[<&UniCase<str>>::from("#chAnnel")].members.len(), 1);
+        assert!(state.channels[<&UniCase<str>>::from("#chAnnel")].members[&a1].operator);
+
+        test::handle_message(&mut state, &a2, "JOIN #channel");
+        buf.clear();
+        test::collect(&mut buf, &mut q1);
+        test::collect(&mut buf, &mut q2);
+        test::collect(&mut buf, &mut q3);
+        test::assert_msgs(&buf, &[
+            (Some("c2!X@127.0.0.1"), Ok(Command::Join), &["#channel"]),
+            (Some("c2!X@127.0.0.1"), Ok(Command::Join), &["#channel"]),
+            (Some(test::DOMAIN), Err(rpl::NOTOPIC), &["c2", "#channel", lines::NO_TOPIC]),
+            (Some(test::DOMAIN), Err(rpl::NAMREPLY), &["c2", "=", "#channel", ""]),
+            (Some(test::DOMAIN), Err(rpl::ENDOFNAMES), &["c2", "#channel", lines::END_OF_NAMES]),
+        ]);
+
+        test::handle_message(&mut state, &a1, "MODE #channel +i");
+        buf.clear();
+        test::collect(&mut buf, &mut q1);
+        test::collect(&mut buf, &mut q2);
+        test::collect(&mut buf, &mut q3);
+        test::assert_msgs(&buf, &[
+            (Some("c1!X@127.0.0.1"), Ok(Command::Mode), &["#channel", "+i"]),
+            (Some("c1!X@127.0.0.1"), Ok(Command::Mode), &["#channel", "+i"]),
+        ]);
+
+        test::handle_message(&mut state, &a3, "JOIN #channel");
+        buf.clear();
+        test::collect(&mut buf, &mut q1);
+        test::collect(&mut buf, &mut q2);
+        test::collect(&mut buf, &mut q3);
+        test::assert_msgs(&buf, &[
+            (Some(test::DOMAIN), Err(rpl::ERR_INVITEONLYCHAN), &["c3", "#channel", lines::INVITE_ONLY_CHAN]),
+        ]);
+
+        test::handle_message(&mut state, &a2, "INVITE c3 #channel");
+        buf.clear();
+        test::collect(&mut buf, &mut q1);
+        test::collect(&mut buf, &mut q2);
+        test::collect(&mut buf, &mut q3);
+        test::assert_msgs(&buf, &[
+            (Some(test::DOMAIN), Err(rpl::ERR_CHANOPRIVSNEEDED), &["c2", "#channel", lines::CHAN_O_PRIVS_NEEDED]),
+        ]);
+
+        test::handle_message(&mut state, &a1, "INVITE c3 #channel");
+        buf.clear();
+        test::collect(&mut buf, &mut q1);
+        test::collect(&mut buf, &mut q2);
+        test::collect(&mut buf, &mut q3);
+        test::assert_msgs(&buf, &[
+            (Some(test::DOMAIN), Err(rpl::INVITING), &["c1", "#channel", "c3"]),
+            (Some("c1!X@127.0.0.1"), Ok(Command::Invite), &["c3", "#channel"]),
+        ]);
+
+        test::handle_message(&mut state, &a3, "JOIN #channel");
+        buf.clear();
+        test::collect(&mut buf, &mut q1);
+        test::collect(&mut buf, &mut q2);
+        test::collect(&mut buf, &mut q3);
+        test::assert_msgs(&buf, &[
+            (Some("c3!X@127.0.0.1"), Ok(Command::Join), &["#channel"]),
+            (Some("c3!X@127.0.0.1"), Ok(Command::Join), &["#channel"]),
+            (Some("c3!X@127.0.0.1"), Ok(Command::Join), &["#channel"]),
+            (Some(test::DOMAIN), Err(rpl::NOTOPIC), &["c3", "#channel", lines::NO_TOPIC]),
+            (Some(test::DOMAIN), Err(rpl::NAMREPLY), &["c3", "=", "#channel", ""]),
+            (Some(test::DOMAIN), Err(rpl::ENDOFNAMES), &["c3", "#channel", lines::END_OF_NAMES]),
+        ]);
     }
 }  // mod tests

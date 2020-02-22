@@ -2,7 +2,7 @@
 
 use crate::config::{Config, StateConfig};
 use crate::client::MessageQueueItem;
-use crate::message::Message;
+use crate::message::{assert_msg, Command, Message};
 use std::cell::RefCell;
 use std::net::SocketAddr;
 use super::StateInner;
@@ -47,6 +47,11 @@ pub(crate) fn add_registered_client(s: &mut StateInner, nickname: &str) -> (Sock
     (addr, queue)
 }
 
+pub(crate) fn handle_message(state: &mut StateInner, addr: &SocketAddr, message: &str) {
+    let message = Message::parse(message).unwrap();
+    state.handle_message(addr, message);
+}
+
 pub fn flush(queue: &mut Queue) {
     loop {
         match queue.try_recv() {
@@ -74,9 +79,13 @@ pub fn messages(s: &str) -> impl Iterator<Item=Message<'_>> {
     s.lines().map(|line| Message::parse(line).expect("bad message"))
 }
 
-pub(crate) fn sequence(state: &mut StateInner, messages: &[(&SocketAddr, &str)]) {
-    for (c, message) in messages {
-        let message = Message::parse(message).unwrap();
-        state.handle_message(c, message);
+#[allow(clippy::type_complexity)]  // TODO
+pub fn assert_msgs(s: &str, expected: &[(Option<&str>, Result<Command, &str>, &[&str])]) {
+    let mut i = 0;
+    for msg in messages(s) {
+        let (prefix, command, params) = expected[i];
+        assert_msg(&msg, prefix, command, params);
+        i += 1;
     }
+    assert_eq!(i, expected.len());
 }

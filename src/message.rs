@@ -325,20 +325,24 @@ commands! {
     Whois => 1,
 }
 
-#[macro_export]
-macro_rules! assert_msg {
-    ( $( $i:literal ),* ) => {{
-        0 $( + 1 + $i.len() * 0 )*
-    }};
-    ( $msg:ident, $prefix:expr, $cmd:expr, $( $param:literal ),* ) => {{
-        assert_eq!($msg.prefix, $prefix);
-        assert_eq!($msg.command, $cmd);
-        assert_eq!($msg.num_params, crate::assert_msg!($($param),*));
-        let mut params = $msg.params[..$msg.num_params].into_iter();
-        $(
-            assert_eq!(*params.next().unwrap(), $param);
-        )*
-    }};
+/// Assert all data of a message.
+///
+/// Empty elements in `params` will not be asserted with their equivalent in `msg.params`, but will
+/// still count for the assertion of the number of parameters.
+pub fn assert_msg(msg: &Message<'_>, prefix: Option<&str>, command: Result<Command, &str>,
+                  params: &[&str])
+{
+    assert_eq!(msg.prefix, prefix, "prefix of {:?}", msg);
+    assert_eq!(msg.command, command, "command of {:?}", msg);
+    assert_eq!(msg.num_params, params.len(), "number of parameters of {:?}", msg);
+    for (i, (actual, expected)) in msg.params.iter().zip(params.iter()).enumerate() {
+        if expected.is_empty() {
+            // Some parameters may be of different form every time they are generated (e.g.
+            // NAMREPLY params, since the order comes from HashMap::iter), so we skip them.
+            continue;
+        }
+        assert_eq!(actual, expected, "parameter #{} of {:?}", i, msg);
+    }
 }
 
 /// An IRC message.
