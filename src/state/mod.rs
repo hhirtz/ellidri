@@ -21,6 +21,8 @@ use tokio::sync::Mutex;
 
 mod capabilities;
 mod rfc2812;
+#[cfg(test)]
+mod test;
 
 #[macro_export]
 macro_rules! server_version(() => {concat!(env!("CARGO_PKG_NAME"), "-", env!("CARGO_PKG_VERSION"))});
@@ -126,8 +128,20 @@ impl State {
     }
 }
 
+// TODO mv StateInner State
+// et mettre des Mutex aux bons endroits
+//
+// - 1 RwLock sur tout org_*
+// - 1 Mutex sur (clients, channels)
+// - 1 RwLock sur motd
+// - 1 RwLock sur password
+// - 1 RwLock sur default_chan_mode
+// - 1 RwLock sur opers
+//
+// NOPE pck cc faut les clients pour envoyer des trucs, du coup ça sert à rien
+
 /// The actual shared data (state) of the IRC server.
-struct StateInner {
+pub(crate) struct StateInner {
     /// The domain of the server. This string is used as a prefix for replies sent to clients.
     domain: String,
 
@@ -210,7 +224,8 @@ impl StateInner {
     /// - remove the client from `StateInner::clients`,
     /// - remove the client from each channel it was in,
     /// - send a QUIT message to all cilents in these channels,
-    /// - TODO: remove the client from channel invites,
+    /// - TODO: remove the client from channel invites (TODO: store invites in client instead of
+    ///   channel),
     /// - remove empty channels
     fn remove_client(&mut self, addr: &net::SocketAddr, client: Client, reason: Option<&str>) {
         let mut response = Buffer::new();

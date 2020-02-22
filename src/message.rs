@@ -178,6 +178,7 @@ impl<'a> Tag<'a> {
 ///
 /// Message tagging is an addition of an IRCv3 specification.  Refer to the following page for
 /// more details on message tags: <https://ircv3.net/specs/extensions/message-tags>.
+#[derive(Clone, Debug)]
 pub struct Tags<'a> {
     buf: &'a str,
 }
@@ -324,6 +325,22 @@ commands! {
     Whois => 1,
 }
 
+#[macro_export]
+macro_rules! assert_msg {
+    ( $( $i:literal ),* ) => {{
+        0 $( + 1 + $i.len() * 0 )*
+    }};
+    ( $msg:ident, $prefix:expr, $cmd:expr, $( $param:literal ),* ) => {{
+        assert_eq!($msg.prefix, $prefix);
+        assert_eq!($msg.command, $cmd);
+        assert_eq!($msg.num_params, crate::assert_msg!($($param),*));
+        let mut params = $msg.params[..$msg.num_params].into_iter();
+        $(
+            assert_eq!(*params.next().unwrap(), $param);
+        )*
+    }};
+}
+
 /// An IRC message.
 ///
 /// See `Message::parse` for documentation on how to read IRC messages, and `Buffer` for
@@ -331,6 +348,7 @@ commands! {
 ///
 /// See the RFC 2812 for a complete description of IRC messages:
 /// <https://tools.ietf.org/html/rfc2812.html#section-2.3>.
+#[derive(Clone, Debug)]
 pub struct Message<'a> {
     /// An iterator over the tags of the message.
     ///

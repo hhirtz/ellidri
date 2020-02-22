@@ -765,6 +765,9 @@ impl super::StateInner {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use super::super::test;
+    use crate::assert_msg;
+    use crate::message::Command;
 
     #[test]
     fn test_is_valid_channel_name() {
@@ -787,4 +790,33 @@ mod tests {
         assert!(!is_valid_nickname("007brice"));
         assert!(!is_valid_nickname("longnicknameverylongohwowthisisalongnickname"));
     }
-}
+
+    #[test]
+    fn test_cmd_invite() {
+        let mut state = test::simple_state();
+        let (a1, mut q1) = test::add_registered_client(&mut state, "c1");
+        let (_, mut q2) = test::add_registered_client(&mut state, "c2");
+        let messages = [
+            (&a1, "INVITE c2 #channel")
+        ];
+
+        test::flush(&mut q1);
+        test::flush(&mut q2);
+        test::sequence(&mut state, &messages);
+
+        let mut buf = String::with_capacity(2048);
+        {
+            test::collect(&mut buf, &mut q1);
+            let mut msgs = test::messages(&buf);
+            let msg = msgs.next().unwrap();
+            assert_msg!(msg, Some(test::DOMAIN), Err(rpl::INVITING), "c1", "#channel", "c2");
+        }
+        buf.clear();
+        {
+            test::collect(&mut buf, &mut q2);
+            let mut msgs = test::messages(&buf);
+            let msg = msgs.next().unwrap();
+            assert_msg!(msg, Some("c1!X@127.0.0.1"), Ok(Command::Invite), "c2", "#channel");
+        }
+    }
+}  // mod tests
