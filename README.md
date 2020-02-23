@@ -56,7 +56,15 @@ sp     =  any sequence of whitespace
 An example configuration file with all settings and their defaults can be found
 in `doc/ellidri.conf`.
 
-To start ellidri, pass the path of the configuration file as its first argument.
+To start ellidri, pass the path of the configuration file as its first argument:
+
+```shell
+cargo run -- doc/ellidri.conf
+# or
+./target/debug/ellidri doc/ellidri.conf
+# or
+./target/release/ellidri doc/ellidri.conf
+```
 
 
 ## Contributing
