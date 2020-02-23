@@ -54,6 +54,9 @@ pub const END_OF_WHOIS: &str =
 pub const ERRONEOUS_NICNAME: &str =
 "Meh, this is obviously a bad nickname...";
 
+pub const INPUT_TOO_LONG: &str =
+"Please wait senpai, that's too big!  If only there was one message at a time...";
+
 pub const INVITE_ONLY_CHAN: &str =
 "They didn't invite you yet, keep trying~!";
 
@@ -70,7 +73,7 @@ pub const NICKNAME_IN_USE: &str =
 "Another senpai already took this nickname...";
 
 pub const NO_MOTD: &str =
-"ellidri can't give you the MOTD";
+"ellidri can't find the MOTD...";
 
 pub const NO_TOPIC: &str =
 "It seems this channel doesn't have any topic";
@@ -91,7 +94,7 @@ pub const PASSWORD_MISMATCH: &str =
 "Nope! Wrong password";
 
 pub const UNKNOWN_COMMAND: &str =
-"Wait... What did you just say?";
+"Hnn... What did you just say?";
 
 pub const UNKNOWN_MODE: &str =
 "This letter right here... what does it mean?";
@@ -100,7 +103,7 @@ pub const USER_NOT_IN_CHANNEL: &str =
 "This senpai isn't on the channel";
 
 pub const USERS_DONT_MATCH: &str =
-"Please mind your own business, will you?";
+"Kyaaa! Peeking is bad senpai! Please don't do that again!";
 
 pub const YOURE_OPER: &str =
 "You are now a BIG senpai!";
@@ -145,6 +148,7 @@ pub fn motd_start(mut r: MessageBuffer<'_>, domain: &str) {
     trailing.push_str(" message of the day -");
 }
 
+// TODO add network name
 pub fn welcome(mut r: MessageBuffer<'_>, name: &str) {
     let trailing = r.raw_trailing_param();
     trailing.push_str("Welcome home, ");
