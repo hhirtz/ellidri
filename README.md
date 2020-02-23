@@ -1,5 +1,5 @@
 [![builds.sr.ht status](https://builds.sr.ht/~taiite/ellidri.svg)](https://builds.sr.ht/~taiite/ellidri?)
-[![link to crates.io](https://img.shields.io/crates/v/ellidri.svg)](https://crates.io/crates/ellidri)
+[![crates.io](https://img.shields.io/crates/v/ellidri.svg)](https://crates.io/crates/ellidri)
 
 # kawaii
 
@@ -14,12 +14,21 @@ ellidri, your kawaii IRC server.
 - Capabilities (version 302)
 - kawaii messages
 
+Supported capabilities:
+
+- [cap-notify](https://ircv3.net/specs/core/capability-negotiation#cap-notify)
+- [echo-message](https://ircv3.net/specs/extensions/echo-message-3.2)
+- [message-tags](https://ircv3.net/specs/extensions/message-tags)
+
+ellidri only supports the UTF-8 encoding for messages, though for now it only
+supports ASCII casemapping for channels.
+
 [0]: https://tools.ietf.org/html/rfc1459
 [1]: https://tools.ietf.org/html/rfc2812
 [2]: https://todo.sr.ht/~taiite/ellidri/1
 
 
-## Build and Install
+## Build and install
 
 Prerequisites:
 
@@ -58,6 +67,18 @@ Patches are welcome!  Here are some links to get started:
 - Git repository: <https://git.sr.ht/~taiite/ellidri>
 - Send patches to the mailing list: <https://lists.sr.ht/~taiite/public-inbox>
 - Report bugs on the issue tracker: <https://todo.sr.ht/~taiite/ellidri>
+
+
+## Acknowledgments
+
+ellidri couldn't have existed without the help of <https://ircdocs.horse>.
+Thank you `Daniel Oaks` and [all other contributors][ac]!
+
+Also thanks to the [IRCv3 working group][i3] for all the work on modernizing
+the IRC protocol!
+
+[ac]: https://github.com/ircdocs/modern-irc/graphs/contributors
+[i3]: https://ircv3.net/charter
 
 
 ## License
