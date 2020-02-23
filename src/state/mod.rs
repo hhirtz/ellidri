@@ -41,10 +41,9 @@ type ChannelMap = HashMap<UniCase<String>, Channel>;
 type ClientMap = HashMap<net::SocketAddr, Client>;
 type HandlerResult = Result<(), ()>;
 
-struct CommandContext<'a> {
+pub struct CommandContext<'a> {
     addr: &'a net::SocketAddr,
     rb: &'a mut ReplyBuffer,
-    tags: &'a str,
 }
 
 /// State of an IRC network.
@@ -321,34 +320,39 @@ impl StateInner {
 
         let ps = msg.params;
         let n = msg.num_params;
+        let ctx = CommandContext {
+            addr,
+            rb: &mut rb,
+        };
+
         log::debug!("{}: {} {:?}", addr, command, &ps[..n]);
         let cmd_result = match command {
-            Command::Admin => self.cmd_admin(&mut rb),
-            Command::Cap => self.cmd_cap(addr, &mut rb, &ps[..n]),
-            Command::Info => self.cmd_info(&mut rb),
-            Command::Invite => self.cmd_invite(addr, &mut rb, ps[0], ps[1]),
-            Command::Join => self.cmd_join(addr, &mut rb, ps[0], ps[1]),
-            Command::Kick => self.cmd_kick(addr, &mut rb, ps[0], ps[1], ps[2]),
-            Command::List => self.cmd_list(addr, &mut rb, ps[0]),
-            Command::Lusers => self.cmd_lusers(&mut rb),
-            Command::Mode => self.cmd_mode(addr, &mut rb, ps[0], ps[1], &ps[2..cmp::max(2, n)]),
-            Command::Motd => self.cmd_motd(&mut rb),
-            Command::Names => self.cmd_names(addr, &mut rb, ps[0]),
-            Command::Nick => self.cmd_nick(addr, &mut rb, ps[0]),
-            Command::Notice => self.cmd_notice(addr, &mut rb, ps[0], ps[1]),
-            Command::Oper => self.cmd_oper(addr, &mut rb, ps[0], ps[1]),
-            Command::Part => self.cmd_part(addr, &mut rb, ps[0], ps[1]),
-            Command::Pass => self.cmd_pass(addr, ps[0]),
-            Command::Ping => self.cmd_ping(&mut rb, ps[0]),
+            Command::Admin => self.cmd_admin(ctx),
+            Command::Cap => self.cmd_cap(ctx, &ps[..n]),
+            Command::Info => self.cmd_info(ctx),
+            Command::Invite => self.cmd_invite(ctx, ps[0], ps[1]),
+            Command::Join => self.cmd_join(ctx, ps[0], ps[1]),
+            Command::Kick => self.cmd_kick(ctx, ps[0], ps[1], ps[2]),
+            Command::List => self.cmd_list(ctx, ps[0]),
+            Command::Lusers => self.cmd_lusers(ctx),
+            Command::Mode => self.cmd_mode(ctx, ps[0], ps[1], &ps[2..cmp::max(2, n)]),
+            Command::Motd => self.cmd_motd(ctx),
+            Command::Names => self.cmd_names(ctx, ps[0]),
+            Command::Nick => self.cmd_nick(ctx, ps[0]),
+            Command::Notice => self.cmd_notice(ctx, ps[0], ps[1]),
+            Command::Oper => self.cmd_oper(ctx, ps[0], ps[1]),
+            Command::Part => self.cmd_part(ctx, ps[0], ps[1]),
+            Command::Pass => self.cmd_pass(ctx, ps[0]),
+            Command::Ping => self.cmd_ping(ctx, ps[0]),
             Command::Pong => Ok(()),
-            Command::PrivMsg => self.cmd_privmsg(addr, &mut rb, ps[0], ps[1]),
-            Command::Quit => self.cmd_quit(addr, ps[0]),
-            Command::Time => self.cmd_time(&mut rb),
-            Command::Topic => self.cmd_topic(addr, &mut rb, ps[0], if n == 1 {None} else {Some(ps[1])}),
-            Command::User => self.cmd_user(addr, &mut rb, ps[0], ps[3]),
-            Command::Version => self.cmd_version(&mut rb),
-            Command::Who => self.cmd_who(&mut rb, ps[0], ps[1]),
-            Command::Whois => self.cmd_whois(addr, &mut rb, ps[0]),
+            Command::PrivMsg => self.cmd_privmsg(ctx, ps[0], ps[1]),
+            Command::Quit => self.cmd_quit(ctx, ps[0]),
+            Command::Time => self.cmd_time(ctx),
+            Command::Topic => self.cmd_topic(ctx, ps[0], if n == 1 {None} else {Some(ps[1])}),
+            Command::User => self.cmd_user(ctx, ps[0], ps[3]),
+            Command::Version => self.cmd_version(ctx),
+            Command::Who => self.cmd_who(ctx, ps[0], ps[1]),
+            Command::Whois => self.cmd_whois(ctx, ps[0]),
             Command::Reply(_) => Ok(()),
         };
 

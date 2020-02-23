@@ -5,13 +5,12 @@
 use crate::channel::Channel;
 use crate::client::MessageQueueItem;
 use crate::lines;
-use crate::message::{Buffer, Command, rpl, ReplyBuffer};
+use crate::message::{Buffer, Command, ReplyBuffer, rpl};
 use crate::modes;
 use crate::util::time_str;
 use ellidri_unicase::UniCase;
 use std::collections::HashSet;
-use std::net;
-use super::{HandlerResult as Result, find_channel, find_member, find_nick};
+use super::{CommandContext, HandlerResult as Result, find_channel, find_member, find_nick};
 
 /// Whether a string is accepted as a channel name by ellidri or not.
 fn is_valid_channel_name(s: &str) -> bool {
@@ -47,22 +46,22 @@ fn is_valid_nickname(s: &str) -> bool {
 impl super::StateInner {
     // ADMIN
 
-    pub fn cmd_admin(&self, rb: &mut ReplyBuffer) -> Result {
-        rb.reply(rpl::ADMINME).param(&self.domain).trailing_param(lines::ADMIN_ME);
-        rb.reply(rpl::ADMINLOC1).trailing_param(&self.org_location);
-        rb.reply(rpl::ADMINLOC2).trailing_param(&self.org_name);
-        rb.reply(rpl::ADMINMAIL).trailing_param(&self.org_mail);
+    pub fn cmd_admin(&self, ctx: CommandContext<'_>) -> Result {
+        ctx.rb.reply(rpl::ADMINME).param(&self.domain).trailing_param(lines::ADMIN_ME);
+        ctx.rb.reply(rpl::ADMINLOC1).trailing_param(&self.org_location);
+        ctx.rb.reply(rpl::ADMINLOC2).trailing_param(&self.org_name);
+        ctx.rb.reply(rpl::ADMINMAIL).trailing_param(&self.org_mail);
 
         Ok(())
     }
 
     // INFO
 
-    pub fn cmd_info(&self, rb: &mut ReplyBuffer) -> Result {
+    pub fn cmd_info(&self, ctx: CommandContext<'_>) -> Result {
         for line in super::SERVER_INFO.lines() {
-            rb.reply(rpl::INFO).trailing_param(line);
+            ctx.rb.reply(rpl::INFO).trailing_param(line);
         }
-        rb.reply(rpl::ENDOFINFO).trailing_param(lines::END_OF_INFO);
+        ctx.rb.reply(rpl::ENDOFINFO).trailing_param(lines::END_OF_INFO);
 
         Ok(())
     }
@@ -70,16 +69,14 @@ impl super::StateInner {
     // INVITE
 
     // TODO 443 USERONCHANNEL
-    pub fn cmd_invite(&mut self, addr: &net::SocketAddr, rb: &mut ReplyBuffer,
-                      nick: &str, channel_name: &str) -> Result
-    {
-        let (target_addr, _) = find_nick(addr, rb, &self.clients, nick)?;
+    pub fn cmd_invite(&mut self, ctx: CommandContext<'_>, nick: &str, channel_name: &str) -> Result {
+        let (target_addr, _) = find_nick(ctx.addr, ctx.rb, &self.clients, nick)?;
 
         if let Some(channel) = self.channels.get(<&UniCase<str>>::from(channel_name)) {
-            let member_modes = find_member(addr, rb, channel, channel_name)?;
+            let member_modes = find_member(ctx.addr, ctx.rb, channel, channel_name)?;
             if channel.invite_only && !member_modes.operator {
-                log::debug!("{}:     not operator", addr);
-                rb.reply(rpl::ERR_CHANOPRIVSNEEDED)
+                log::debug!("{}:     not operator", ctx.addr);
+                ctx.rb.reply(rpl::ERR_CHANOPRIVSNEEDED)
                     .param(channel_name)
                     .trailing_param(lines::CHAN_O_PRIVS_NEEDED);
                 return Err(());
@@ -94,10 +91,10 @@ impl super::StateInner {
             return Err(());
         }
 
-        rb.reply(rpl::INVITING).param(channel_name).param(nick);
+        ctx.rb.reply(rpl::INVITING).param(channel_name).param(nick);
 
         let mut invite = Buffer::new();
-        invite.message(self.clients[addr].full_name(), Command::Invite)
+        invite.message(self.clients[ctx.addr].full_name(), Command::Invite)
             .param(nick)
             .param(channel_name);
         self.clients[&target_addr].send(invite);
@@ -107,75 +104,73 @@ impl super::StateInner {
 
     // JOIN
 
-    pub fn cmd_join(&mut self, addr: &net::SocketAddr, rb: &mut ReplyBuffer,
-                    target: &str, key: &str) -> Result
-    {
+    pub fn cmd_join(&mut self, ctx: CommandContext<'_>, target: &str, key: &str) -> Result {
         if !is_valid_channel_name(target) {
-            log::debug!("{}:     Invalid channel name", addr);
-            rb.reply(rpl::ERR_NOSUCHCHANNEL).param(target).trailing_param(lines::NO_SUCH_CHANNEL);
+            log::debug!("{}:     Invalid channel name", ctx.addr);
+            ctx.rb.reply(rpl::ERR_NOSUCHCHANNEL).param(target).trailing_param(lines::NO_SUCH_CHANNEL);
             return Err(());
         }
         if let Some(channel) = self.channels.get(<&UniCase<str>>::from(target)) {
-            if channel.members.contains_key(addr) {
-                log::debug!("{}:     Already in channel", addr);
+            if channel.members.contains_key(ctx.addr) {
+                log::debug!("{}:     Already in channel", ctx.addr);
                 return Err(());
             }
-            let nick = self.clients[&addr].nick();
+            let nick = self.clients[ctx.addr].nick();
             if channel.key.as_ref().map_or(false, |ck| key == ck) {
-                log::debug!("{}:     Bad key", addr);
-                rb.reply(rpl::ERR_BADCHANKEY).param(target).trailing_param(lines::BAD_CHAN_KEY);
+                log::debug!("{}:     Bad key", ctx.addr);
+                ctx.rb.reply(rpl::ERR_BADCHANKEY).param(target).trailing_param(lines::BAD_CHAN_KEY);
                 return Err(());
             }
             if channel.user_limit.map_or(false, |user_limit| user_limit <= channel.members.len()) {
-                log::debug!("{}:     user limit reached", addr);
-                rb.reply(rpl::ERR_CHANNELISFULL)
+                log::debug!("{}:     user limit reached", ctx.addr);
+                ctx.rb.reply(rpl::ERR_CHANNELISFULL)
                     .param(target)
                     .trailing_param(lines::CHANNEL_IS_FULL);
                 return Err(());
             }
-            if !channel.is_invited(addr, nick) {
-                log::debug!("{}:     not invited", addr);
-                rb.reply(rpl::ERR_INVITEONLYCHAN)
+            if !channel.is_invited(ctx.addr, nick) {
+                log::debug!("{}:     not invited", ctx.addr);
+                ctx.rb.reply(rpl::ERR_INVITEONLYCHAN)
                     .param(target)
                     .trailing_param(lines::INVITE_ONLY_CHAN);
                 return Err(());
             }
             if channel.is_banned(nick) {
-                log::debug!("{}:     Banned", addr);
-                rb.reply(rpl::ERR_BANNEDFROMCHAN)
+                log::debug!("{}:     Banned", ctx.addr);
+                ctx.rb.reply(rpl::ERR_BANNEDFROMCHAN)
                     .param(target)
                     .trailing_param(lines::BANNED_FROM_CHAN);
                 return Err(());
             }
         }
 
-        let client = self.clients.get_mut(addr).unwrap();
+        let client = self.clients.get_mut(ctx.addr).unwrap();
 
         let default_chan_mode = &self.default_chan_mode;
         let channel = self.channels.entry(UniCase(target.to_owned()))
             .or_insert_with(|| Channel::new(&default_chan_mode));
-        channel.add_member(*addr);
+        channel.add_member(*ctx.addr);
         client.update_idle_time();
 
         let mut join_response = Buffer::new();
         join_response.message(client.full_name(), Command::Join).param(target);
         self.broadcast(target, MessageQueueItem::from(join_response));
-        self.write_topic(rb, target);
-        self.write_names(addr, rb, target);
+        self.write_topic(ctx.rb, target);
+        self.write_names(ctx.addr, ctx.rb, target);
 
         Ok(())
     }
 
     // KICK
 
-    pub fn cmd_kick(&mut self, addr: &net::SocketAddr, rb: &mut ReplyBuffer, target: &str,
+    pub fn cmd_kick(&mut self, ctx: CommandContext<'_>, target: &str,
                     nick: &str, reason: &str) -> Result
     {
-        let channel = find_channel(addr, rb, &self.channels, target)?;
-        let member_modes = find_member(addr, rb, channel, target)?;
+        let channel = find_channel(ctx.addr, ctx.rb, &self.channels, target)?;
+        let member_modes = find_member(ctx.addr, ctx.rb, channel, target)?;
         if !member_modes.operator {
-            log::debug!("{}:     not operator", addr);
-            rb.reply(rpl::ERR_CHANOPRIVSNEEDED)
+            log::debug!("{}:     not operator", ctx.addr);
+            ctx.rb.reply(rpl::ERR_CHANOPRIVSNEEDED)
                 .param(target)
                 .trailing_param(lines::CHAN_O_PRIVS_NEEDED);
             return Err(());
@@ -187,8 +182,8 @@ impl super::StateInner {
         let kicked_addrs = match kicked_addrs {
             Some(kicked_addrs) => kicked_addrs,
             None => {
-                log::debug!("{}:     targets not on channel", addr);
-                rb.reply(rpl::ERR_USERNOTINCHANNEL)
+                log::debug!("{}:     targets not on channel", ctx.addr);
+                ctx.rb.reply(rpl::ERR_USERNOTINCHANNEL)
                     .param(nick)
                     .param(target)
                     .trailing_param(lines::USER_NOT_IN_CHANNEL);
@@ -198,7 +193,7 @@ impl super::StateInner {
 
         let mut kick_response = Buffer::new();
         {
-            let msg = kick_response.message(self.clients[addr].full_name(), Command::Kick)
+            let msg = kick_response.message(self.clients[ctx.addr].full_name(), Command::Kick)
                 .param(target)
                 .param(nick);
             if !reason.is_empty() {
@@ -217,68 +212,66 @@ impl super::StateInner {
 
     // LIST
 
-    pub fn cmd_list(&self, addr: &net::SocketAddr, rb: &mut ReplyBuffer, targets: &str) -> Result {
+    pub fn cmd_list(&self, ctx: CommandContext<'_>, targets: &str) -> Result {
         if targets.is_empty() {
             for (name, channel) in &self.channels {
-                if channel.secret && !channel.members.contains_key(addr) {
+                if channel.secret && !channel.members.contains_key(ctx.addr) {
                     continue;
                 }
-                let msg = rb.reply(rpl::LIST).param(name.as_ref());
+                let msg = ctx.rb.reply(rpl::LIST).param(name.as_ref());
                 channel.list_entry(msg);
             }
         } else {
             for name in targets.split(',') {
                 if let Some(channel) = self.channels.get(<&UniCase<str>>::from(name)) {
-                    if channel.secret && !channel.members.contains_key(addr) {
+                    if channel.secret && !channel.members.contains_key(ctx.addr) {
                         continue;
                     }
-                    let msg = rb.reply(rpl::LIST).param(name);
+                    let msg = ctx.rb.reply(rpl::LIST).param(name);
                     channel.list_entry(msg);
                 }
             }
         }
 
-        rb.reply(rpl::LISTEND).trailing_param(lines::END_OF_LIST);
+        ctx.rb.reply(rpl::LISTEND).trailing_param(lines::END_OF_LIST);
 
         Ok(())
     }
 
     // LUSERS
 
-    pub fn cmd_lusers(&self, rb: &mut ReplyBuffer) -> Result {
-        self.write_lusers(rb);
+    pub fn cmd_lusers(&self, ctx: CommandContext<'_>) -> Result {
+        self.write_lusers(ctx.rb);
         Ok(())
     }
 
     // MODE
 
-    fn cmd_mode_chan_get(&self, addr: &net::SocketAddr, rb: &mut ReplyBuffer,
-                         target: &str) -> Result
-    {
-        let channel = find_channel(addr, rb, &self.channels, target)?;
-        let msg = rb.reply(rpl::CHANNELMODEIS).param(target);
-        channel.modes(msg, channel.members.contains_key(addr));
+    fn cmd_mode_chan_get(&self, ctx: CommandContext<'_>, target: &str) -> Result {
+        let channel = find_channel(ctx.addr, ctx.rb, &self.channels, target)?;
+        let msg = ctx.rb.reply(rpl::CHANNELMODEIS).param(target);
+        channel.modes(msg, channel.members.contains_key(ctx.addr));
 
         Ok(())
     }
 
-    fn cmd_mode_chan_set(&mut self, addr: &net::SocketAddr, rb: &mut ReplyBuffer, target: &str,
+    fn cmd_mode_chan_set(&mut self, ctx: CommandContext<'_>, target: &str,
                                modes: &str, modeparams: &[&str]) -> Result
     {
         let channel = match self.channels.get_mut(<&UniCase<str>>::from(target)) {
             Some(channel) => channel,
             None => {
-                log::debug!("{}:     no such channel", addr);
-                rb.reply(rpl::ERR_NOSUCHCHANNEL)
+                log::debug!("{}:     no such channel", ctx.addr);
+                ctx.rb.reply(rpl::ERR_NOSUCHCHANNEL)
                     .param(target)
                     .trailing_param(lines::NO_SUCH_CHANNEL);
                 return Err(());
             }
         };
-        let member_modes = find_member(addr, rb, channel, target)?;
+        let member_modes = find_member(ctx.addr, ctx.rb, channel, target)?;
         if modes::needs_chanop(modes) && !member_modes.operator {
-            log::debug!("{}:     not operator", addr);
-            rb.reply(rpl::ERR_CHANOPRIVSNEEDED)
+            log::debug!("{}:     not operator", ctx.addr);
+            ctx.rb.reply(rpl::ERR_CHANOPRIVSNEEDED)
                 .param(target)
                 .trailing_param(lines::CHAN_O_PRIVS_NEEDED);
             return Err(());
@@ -297,15 +290,15 @@ impl super::StateInner {
         let mut applied_modeparams = Vec::new();
         for maybe_change in modes::channel_query(modes, modeparams.iter().cloned()) { match maybe_change {
             Ok(modes::ChannelModeChange::GetBans) => {
-                reply_list(rb, rpl::BANLIST, rpl::ENDOFBANLIST, lines::END_OF_BAN_LIST,
+                reply_list(ctx.rb, rpl::BANLIST, rpl::ENDOFBANLIST, lines::END_OF_BAN_LIST,
                            &channel.ban_mask);
             }
             Ok(modes::ChannelModeChange::GetExceptions) => {
-                reply_list(rb, rpl::EXCEPTLIST, rpl::ENDOFEXCEPTLIST, lines::END_OF_EXCEPT_LIST,
+                reply_list(ctx.rb, rpl::EXCEPTLIST, rpl::ENDOFEXCEPTLIST, lines::END_OF_EXCEPT_LIST,
                            &channel.exception_mask);
             }
             Ok(modes::ChannelModeChange::GetInvitations) => {
-                reply_list(rb, rpl::INVITELIST, rpl::ENDOFINVITELIST, lines::END_OF_INVITE_LIST,
+                reply_list(ctx.rb, rpl::INVITELIST, rpl::ENDOFINVITELIST, lines::END_OF_INVITE_LIST,
                            &channel.exception_mask);
             }
             Ok(change) => match channel.apply_mode_change(change, |a| clients[a].nick()) {
@@ -321,17 +314,17 @@ impl super::StateInner {
                 }
                 Ok(false) => {}
                 Err(rpl::ERR_USERNOTINCHANNEL) => {
-                    rb.reply(rpl::ERR_USERNOTINCHANNEL)
+                    ctx.rb.reply(rpl::ERR_USERNOTINCHANNEL)
                         .param(change.param().unwrap())
                         .trailing_param(lines::USER_NOT_IN_CHANNEL);
                 }
                 Err(rpl::ERR_KEYSET) => {
-                    rb.reply(rpl::ERR_KEYSET).param(target).trailing_param(lines::KEY_SET);
+                    ctx.rb.reply(rpl::ERR_KEYSET).param(target).trailing_param(lines::KEY_SET);
                 }
                 Err(_) => {}
             }
             Err(modes::Error::UnknownMode(mode)) => {
-                rb.reply(rpl::ERR_UNKNOWNMODE)
+                ctx.rb.reply(rpl::ERR_UNKNOWNMODE)
                     .param(&mode.to_string())
                     .trailing_param(lines::UNKNOWN_MODE);
             },
@@ -341,7 +334,7 @@ impl super::StateInner {
         if !applied_modes.is_empty() {
             let mut response = Buffer::new();
             {
-                let mut msg = response.message(self.clients[addr].full_name(), Command::Mode)
+                let mut msg = response.message(self.clients[ctx.addr].full_name(), Command::Mode)
                     .param(target)
                     .param(&applied_modes);
                 for mp in applied_modeparams {
@@ -354,22 +347,20 @@ impl super::StateInner {
         Ok(())
     }
 
-    fn cmd_mode_user_check(&self, addr: &net::SocketAddr, rb: &mut ReplyBuffer,
-                           nick: &str) -> Result
-    {
-        let (target_addr, _) = find_nick(addr, rb, &self.clients, nick)?;
-        if &target_addr != addr {
-            log::debug!("{}:     users don't match", addr);
-            rb.reply(rpl::ERR_USERSDONTMATCH).param(nick).trailing_param(lines::USERS_DONT_MATCH);
+    fn cmd_mode_user_check(&self, ctx: &mut CommandContext<'_>, nick: &str) -> Result {
+        let (target_addr, _) = find_nick(ctx.addr, ctx.rb, &self.clients, nick)?;
+        if &target_addr != ctx.addr {
+            log::debug!("{}:     users don't match", ctx.addr);
+            ctx.rb.reply(rpl::ERR_USERSDONTMATCH)
+                .param(nick)
+                .trailing_param(lines::USERS_DONT_MATCH);
             return Err(());
         }
         Ok(())
     }
 
-    fn cmd_mode_user_set(&mut self, addr: &net::SocketAddr, rb: &mut ReplyBuffer,
-                         target: &str, modes: &str) -> Result
-    {
-        let client = self.clients.get_mut(&addr).unwrap();
+    fn cmd_mode_user_set(&mut self, ctx: CommandContext<'_>, target: &str, modes: &str) -> Result {
+        let client = self.clients.get_mut(ctx.addr).unwrap();
 
         let mut applied_modes = String::new();
         for maybe_change in modes::user_query(modes) { match maybe_change {
@@ -379,14 +370,14 @@ impl super::StateInner {
                 applied_modes.push(change.symbol());
             }
             Err(modes::Error::UnknownMode(mode)) => {
-                rb.reply(rpl::ERR_UMODEUNKNOWNFLAG)
+                ctx.rb.reply(rpl::ERR_UMODEUNKNOWNFLAG)
                     .param(&mode.to_string())
                     .trailing_param(lines::UNKNOWN_MODE);
             }
             Err(_) => {}
         } }
         if !applied_modes.is_empty() {
-            rb.message(client.full_name(), Command::Mode)
+            ctx.rb.message(client.full_name(), Command::Mode)
                 .param(target)
                 .trailing_param(&applied_modes);
         }
@@ -394,47 +385,47 @@ impl super::StateInner {
         Ok(())
     }
 
-    fn cmd_mode_user_get(&self, addr: &net::SocketAddr, rb: &mut ReplyBuffer) -> Result {
-        let client = &self.clients[&addr];
-        let msg = rb.reply(rpl::UMODEIS);
+    fn cmd_mode_user_get(&self, ctx: CommandContext<'_>) -> Result {
+        let client = &self.clients[ctx.addr];
+        let msg = ctx.rb.reply(rpl::UMODEIS);
         client.write_modes(msg);
         Ok(())
     }
 
-    pub fn cmd_mode(&mut self, addr: &net::SocketAddr, rb: &mut ReplyBuffer, target: &str,
+    pub fn cmd_mode(&mut self, mut ctx: CommandContext<'_>, target: &str,
                 modes: &str, modeparams: &[&str]) -> Result
     {
         if is_valid_channel_name(target) {
             if modes.is_empty() {
-                self.cmd_mode_chan_get(addr, rb, target)
+                self.cmd_mode_chan_get(ctx, target)
             } else {
-                self.cmd_mode_chan_set(addr, rb, target, modes, modeparams)
+                self.cmd_mode_chan_set(ctx, target, modes, modeparams)
             }
         } else {
-            self.cmd_mode_user_check(addr, rb, target)?;
+            self.cmd_mode_user_check(&mut ctx, target)?;
             if modes.is_empty() {
-                self.cmd_mode_user_get(addr, rb)
+                self.cmd_mode_user_get(ctx)
             } else {
-                self.cmd_mode_user_set(addr, rb, target, modes)
+                self.cmd_mode_user_set(ctx, target, modes)
             }
         }
     }
 
     // MOTD
 
-    pub fn cmd_motd(&self, rb: &mut ReplyBuffer) -> Result {
-        self.write_motd(rb);
+    pub fn cmd_motd(&self, ctx: CommandContext<'_>) -> Result {
+        self.write_motd(ctx.rb);
         Ok(())
     }
 
     // NAMES
 
-    pub fn cmd_names(&self, addr: &net::SocketAddr, rb: &mut ReplyBuffer, targets: &str) -> Result {
+    pub fn cmd_names(&self, ctx: CommandContext<'_>, targets: &str) -> Result {
         if targets.is_empty() || targets == "*" {
-            rb.reply(rpl::ENDOFNAMES).param("*").trailing_param(lines::END_OF_NAMES);
+            ctx.rb.reply(rpl::ENDOFNAMES).param("*").trailing_param(lines::END_OF_NAMES);
         } else {
             for target in targets.split(',') {
-                self.write_names(addr, rb, target);
+                self.write_names(ctx.addr, ctx.rb, target);
             }
         }
 
@@ -443,24 +434,24 @@ impl super::StateInner {
 
     // NICK
 
-    pub fn cmd_nick(&mut self, addr: &net::SocketAddr, rb: &mut ReplyBuffer, nick: &str) -> Result {
+    pub fn cmd_nick(&mut self, ctx: CommandContext<'_>, nick: &str) -> Result {
         if !is_valid_nickname(nick) {
-            log::debug!("{}:     Bad nickname", addr);
-            rb.reply(rpl::ERR_ERRONEUSNICKNAME)
+            log::debug!("{}:     Bad nickname", ctx.addr);
+            ctx.rb.reply(rpl::ERR_ERRONEUSNICKNAME)
                 .param(nick)
                 .trailing_param(lines::ERRONEOUS_NICNAME);
             return Err(());
         }
         if self.clients.values().any(|c| c.nick() == nick) {
-            log::debug!("{}:     Already in use", addr);
-            rb.reply(rpl::ERR_NICKNAMEINUSE).param(nick).trailing_param(lines::NICKNAME_IN_USE);
+            log::debug!("{}:     Already in use", ctx.addr);
+            ctx.rb.reply(rpl::ERR_NICKNAMEINUSE).param(nick).trailing_param(lines::NICKNAME_IN_USE);
             return Err(());
         }
 
-        let client = self.clients.get_mut(addr).unwrap();
+        let client = self.clients.get_mut(ctx.addr).unwrap();
 
         if !client.is_registered() {
-            log::debug!("{}:     Is not registered", addr);
+            log::debug!("{}:     Is not registered", ctx.addr);
             client.set_nick(nick);
             return Ok(());
         }
@@ -473,10 +464,10 @@ impl super::StateInner {
         client.set_nick(nick);
 
         let mut noticed = self.channels.values()
-            .filter(|channel| channel.members.contains_key(addr))
+            .filter(|channel| channel.members.contains_key(ctx.addr))
             .flat_map(|channel| channel.members.keys())
             .collect::<HashSet<_>>();
-        noticed.insert(addr);
+        noticed.insert(ctx.addr);
         for addr in noticed {
             self.send(addr, msg.clone());
         }
@@ -486,18 +477,18 @@ impl super::StateInner {
 
     // NOTICE
 
-    fn cmd_privnotice(&mut self, addr: &net::SocketAddr, rb: &mut ReplyBuffer, cmd: Command,
+    fn cmd_privnotice(&mut self, ctx: CommandContext<'_>, cmd: Command,
                       target: &str, content: &str) -> Result
     {
         if content.is_empty() {
-            rb.reply(rpl::ERR_NOTEXTTOSEND).trailing_param(lines::NEED_MORE_PARAMS);
+            ctx.rb.reply(rpl::ERR_NOTEXTTOSEND).trailing_param(lines::NEED_MORE_PARAMS);
             return Err(());
         }
         if is_valid_channel_name(target) {
-            let channel = find_channel(addr, rb, &self.channels, target)?;
-            if !channel.can_talk(addr) {
-                log::debug!("{}:     can't send to channel", addr);
-                rb.reply(rpl::ERR_CANNOTSENDTOCHAN)
+            let channel = find_channel(ctx.addr, ctx.rb, &self.channels, target)?;
+            if !channel.can_talk(ctx.addr) {
+                log::debug!("{}:     can't send to channel", ctx.addr);
+                ctx.rb.reply(rpl::ERR_CANNOTSENDTOCHAN)
                     .param(target)
                     .trailing_param(lines::CANNOT_SEND_TO_CHAN);
                 return Err(());
@@ -505,15 +496,15 @@ impl super::StateInner {
 
             let mut response = Buffer::new();
 
-            let client = &self.clients[addr];
+            let client = &self.clients[ctx.addr];
             response.message(client.full_name(), cmd).param(target).trailing_param(content);
             let msg = MessageQueueItem::from(response);
             channel.members.keys()
-                .filter(|&a| client.capabilities.echo_message || a != addr)
+                .filter(|&a| client.capabilities.echo_message || a != ctx.addr)
                 .for_each(|member| self.send(member, msg.clone()));
         } else {
-            let (_, target_client) = find_nick(addr, rb, &self.clients, target)?;
-            let client = &self.clients[addr];
+            let (_, target_client) = find_nick(ctx.addr, ctx.rb, &self.clients, target)?;
+            let client = &self.clients[ctx.addr];
             let mut response = Buffer::new();
             response.message(client.full_name(), cmd).param(target).trailing_param(content);
             let msg = MessageQueueItem::from(response);
@@ -522,56 +513,52 @@ impl super::StateInner {
             }
             target_client.send(msg);
         }
-        self.clients.get_mut(addr).unwrap().update_idle_time();
+        self.clients.get_mut(ctx.addr).unwrap().update_idle_time();
 
         Ok(())
     }
 
-    pub fn cmd_notice(&mut self, addr: &net::SocketAddr, rb: &mut ReplyBuffer,
-                      target: &str, content: &str) -> Result
-    {
-        self.cmd_privnotice(addr, rb, Command::Notice, target, content)
+    pub fn cmd_notice(&mut self, ctx: CommandContext<'_>, target: &str, content: &str) -> Result {
+        self.cmd_privnotice(ctx, Command::Notice, target, content)
     }
 
     // OPER
 
-    pub fn cmd_oper(&mut self, addr: &net::SocketAddr, rb: &mut ReplyBuffer,
-                    name: &str, password: &str) -> Result
-    {
+    pub fn cmd_oper(&mut self, ctx: CommandContext<'_>, name: &str, password: &str) -> Result {
         // TODO oper_hosts
         if !self.opers.iter().any(|(n, p)| n == name && p == password) {
-            log::debug!("{}:     Password mismatch", addr);
-            rb.reply(rpl::ERR_PASSWDMISMATCH).trailing_param(lines::PASSWORD_MISMATCH);
+            log::debug!("{}:     Password mismatch", ctx.addr);
+            ctx.rb.reply(rpl::ERR_PASSWDMISMATCH).trailing_param(lines::PASSWORD_MISMATCH);
             return Err(());
         }
 
-        let client = self.clients.get_mut(&addr).unwrap();
+        let client = self.clients.get_mut(ctx.addr).unwrap();
         client.operator = true;
-        rb.message(&self.domain, Command::Mode).param(client.nick()).param("+o");
-        rb.reply(rpl::YOUREOPER).trailing_param(lines::YOURE_OPER);
+        ctx.rb.message(&self.domain, Command::Mode).param(client.nick()).param("+o");
+        ctx.rb.reply(rpl::YOUREOPER).trailing_param(lines::YOURE_OPER);
 
         Ok(())
     }
 
     // PART
 
-    pub fn cmd_part(&mut self, addr: &net::SocketAddr, rb: &mut ReplyBuffer,
-                    target: &str, reason: &str) -> Result
-    {
+    pub fn cmd_part(&mut self, ctx: CommandContext<'_>, target: &str, reason: &str) -> Result {
         let channel = match self.channels.get_mut(<&UniCase<str>>::from(target)) {
             Some(channel) => channel,
             None => {
-                log::debug!("{}:     Not on channel", addr);
-                rb.reply(rpl::ERR_NOTONCHANNEL).param(target).trailing_param(lines::NOT_ON_CHANNEL);
+                log::debug!("{}:     Not on channel", ctx.addr);
+                ctx.rb.reply(rpl::ERR_NOTONCHANNEL)
+                    .param(target)
+                    .trailing_param(lines::NOT_ON_CHANNEL);
                 return Err(());
             }
         };
-        find_member(addr, rb, channel, target)?;
+        find_member(ctx.addr, ctx.rb, channel, target)?;
 
         let mut response = Buffer::new();
-        let client = &self.clients[&addr];
+        let client = &self.clients[ctx.addr];
 
-        channel.members.remove(addr);
+        channel.members.remove(ctx.addr);
         if reason.is_empty() {
             response.message(client.full_name(), Command::Part).param(target);
         } else {
@@ -590,9 +577,9 @@ impl super::StateInner {
 
     // PASS
 
-    pub fn cmd_pass(&mut self, addr: &net::SocketAddr, password: &str) -> Result {
+    pub fn cmd_pass(&mut self, ctx: CommandContext<'_>, password: &str) -> Result {
         if self.password.as_ref().map_or(false, |p| p == password) {
-            self.clients.get_mut(&addr).unwrap().has_given_password = true;
+            self.clients.get_mut(ctx.addr).unwrap().has_given_password = true;
         }
 
         Ok(())
@@ -600,58 +587,54 @@ impl super::StateInner {
 
     // PING
 
-    pub fn cmd_ping(&mut self, rb: &mut ReplyBuffer, payload: &str) -> Result
+    pub fn cmd_ping(&mut self, ctx: CommandContext<'_>, payload: &str) -> Result
     {
-        rb.message(&self.domain, Command::Pong).trailing_param(payload);
+        ctx.rb.message(&self.domain, Command::Pong).trailing_param(payload);
         Ok(())
     }
 
     // PRIVMSG
 
-    pub fn cmd_privmsg(&mut self, addr: &net::SocketAddr, rb: &mut ReplyBuffer,
-                       target: &str, content: &str) -> Result
-    {
-        self.cmd_privnotice(addr, rb, Command::PrivMsg, target, content)
+    pub fn cmd_privmsg(&mut self, ctx: CommandContext<'_>, target: &str, content: &str) -> Result {
+        self.cmd_privnotice(ctx, Command::PrivMsg, target, content)
     }
 
     // QUIT
 
-    pub fn cmd_quit(&mut self, addr: &net::SocketAddr, reason: &str) -> Result {
+    pub fn cmd_quit(&mut self, ctx: CommandContext<'_>, reason: &str) -> Result {
         let mut response = Buffer::new();
-        let client = self.clients.remove(addr).unwrap();
+        let client = self.clients.remove(ctx.addr).unwrap();
         response.message(&self.domain, "ERROR").trailing_param(lines::CLOSING_LINK);
         client.send(MessageQueueItem::from(response));
-        self.remove_client(addr, client, if reason.is_empty() {None} else {Some(reason)});
+        self.remove_client(ctx.addr, client, if reason.is_empty() {None} else {Some(reason)});
 
         Err(())
     }
 
     // TIME
 
-    pub fn cmd_time(&self, rb: &mut ReplyBuffer) -> Result {
-        rb.reply(rpl::TIME).param(&self.domain).trailing_param(&time_str());
+    pub fn cmd_time(&self, ctx: CommandContext<'_>) -> Result {
+        ctx.rb.reply(rpl::TIME).param(&self.domain).trailing_param(&time_str());
         Ok(())
     }
 
     // TOPIC
 
-    fn cmd_topic_set(&mut self, addr: &net::SocketAddr, rb: &mut ReplyBuffer,
-                     target: &str, topic: &str) -> Result
-    {
+    fn cmd_topic_set(&mut self, ctx: CommandContext<'_>, target: &str, topic: &str) -> Result {
         let channel = match self.channels.get_mut(<&UniCase<str>>::from(target)) {
             Some(channel) => channel,
             None => {
-                log::debug!("{}:     no such channel", addr);
-                rb.reply(rpl::ERR_NOSUCHCHANNEL)
+                log::debug!("{}:     no such channel", ctx.addr);
+                ctx.rb.reply(rpl::ERR_NOSUCHCHANNEL)
                     .param(target)
                     .trailing_param(lines::NO_SUCH_CHANNEL);
                 return Err(());
             }
         };
-        let member_modes = find_member(addr, rb, channel, target)?;
+        let member_modes = find_member(ctx.addr, ctx.rb, channel, target)?;
         if !member_modes.operator && channel.topic_restricted {
-            log::debug!("{}:     not operator", addr);
-            rb.reply(rpl::ERR_CHANOPRIVSNEEDED)
+            log::debug!("{}:     not operator", ctx.addr);
+            ctx.rb.reply(rpl::ERR_CHANOPRIVSNEEDED)
                 .param(target)
                 .trailing_param(lines::CHAN_O_PRIVS_NEEDED);
             return Err(());
@@ -659,7 +642,7 @@ impl super::StateInner {
 
         let mut response = Buffer::new();
         channel.topic = if topic.is_empty() { None } else { Some(topic.to_owned()) };
-        response.message(self.clients[&addr].full_name(), Command::Topic)
+        response.message(self.clients[ctx.addr].full_name(), Command::Topic)
             .param(target)
             .trailing_param(topic);
         self.broadcast(target, MessageQueueItem::from(response));
@@ -667,35 +650,33 @@ impl super::StateInner {
         Ok(())
     }
 
-    fn cmd_topic_get(&self, addr: &net::SocketAddr, rb: &mut ReplyBuffer, target: &str) -> Result {
-        let channel = find_channel(addr, rb, &self.channels, target)?;
+    fn cmd_topic_get(&self, ctx: CommandContext<'_>, target: &str) -> Result {
+        let channel = find_channel(ctx.addr, ctx.rb, &self.channels, target)?;
         if channel.secret {
-            find_member(addr, rb, channel, target)?;
+            find_member(ctx.addr, ctx.rb, channel, target)?;
         }
-        self.write_topic(rb, target);
+        self.write_topic(ctx.rb, target);
 
         Ok(())
     }
 
-    pub fn cmd_topic(&mut self, addr: &net::SocketAddr, rb: &mut ReplyBuffer,
+    pub fn cmd_topic(&mut self, ctx: CommandContext<'_>,
                      target: &str, topic: Option<&str>) -> Result
     {
         if let Some(topic) = topic {
-            self.cmd_topic_set(addr, rb, target, topic)
+            self.cmd_topic_set(ctx, target, topic)
         } else {
-            self.cmd_topic_get(addr, rb, target)
+            self.cmd_topic_get(ctx, target)
         }
     }
 
     // USER
 
-    pub fn cmd_user(&mut self, addr: &net::SocketAddr, rb: &mut ReplyBuffer,
-                    user: &str, real: &str) -> Result
-    {
-        let client = self.clients.get_mut(&addr).unwrap();
+    pub fn cmd_user(&mut self, ctx: CommandContext<'_>, user: &str, real: &str) -> Result {
+        let client = self.clients.get_mut(ctx.addr).unwrap();
         if self.password.is_some() && !client.has_given_password {
-            log::debug!("{}:     Password mismatch", addr);
-            rb.reply(rpl::ERR_PASSWDMISMATCH).trailing_param(lines::PASSWORD_MISMATCH);
+            log::debug!("{}:     Password mismatch", ctx.addr);
+            ctx.rb.reply(rpl::ERR_PASSWDMISMATCH).trailing_param(lines::PASSWORD_MISMATCH);
             return Err(());
         }
         client.set_user_real(user, real);
@@ -705,15 +686,15 @@ impl super::StateInner {
 
     // VERSION
 
-    pub fn cmd_version(&self, rb: &mut ReplyBuffer) -> Result {
-        rb.reply(rpl::VERSION).param(crate::server_version!()).param(&self.domain);
-        self.write_i_support(rb);
+    pub fn cmd_version(&self, ctx: CommandContext<'_>) -> Result {
+        ctx.rb.reply(rpl::VERSION).param(crate::server_version!()).param(&self.domain);
+        self.write_i_support(ctx.rb);
         Ok(())
     }
 
     // WHO
 
-    pub fn cmd_who(&self, rb: &mut ReplyBuffer, mask: &str, o: &str) -> Result
+    pub fn cmd_who(&self, ctx: CommandContext<'_>, mask: &str, o: &str) -> Result
     {
         let mask = if mask.is_empty() {"*"} else {mask};
         let o = o == "o";  // best line
@@ -721,7 +702,7 @@ impl super::StateInner {
             if client.nick() != mask || (o && !client.operator) || client.invisible {
                 continue;
             }
-            rb.reply(rpl::WHOREPLY)
+            ctx.rb.reply(rpl::WHOREPLY)
                 .param("*")
                 .param(client.user())
                 .param(client.host())
@@ -730,32 +711,34 @@ impl super::StateInner {
                 .param("H")
                 .trailing_param(client.real());
         }
-        rb.reply(rpl::ENDOFWHO).param(mask).trailing_param(lines::END_OF_WHO);
+        ctx.rb.reply(rpl::ENDOFWHO).param(mask).trailing_param(lines::END_OF_WHO);
 
         Ok(())
     }
 
     // WHOIS
 
-    pub fn cmd_whois(&self, addr: &net::SocketAddr, rb: &mut ReplyBuffer, nick: &str) -> Result {
-        let (_, target_client) = find_nick(addr, rb, &self.clients, nick)?;
+    pub fn cmd_whois(&self, ctx: CommandContext<'_>, nick: &str) -> Result {
+        let (_, target_client) = find_nick(ctx.addr, ctx.rb, &self.clients, nick)?;
 
-        rb.reply(rpl::WHOISUSER)
+        ctx.rb.reply(rpl::WHOISUSER)
             .param(target_client.nick())
             .param(target_client.user())
             .param(target_client.host())
             .param("*")
             .trailing_param(target_client.real());
-        rb.reply(rpl::WHOISSERVER)
+        ctx.rb.reply(rpl::WHOISSERVER)
             .param(target_client.nick())
             .param(&self.domain)
             .trailing_param(&self.org_name);
-        rb.reply(rpl::WHOISIDLE)
+        ctx.rb.reply(rpl::WHOISIDLE)
             .param(target_client.nick())
             .param(&target_client.idle_time().to_string())
             .param(&target_client.signon_time().to_string())
             .trailing_param(lines::WHOIS_IDLE);
-        rb.reply(rpl::ENDOFWHOIS).param(target_client.nick()).trailing_param(lines::END_OF_WHOIS);
+        ctx.rb.reply(rpl::ENDOFWHOIS)
+            .param(target_client.nick())
+            .trailing_param(lines::END_OF_WHOIS);
 
         Ok(())
     }
