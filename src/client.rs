@@ -7,35 +7,38 @@ use std::sync::Arc;
 use tokio::sync::mpsc;
 
 #[derive(Clone, Debug)]
-pub struct MessageQueueItem(Arc<str>);
+pub struct MessageQueueItem {
+    pub start: usize,
+    buf: Arc<str>,
+}
 
 impl From<String> for MessageQueueItem {
     fn from(bytes: String) -> Self {
-        Self(Arc::from(bytes))
+        Self { start: 0, buf: Arc::from(bytes) }
     }
 }
 
 impl From<Buffer> for MessageQueueItem {
     fn from(response: Buffer) -> Self {
-        Self(Arc::from(response.build()))
+        Self { start: 0, buf: Arc::from(response.build()) }
     }
 }
 
 impl From<ReplyBuffer> for MessageQueueItem {
     fn from(response: ReplyBuffer) -> Self {
-        Self(Arc::from(response.build()))
+        Self { start: 0, buf: Arc::from(response.build()) }
     }
 }
 
 impl AsRef<str> for MessageQueueItem {
     fn as_ref(&self) -> &str {
-        self.0.as_ref()
+        &self.buf.as_ref()[self.start..]
     }
 }
 
 impl AsRef<[u8]> for MessageQueueItem {
     fn as_ref(&self) -> &[u8] {
-        self.0.as_ref().as_bytes()
+        self.buf.as_ref()[self.start..].as_bytes()
     }
 }
 
@@ -161,13 +164,18 @@ pub mod cap {
     }
 }
 
-
 #[derive(Default)]
 pub struct Capabilities {
     pub v302: bool,
     pub cap_notify: bool,
     pub echo_message: bool,
     pub message_tags: bool,
+}
+
+impl Capabilities {
+    pub fn message_tags(&self) -> bool {
+        self.message_tags
+    }
 }
 
 fn cap_query(buf: &str) -> impl Iterator<Item=(&str, bool)> {

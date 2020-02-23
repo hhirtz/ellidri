@@ -8,10 +8,10 @@ use std::cell::RefCell;
 ///
 /// `Message::parse` can parse messages longer than that.  It is used by `Buffer` to avoid multiple
 /// allocations when building the same message.
-pub const MAX_MESSAGE_LENGTH: usize = 512;
+pub const MESSAGE_LENGTH: usize = 512;
 
 /// The number of elements in `Message::params`.
-pub const MAX_PARAMS: usize = 15;
+pub const PARAMS_LENGTH: usize = 15;
 
 /// The list of IRC replies.
 ///
@@ -75,6 +75,7 @@ pub mod rpl {
     pub const ERR_INVALIDCAPCMD: Reply    = "410";  // <command> :Unknown cap command
     pub const ERR_NORECIPIENT: Reply      = "411";  // :No recipient given
     pub const ERR_NOTEXTTOSEND: Reply     = "412";  // :No text to send
+    pub const ERR_INPUTTOOLONG: Reply     = "417";  // :Input line was too long
     pub const ERR_UNKNOWNCOMMAND: Reply   = "421";  // <command> :Unknown command
     pub const ERR_NOMOTD: Reply           = "422";  // :MOTD file missing
     pub const ERR_NONICKNAMEGIVEN: Reply  = "431";  // :No nickname given
@@ -112,12 +113,12 @@ fn parse_word(s: &str) -> (&str, &str) {
 
 /// Parses the first word of the string the same way as `parse_word`, and then wrap it in a `Tags`
 /// iterator.
-fn parse_tags(buf: &str) -> (Tags<'_>, &str) {
+fn parse_tags(buf: &str) -> (&str, &str) {
     if buf.starts_with('@') {
         let (tags, rest) = parse_word(buf);
-        (Tags { buf: &tags[1..] }, rest)
+        (&tags[1..], rest)
     } else {
-        (Tags { buf: "" }, buf)
+        ("", buf)
     }
 }
 
@@ -145,6 +146,8 @@ fn parse_command(buf: &str) -> (Result<Command, &str>, &str) {
     (Command::parse(command_string).ok_or(command_string), rest)
 }
 
+// TODO tag_value_unescape
+
 /// A message tag.
 ///
 /// Message tagging is an addition of an IRCv3 specification.  Refer to the following page for
@@ -162,9 +165,17 @@ pub struct Tag<'a> {
 
 impl<'a> Tag<'a> {
     pub fn parse(buf: &'a str) -> Tag<'a> {
+        // TODO handle empty keys
         let mut split = buf.splitn(2, '=');
         let key = split.next().unwrap();
-        let value = split.next();
+        let value = match split.next() {
+            Some("") | None => None,
+            Some(other) => if other.ends_with('\\') {
+                Some(&other[..other.len() - 1])
+            } else {
+                Some(other)
+            }
+        };
         let is_client = key.starts_with('+');
         Tag {
             key: if is_client {&key[1..]} else {key},
@@ -174,27 +185,8 @@ impl<'a> Tag<'a> {
     }
 }
 
-/// An iterator over message tags.
-///
-/// Message tagging is an addition of an IRCv3 specification.  Refer to the following page for
-/// more details on message tags: <https://ircv3.net/specs/extensions/message-tags>.
-#[derive(Clone, Debug)]
-pub struct Tags<'a> {
-    buf: &'a str,
-}
-
-impl<'a> Iterator for Tags<'a> {
-    type Item = Tag<'a>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.buf.is_empty() {
-            return None;
-        }
-        let mut split = self.buf.splitn(2, ';');
-        let tag = Tag::parse(split.next().unwrap());
-        self.buf = split.next().unwrap_or("");
-        Some(tag)
-    }
+pub fn tags(s: &str) -> impl Iterator<Item=Tag<'_>> {
+    s.split(';').map(|item| Tag::parse(item))
 }
 
 macro_rules! commands {
@@ -354,11 +346,11 @@ pub fn assert_msg(msg: &Message<'_>, prefix: Option<&str>, command: Result<Comma
 /// <https://tools.ietf.org/html/rfc2812.html#section-2.3>.
 #[derive(Clone, Debug)]
 pub struct Message<'a> {
-    /// An iterator over the tags of the message.
+    /// The string containing all the tags.
     ///
     /// Message tagging is an addition of an IRCv3 specification.  Refer to the following page for
     /// more details on message tags: <https://ircv3.net/specs/extensions/message-tags>.
-    pub tags: Tags<'a>,
+    pub tags: &'a str,
 
     /// The prefix of the message.
     pub prefix: Option<&'a str>,
@@ -376,7 +368,7 @@ pub struct Message<'a> {
     ///
     /// Only the `num_params` first elements are valid.  Other elements are empty strings at the
     /// time of writing.
-    pub params: [&'a str; MAX_PARAMS],
+    pub params: [&'a str; PARAMS_LENGTH],
 }
 
 impl<'a> Message<'a> {
@@ -429,7 +421,7 @@ impl<'a> Message<'a> {
     pub fn parse(s: &'a str) -> Option<Message<'a>>
     {
         let mut buf = s.trim();
-        if buf.is_empty() {
+        if buf.is_empty() || buf.contains('\0') {
             return None;
         }
 
@@ -444,9 +436,9 @@ impl<'a> Message<'a> {
             return None;
         }
 
-        let mut params = [""; MAX_PARAMS];
+        let mut params = [""; PARAMS_LENGTH];
         let mut num_params = 0;
-        while num_params < MAX_PARAMS {
+        while num_params < PARAMS_LENGTH {
             if buf.is_empty() {
                 break;
             }
@@ -489,19 +481,12 @@ impl<'a> Message<'a> {
 
 /// Helper to build an IRC message.
 ///
-/// Created by `Buffer::message` and `Buffer::prefixed_message`.
+/// Created by `Buffer::message` and `Buffer::message`.
 pub struct MessageBuffer<'a> {
     buf: &'a mut String,
 }
 
 impl<'a> MessageBuffer<'a> {
-    fn new<C>(buf: &'a mut String, command: C) -> MessageBuffer<'a>
-        where C: Into<Command>
-    {
-        buf.push_str(command.into().as_str());
-        MessageBuffer { buf }
-    }
-
     fn with_prefix<C>(buf: &'a mut String, prefix: &str, command: C) -> MessageBuffer<'a>
         where C: Into<Command>
     {
@@ -525,10 +510,10 @@ impl<'a> MessageBuffer<'a> {
     /// # use ellidri::message::{Command, Buffer};
     /// let mut response = Buffer::new();
     ///
-    /// response.message(Command::Quit)
+    /// response.message("nick!user@127.0.0.1", Command::Quit)
     ///     .param("  chiao ");
     ///
-    /// assert_eq!(&response.build(), "Quit chiao\r\n");
+    /// assert_eq!(&response.build(), ":nick!user@127.0.0.1 Quit chiao\r\n");
     /// ```
     pub fn param(self, param: &str) -> MessageBuffer<'a>
     {
@@ -554,10 +539,10 @@ impl<'a> MessageBuffer<'a> {
     /// # use ellidri::message::{Command, Buffer};
     /// let mut response = Buffer::new();
     ///
-    /// response.message(Command::Quit)
+    /// response.message("nick!user@127.0.0.1", Command::Quit)
     ///     .trailing_param("long quit message");
     ///
-    /// assert_eq!(&response.build(), "Quit :long quit message\r\n");
+    /// assert_eq!(&response.build(), ":nick!user@127.0.0.1 Quit :long quit message\r\n");
     /// ```
     pub fn trailing_param(self, param: &str)
     {
@@ -574,7 +559,7 @@ impl<'a> MessageBuffer<'a> {
     /// # use ellidri::message::{Command, Buffer};
     /// let mut response = Buffer::new();
     /// {
-    ///     let mut msg = response.message(Command::Mode)
+    ///     let mut msg = response.message("nick!user@127.0.0.1", Command::Mode)
     ///         .param("#my_channel");
     ///     let mut param = msg.raw_param();
     ///     param.push('+');
@@ -582,7 +567,7 @@ impl<'a> MessageBuffer<'a> {
     ///     param.push('t');
     /// }
     ///
-    /// assert_eq!(&response.build(), "Mode #my_channel +nt\r\n");
+    /// assert_eq!(&response.build(), ":nick!user@127.0.0.1 Mode #my_channel +nt\r\n");
     /// ```
     pub fn raw_param(&mut self) -> &mut String {
         self.buf.push(' ');
@@ -597,7 +582,7 @@ impl<'a> MessageBuffer<'a> {
     /// # use ellidri::message::{Buffer, rpl};
     /// let mut response = Buffer::new();
     /// {
-    ///     let mut msg = response.prefixed_message("ellidri.dev", rpl::NAMREPLY)
+    ///     let mut msg = response.message("ellidri.dev", rpl::NAMREPLY)
     ///         .param("ser");
     ///     let mut param = msg.raw_trailing_param();
     ///     param.push_str("@RandomChanOp");
@@ -634,20 +619,23 @@ impl<'a> Drop for MessageBuffer<'a> {
 /// # use ellidri::message::{Command, Buffer, rpl};
 /// let mut response = Buffer::new();
 ///
-/// response.message(Command::Topic).param("#hall");
-/// response.prefixed_message("ellidri.dev", rpl::TOPIC)
+/// response.message("nick!user@127.0.0.1", Command::Topic)
+///     .param("#hall")
+///     .trailing_param("Welcome to new users!");
+/// response.message("ellidri.dev", rpl::TOPIC)
 ///     .param("nickname")
 ///     .param("#hall")
 ///     .trailing_param("Welcome to new users!");
 ///
 /// let result = response.build();
-/// assert_eq!(&result, "Topic #hall\r\n:ellidri.dev 332 nickname #hall :Welcome to new users!\r\n");
+/// assert_eq!(&result, ":nick!user@127.0.0.1 Topic #hall :Welcome to new users!\r\n\
+/// :ellidri.dev 332 nickname #hall :Welcome to new users!\r\n");
 /// ```
 ///
 /// # On allocation
 ///
-/// Allocation only occurs on `Buffer::message` and `Buffer::prefixed_message` calls.  These
-/// functions reseve `MAX_MESSAGE_LENGTH` prior to writing on the internal buffer.
+/// Allocation only occurs on `Buffer::message` calls.  These functions reseve `MESSAGE_LENGTH`
+/// prior to writing on the internal buffer.
 #[derive(Debug)]
 pub struct Buffer {
     buf: String,
@@ -676,34 +664,13 @@ impl Buffer {
     /// let empty = Buffer::new();
     /// let mut not_empty = Buffer::new();
     ///
-    /// not_empty.message(Command::Motd);
+    /// not_empty.message("ellidri.dev", Command::Motd);
     ///
     /// assert_eq!(empty.is_empty(), true);
     /// assert_eq!(not_empty.is_empty(), false);
     /// ```
     pub fn is_empty(&self) -> bool {
         self.buf.is_empty()
-    }
-
-    /// Appends an IRC message to the buffer.
-    ///
-    /// This function may allocate to reserve space for the message.
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// # use ellidri::message::{Command, Buffer};
-    /// let mut response = Buffer::new();
-    ///
-    /// response.message(Command::Motd);
-    ///
-    /// assert_eq!(&response.build(), "Motd\r\n");
-    /// ```
-    pub fn message<C>(&mut self, command: C) -> MessageBuffer<'_>
-        where C: Into<Command>
-    {
-        self.buf.reserve(MAX_MESSAGE_LENGTH);
-        MessageBuffer::new(&mut self.buf, command)
     }
 
     /// Appends an IRC message with a prefix to the buffer.
@@ -716,14 +683,14 @@ impl Buffer {
     /// # use ellidri::message::{Command, Buffer};
     /// let mut response = Buffer::new();
     ///
-    /// response.prefixed_message("unneeded_prefix", Command::Admin);
+    /// response.message("unneeded_prefix", Command::Admin);
     ///
     /// assert_eq!(&response.build(), ":unneeded_prefix Admin\r\n");
     /// ```
-    pub fn prefixed_message<C>(&mut self, prefix: &str, command: C) -> MessageBuffer<'_>
+    pub fn message<C>(&mut self, prefix: &str, command: C) -> MessageBuffer<'_>
         where C: Into<Command>
     {
-        self.buf.reserve(MAX_MESSAGE_LENGTH);
+        self.buf.reserve(MESSAGE_LENGTH);
         MessageBuffer::with_prefix(&mut self.buf, prefix, command)
     }
 
@@ -742,6 +709,29 @@ thread_local! {
 ///
 /// IRC replies are IRC messages that have the domain of the server as prefix, and the nickname of
 /// the client as first parameter.
+///
+/// # Example
+///
+/// ```rust
+/// # use ellidri::message::{Command, ReplyBuffer, rpl};
+/// let mut response = ReplyBuffer::new("ellidri.dev", "nickname");
+///
+/// response.message("nick!user@127.0.0.1", Command::Topic)
+///     .param("#hall")
+///     .trailing_param("Welcome to new users!");
+/// response.reply(rpl::TOPIC)
+///     .param("#hall")
+///     .trailing_param("Welcome to new users!");
+///
+/// let result = response.build();
+/// assert_eq!(&result, ":nick!user@127.0.0.1 Topic #hall :Welcome to new users!\r\n\
+/// :ellidri.dev 332 nickname #hall :Welcome to new users!\r\n");
+/// ```
+///
+/// # On allocation
+///
+/// Allocation only occurs on `ReplyBuffer::reply` and `ReplyBuffer::message` calls.  These
+/// functions reseve `MESSAGE_LENGTH` prior to writing on the internal buffer.
 ///
 /// # Usage note
 ///
@@ -809,7 +799,7 @@ impl ReplyBuffer {
     pub fn reply<C>(&mut self, r: C) -> MessageBuffer<'_>
         where C: Into<Command>
     {
-        let msg = DOMAIN.with(move |s| self.buf.prefixed_message(&s.borrow(), r));
+        let msg = DOMAIN.with(move |s| self.buf.message(&s.borrow(), r));
         NICKNAME.with(|s| msg.param(&s.borrow()))
     }
 
@@ -823,14 +813,14 @@ impl ReplyBuffer {
     /// # use ellidri::message::{Command, ReplyBuffer};
     /// let mut response = ReplyBuffer::new("ellidri.dev", "ser");
     ///
-    /// response.prefixed_message("unneeded_prefix", Command::Admin);
+    /// response.message("unneeded_prefix", Command::Admin);
     ///
     /// assert_eq!(&response.build(), ":unneeded_prefix Admin\r\n");
     /// ```
-    pub fn prefixed_message<C>(&mut self, prefix: &str, command: C) -> MessageBuffer<'_>
+    pub fn message<C>(&mut self, prefix: &str, command: C) -> MessageBuffer<'_>
         where C: Into<Command>
     {
-        self.buf.prefixed_message(prefix, command)
+        self.buf.message(prefix, command)
     }
 
     /// Consumes the buffer and returns the underlying `String`.

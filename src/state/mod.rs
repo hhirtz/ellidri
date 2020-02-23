@@ -35,10 +35,17 @@ const SERVER_INFO: &str = include_str!("info.txt");
 // TODO make those configurable at runtime
 const MAX_CHANNEL_NAME_LENGTH: usize = 50;
 const MAX_NICKNAME_LENGTH: usize = 9;
+const MAX_TAG_DATA_LENGTH: usize = 4094;
 
 type ChannelMap = HashMap<UniCase<String>, Channel>;
 type ClientMap = HashMap<net::SocketAddr, Client>;
 type HandlerResult = Result<(), ()>;
+
+struct CommandContext<'a> {
+    addr: &'a net::SocketAddr,
+    rb: &'a mut ReplyBuffer,
+    tags: &'a str,
+}
 
 /// State of an IRC network.
 ///
@@ -230,7 +237,7 @@ impl StateInner {
     fn remove_client(&mut self, addr: &net::SocketAddr, client: Client, reason: Option<&str>) {
         let mut response = Buffer::new();
         {
-            let msg = response.prefixed_message(client.full_name(), Command::Quit);
+            let msg = response.message(client.full_name(), Command::Quit);
             if let Some(reason) = reason {
                 msg.trailing_param(reason);
             }
@@ -252,7 +259,7 @@ impl StateInner {
     }
 
     pub fn handle_message(&mut self, addr: &net::SocketAddr, msg: Message<'_>) {
-        // TODO unwrap clients.get(addr) when ellidr close the connection to clients that have quit?
+        // TODO unwrap clients.get(addr) when ellidri closes the connection to clients that have quit?
         let client = match self.clients.get(addr) {
             Some(client) => client,
             None => return,
@@ -273,6 +280,12 @@ impl StateInner {
                 return;
             }
         };
+
+        if MAX_TAG_DATA_LENGTH < msg.tags.len() {
+            rb.reply(rpl::ERR_INPUTTOOLONG).trailing_param(lines::INPUT_TOO_LONG);
+            client.send(rb);
+            return;
+        }
 
         if !msg.has_enough_params() {
             match command {
@@ -437,7 +450,7 @@ impl StateInner {
 
     fn write_lusers(&self, rb: &mut ReplyBuffer) {
         lines::luser_client(rb.reply(rpl::LUSERCLIENT), self.clients.len());
-        // TODO LUSEROP
+        // TODO LUSEROP  store the count of operators to avoid going through `clients` every time?
         // TODO LUSERUNKNOWN
         if !self.channels.is_empty() {
             rb.reply(rpl::LUSERCHANNELS)

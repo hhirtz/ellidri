@@ -97,7 +97,7 @@ impl super::StateInner {
         rb.reply(rpl::INVITING).param(channel_name).param(nick);
 
         let mut invite = Buffer::new();
-        invite.prefixed_message(self.clients[addr].full_name(), Command::Invite)
+        invite.message(self.clients[addr].full_name(), Command::Invite)
             .param(nick)
             .param(channel_name);
         self.clients[&target_addr].send(invite);
@@ -158,7 +158,7 @@ impl super::StateInner {
         client.update_idle_time();
 
         let mut join_response = Buffer::new();
-        join_response.prefixed_message(client.full_name(), Command::Join).param(target);
+        join_response.message(client.full_name(), Command::Join).param(target);
         self.broadcast(target, MessageQueueItem::from(join_response));
         self.write_topic(rb, target);
         self.write_names(addr, rb, target);
@@ -198,7 +198,7 @@ impl super::StateInner {
 
         let mut kick_response = Buffer::new();
         {
-            let msg = kick_response.prefixed_message(self.clients[addr].full_name(), Command::Kick)
+            let msg = kick_response.message(self.clients[addr].full_name(), Command::Kick)
                 .param(target)
                 .param(nick);
             if !reason.is_empty() {
@@ -341,7 +341,7 @@ impl super::StateInner {
         if !applied_modes.is_empty() {
             let mut response = Buffer::new();
             {
-                let mut msg = response.prefixed_message(self.clients[addr].full_name(), Command::Mode)
+                let mut msg = response.message(self.clients[addr].full_name(), Command::Mode)
                     .param(target)
                     .param(&applied_modes);
                 for mp in applied_modeparams {
@@ -386,7 +386,7 @@ impl super::StateInner {
             Err(_) => {}
         } }
         if !applied_modes.is_empty() {
-            rb.prefixed_message(client.full_name(), Command::Mode)
+            rb.message(client.full_name(), Command::Mode)
                 .param(target)
                 .trailing_param(&applied_modes);
         }
@@ -467,7 +467,7 @@ impl super::StateInner {
 
         let mut nick_response = Buffer::new();
 
-        nick_response.prefixed_message(client.full_name(), Command::Nick).param(nick);
+        nick_response.message(client.full_name(), Command::Nick).param(nick);
         let msg = MessageQueueItem::from(nick_response);
 
         client.set_nick(nick);
@@ -506,9 +506,7 @@ impl super::StateInner {
             let mut response = Buffer::new();
 
             let client = &self.clients[addr];
-            response.prefixed_message(client.full_name(), cmd)
-                .param(target)
-                .trailing_param(content);
+            response.message(client.full_name(), cmd).param(target).trailing_param(content);
             let msg = MessageQueueItem::from(response);
             channel.members.keys()
                 .filter(|&a| client.capabilities.echo_message || a != addr)
@@ -517,9 +515,7 @@ impl super::StateInner {
             let (_, target_client) = find_nick(addr, rb, &self.clients, target)?;
             let client = &self.clients[addr];
             let mut response = Buffer::new();
-            response.prefixed_message(client.full_name(), cmd)
-                .param(target)
-                .trailing_param(content);
+            response.message(client.full_name(), cmd).param(target).trailing_param(content);
             let msg = MessageQueueItem::from(response);
             if client.capabilities.echo_message {
                 client.send(msg.clone());
@@ -551,7 +547,7 @@ impl super::StateInner {
 
         let client = self.clients.get_mut(&addr).unwrap();
         client.operator = true;
-        rb.prefixed_message(&self.domain, Command::Mode).param(client.nick()).param("+o");
+        rb.message(&self.domain, Command::Mode).param(client.nick()).param("+o");
         rb.reply(rpl::YOUREOPER).trailing_param(lines::YOURE_OPER);
 
         Ok(())
@@ -577,11 +573,9 @@ impl super::StateInner {
 
         channel.members.remove(addr);
         if reason.is_empty() {
-            response.prefixed_message(client.full_name(), Command::Part).param(target);
+            response.message(client.full_name(), Command::Part).param(target);
         } else {
-            response.prefixed_message(client.full_name(), Command::Part)
-                .param(target)
-                .trailing_param(reason);
+            response.message(client.full_name(), Command::Part).param(target).trailing_param(reason);
         }
         let msg = MessageQueueItem::from(response);
         client.send(msg.clone());
@@ -608,8 +602,7 @@ impl super::StateInner {
 
     pub fn cmd_ping(&mut self, rb: &mut ReplyBuffer, payload: &str) -> Result
     {
-        rb.prefixed_message(&self.domain, Command::Pong).trailing_param(payload);
-
+        rb.message(&self.domain, Command::Pong).trailing_param(payload);
         Ok(())
     }
 
@@ -626,7 +619,7 @@ impl super::StateInner {
     pub fn cmd_quit(&mut self, addr: &net::SocketAddr, reason: &str) -> Result {
         let mut response = Buffer::new();
         let client = self.clients.remove(addr).unwrap();
-        response.prefixed_message(&self.domain, "ERROR").trailing_param(lines::CLOSING_LINK);
+        response.message(&self.domain, "ERROR").trailing_param(lines::CLOSING_LINK);
         client.send(MessageQueueItem::from(response));
         self.remove_client(addr, client, if reason.is_empty() {None} else {Some(reason)});
 
@@ -666,7 +659,7 @@ impl super::StateInner {
 
         let mut response = Buffer::new();
         channel.topic = if topic.is_empty() { None } else { Some(topic.to_owned()) };
-        response.prefixed_message(self.clients[&addr].full_name(), Command::Topic)
+        response.message(self.clients[&addr].full_name(), Command::Topic)
             .param(target)
             .trailing_param(topic);
         self.broadcast(target, MessageQueueItem::from(response));
