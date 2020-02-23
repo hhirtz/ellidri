@@ -1,4 +1,4 @@
-//! Client management and connection state.
+//! Client data, connection state and capability logic.
 
 use crate::message::{Buffer, Command, MessageBuffer, ReplyBuffer};
 use crate::modes;
@@ -68,21 +68,29 @@ impl ConnectionState {
     pub fn apply(self, command: Command, sub_command: &str) -> Result<ConnectionState, ()> {
         match self {
             ConnectionState::ConnectionEstablished => match command {
+                Command::Cap if sub_command == "END" => Ok(self),
                 Command::Cap if sub_command == "LS" => Ok(ConnectionState::CapGiven),
-                Command::Pass => Ok(self),
+                Command::Cap if sub_command == "REQ" => Ok(ConnectionState::CapGiven),
+                Command::Cap | Command::Pass => Ok(self),
                 Command::Nick => Ok(ConnectionState::NickGiven),
                 Command::User => Ok(ConnectionState::UserGiven),
                 Command::Quit => Ok(ConnectionState::Quit),
                 _ => Err(()),
             }
             ConnectionState::NickGiven => match command {
-                Command::Nick | Command::Pass => Ok(self),
+                Command::Cap if sub_command == "END" => Ok(self),
+                Command::Cap if sub_command == "LS" => Ok(ConnectionState::CapNickGiven),
+                Command::Cap if sub_command == "REQ" => Ok(ConnectionState::CapNickGiven),
+                Command::Cap | Command::Nick | Command::Pass => Ok(self),
                 Command::User => Ok(ConnectionState::Registered),
                 Command::Quit => Ok(ConnectionState::Quit),
                 _ => Err(()),
             }
             ConnectionState::UserGiven => match command {
-                Command::Pass => Ok(self),
+                Command::Cap if sub_command == "END" => Ok(self),
+                Command::Cap if sub_command == "LS" => Ok(ConnectionState::CapUserGiven),
+                Command::Cap if sub_command == "REQ" => Ok(ConnectionState::CapUserGiven),
+                Command::Cap | Command::Pass => Ok(self),
                 Command::Nick => Ok(ConnectionState::Registered),
                 Command::Quit => Ok(ConnectionState::Quit),
                 _ => Err(()),
@@ -111,8 +119,7 @@ impl ConnectionState {
             }
             ConnectionState::CapNegotiation => match command {
                 Command::Cap if sub_command == "END" => Ok(ConnectionState::Registered),
-                Command::Cap => Ok(self),
-                Command::Pass | Command::Nick => Ok(self),
+                Command::Cap | Command::Pass | Command::Nick => Ok(self),
                 Command::Quit => Ok(ConnectionState::Quit),
                 _ => Err(()),
             }
