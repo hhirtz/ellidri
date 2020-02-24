@@ -309,6 +309,7 @@ commands! {
     Pong => 1,
     PrivMsg => 2,
     Quit => 0,
+    TagMsg => 1,
     Time => 0,
     Topic => 1,
     User => 4,
@@ -599,12 +600,24 @@ impl<'a> MessageBuffer<'a> {
     }
 }
 
-impl<'a> Drop for MessageBuffer<'a> {
+impl Drop for MessageBuffer<'_> {
     /// Automagically append "\r\n" when the `MessageBuffer` is dropped.
     fn drop(&mut self) {
         // TODO move this into Buffer (with checks for "\n" at the end of the buffer or something)
         self.buf.push('\r');
         self.buf.push('\n');
+    }
+}
+
+pub struct TagBuffer<'a> {
+    buf: &'a mut String,
+}
+
+impl<'a> TagBuffer<'a> {
+    pub fn prefixed_command<C>(self, prefix: &str, cmd: C) -> MessageBuffer<'a>
+        where C: Into<Command>
+    {
+        MessageBuffer::with_prefix(self.buf, prefix, cmd)
     }
 }
 
@@ -692,6 +705,32 @@ impl Buffer {
     {
         self.buf.reserve(MESSAGE_LENGTH);
         MessageBuffer::with_prefix(&mut self.buf, prefix, command)
+    }
+
+    /// Start building an IRC message with tags.
+    ///
+    /// Server tags are filtered from `client_tags`, so that only tags with the client prefix `+`
+    /// are appended to the buffer.
+    ///
+    /// The length of the resulting tags (`@` and ` ` included) is written to `tags_len`.
+    ///
+    /// TODO example
+    pub fn tagged_message(&mut self, client_tags: &str, tags_len: &mut usize) -> TagBuffer<'_> {
+        let old_len = self.buf.len();
+        self.buf.push('@');
+        for tag in client_tags.split(';').filter(|s| s.starts_with('+')) {
+            self.buf.push_str(tag);
+            self.buf.push(';');
+        }
+        self.buf.pop();
+        let new_len = self.buf.len();
+        if old_len == new_len {
+            *tags_len = 0;
+        } else {
+            self.buf.push(' ');
+            *tags_len = new_len + 1 - old_len;
+        }
+        TagBuffer { buf: &mut self.buf }
     }
 
     /// Consumes the `Buffer` and returns the underlying `String`.

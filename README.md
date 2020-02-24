@@ -80,7 +80,7 @@ Patches are welcome!  Here are some links to get started:
 ## Acknowledgments
 
 ellidri couldn't have existed without the help of <https://ircdocs.horse>.
-Thank you `Daniel Oaks` and [all other contributors][ac]!
+Thank you Daniel Oaks and [all other contributors][ac]!
 
 Also thanks to the [IRCv3 working group][i3] for all the work on modernizing
 the IRC protocol!

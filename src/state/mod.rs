@@ -20,6 +20,7 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 
 mod capabilities;
+mod message_tags;
 mod rfc2812;
 #[cfg(test)]
 mod test;
@@ -44,6 +45,7 @@ type HandlerResult = Result<(), ()>;
 pub struct CommandContext<'a> {
     addr: &'a net::SocketAddr,
     rb: &'a mut ReplyBuffer,
+    client_tags: &'a str,
 }
 
 /// State of an IRC network.
@@ -292,7 +294,7 @@ impl StateInner {
                     rb.reply(rpl::ERR_NONICKNAMEGIVEN)
                         .trailing_param(lines::NEED_MORE_PARAMS);
                 }
-                Command::PrivMsg | Command::Notice if msg.num_params == 0 => {
+                Command::PrivMsg | Command::Notice | Command::TagMsg if msg.num_params == 0 => {
                     rb.reply(rpl::ERR_NORECIPIENT).trailing_param(lines::NEED_MORE_PARAMS);
                 }
                 Command::PrivMsg | Command::Notice if msg.num_params == 1 => {
@@ -323,6 +325,7 @@ impl StateInner {
         let ctx = CommandContext {
             addr,
             rb: &mut rb,
+            client_tags: msg.tags,
         };
 
         log::debug!("{}: {} {:?}", addr, command, &ps[..n]);
@@ -347,6 +350,7 @@ impl StateInner {
             Command::Pong => Ok(()),
             Command::PrivMsg => self.cmd_privmsg(ctx, ps[0], ps[1]),
             Command::Quit => self.cmd_quit(ctx, ps[0]),
+            Command::TagMsg => self.cmd_tagmsg(ctx, ps[0]),
             Command::Time => self.cmd_time(ctx),
             Command::Topic => self.cmd_topic(ctx, ps[0], if n == 1 {None} else {Some(ps[1])}),
             Command::User => self.cmd_user(ctx, ps[0], ps[3]),
@@ -523,5 +527,62 @@ impl StateInner {
         self.write_i_support(rb);
         self.write_lusers(rb);
         self.write_motd(rb);
+    }
+}
+
+/// Whether a string is accepted as a channel name by ellidri or not.
+fn is_valid_channel_name(s: &str) -> bool {
+    // https://tools.ietf.org/html/rfc2811.html#section-2.1
+    let ctrl_g = 7 as char;
+    if s.is_empty() {
+        return false;
+    }
+    let first = s.as_bytes()[0];
+    s.len() <= MAX_CHANNEL_NAME_LENGTH
+        && (first == b'#' || first == b'&')
+        && s.chars().all(|c| c != ' ' && c != ',' && c != ctrl_g && c != ':')
+}
+
+/// Whether a string is accepted as a nickname by ellidri or not.
+fn is_valid_nickname(s: &str) -> bool {
+    let s = s.as_bytes();
+    let is_valid_nickname_char = |&c: &u8| {
+        (b'0' <= c && c <= b'9')
+            || (b'a' <= c && c <= b'z')
+            || (b'A' <= c && c <= b'Z')
+            // "[", "]", "\", "`", "_", "^", "{", "|", "}"
+            || (0x5b <= c && c <= 0x60)
+            || (0x7b <= c && c <= 0x7d)
+    };
+    !s.is_empty()
+        && s.len() <= MAX_NICKNAME_LENGTH
+        && s.iter().all(is_valid_nickname_char)
+        && s[0] != b'-' && !(b'0' <= s[0] && s[0] <= b'9')
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_is_valid_channel_name() {
+        assert!(is_valid_channel_name("#Channel9"));
+
+        assert!(!is_valid_channel_name(""));
+        assert!(!is_valid_channel_name("channel"));
+        assert!(!is_valid_channel_name("#chan nel"));
+    }
+
+    #[test]
+    fn test_is_valid_nickname() {
+        assert!(is_valid_nickname("nickname"));
+        assert!(is_valid_nickname("my{}_\\^"));
+        assert!(is_valid_nickname("brice007"));
+
+        assert!(!is_valid_nickname(""));
+        assert!(!is_valid_nickname(" space "));
+        assert!(!is_valid_nickname("sp ace"));
+        assert!(!is_valid_nickname("007brice"));
+        assert!(!is_valid_nickname("longnicknameverylongohwowthisisalongnickname"));
     }
 }

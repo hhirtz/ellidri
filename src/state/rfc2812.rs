@@ -12,36 +12,6 @@ use ellidri_unicase::UniCase;
 use std::collections::HashSet;
 use super::{CommandContext, HandlerResult as Result, find_channel, find_member, find_nick};
 
-/// Whether a string is accepted as a channel name by ellidri or not.
-fn is_valid_channel_name(s: &str) -> bool {
-    // https://tools.ietf.org/html/rfc2811.html#section-2.1
-    let ctrl_g = 7 as char;
-    if s.is_empty() {
-        return false;
-    }
-    let first = s.as_bytes()[0];
-    s.len() <= super::MAX_CHANNEL_NAME_LENGTH
-        && (first == b'#' || first == b'&')
-        && s.chars().all(|c| c != ' ' && c != ',' && c != ctrl_g && c != ':')
-}
-
-/// Whether a string is accepted as a nickname by ellidri or not.
-fn is_valid_nickname(s: &str) -> bool {
-    let s = s.as_bytes();
-    let is_valid_nickname_char = |&c: &u8| {
-        (b'0' <= c && c <= b'9')
-            || (b'a' <= c && c <= b'z')
-            || (b'A' <= c && c <= b'Z')
-            // "[", "]", "\", "`", "_", "^", "{", "|", "}"
-            || (0x5b <= c && c <= 0x60)
-            || (0x7b <= c && c <= 0x7d)
-    };
-    !s.is_empty()
-        && s.len() <= super::MAX_NICKNAME_LENGTH
-        && s.iter().all(is_valid_nickname_char)
-        && s[0] != b'-' && !(b'0' <= s[0] && s[0] <= b'9')
-}
-
 // Command handlers
 impl super::StateInner {
     // ADMIN
@@ -105,7 +75,7 @@ impl super::StateInner {
     // JOIN
 
     pub fn cmd_join(&mut self, ctx: CommandContext<'_>, target: &str, key: &str) -> Result {
-        if !is_valid_channel_name(target) {
+        if !super::is_valid_channel_name(target) {
             log::debug!("{}:     Invalid channel name", ctx.addr);
             ctx.rb.reply(rpl::ERR_NOSUCHCHANNEL).param(target).trailing_param(lines::NO_SUCH_CHANNEL);
             return Err(());
@@ -395,7 +365,7 @@ impl super::StateInner {
     pub fn cmd_mode(&mut self, mut ctx: CommandContext<'_>, target: &str,
                 modes: &str, modeparams: &[&str]) -> Result
     {
-        if is_valid_channel_name(target) {
+        if super::is_valid_channel_name(target) {
             if modes.is_empty() {
                 self.cmd_mode_chan_get(ctx, target)
             } else {
@@ -435,7 +405,7 @@ impl super::StateInner {
     // NICK
 
     pub fn cmd_nick(&mut self, ctx: CommandContext<'_>, nick: &str) -> Result {
-        if !is_valid_nickname(nick) {
+        if !super::is_valid_nickname(nick) {
             log::debug!("{}:     Bad nickname", ctx.addr);
             ctx.rb.reply(rpl::ERR_ERRONEUSNICKNAME)
                 .param(nick)
@@ -484,7 +454,7 @@ impl super::StateInner {
             ctx.rb.reply(rpl::ERR_NOTEXTTOSEND).trailing_param(lines::NEED_MORE_PARAMS);
             return Err(());
         }
-        if is_valid_channel_name(target) {
+        if super::is_valid_channel_name(target) {
             let channel = find_channel(ctx.addr, ctx.rb, &self.channels, target)?;
             if !channel.can_talk(ctx.addr) {
                 log::debug!("{}:     can't send to channel", ctx.addr);
@@ -497,17 +467,27 @@ impl super::StateInner {
             let mut response = Buffer::new();
 
             let client = &self.clients[ctx.addr];
-            response.message(client.full_name(), cmd).param(target).trailing_param(content);
-            let msg = MessageQueueItem::from(response);
+            let mut client_tags_len = 0;
+            response.tagged_message(ctx.client_tags, &mut client_tags_len)
+                .prefixed_command(client.full_name(), cmd)
+                .param(target)
+                .trailing_param(content);
+            let mut msg = MessageQueueItem::from(response);
+            msg.start = client_tags_len;
             channel.members.keys()
                 .filter(|&a| client.capabilities.echo_message || a != ctx.addr)
                 .for_each(|member| self.send(member, msg.clone()));
         } else {
             let (_, target_client) = find_nick(ctx.addr, ctx.rb, &self.clients, target)?;
             let client = &self.clients[ctx.addr];
+            let mut client_tags_len = 0;
             let mut response = Buffer::new();
-            response.message(client.full_name(), cmd).param(target).trailing_param(content);
-            let msg = MessageQueueItem::from(response);
+            response.tagged_message(ctx.client_tags, &mut client_tags_len)
+                .prefixed_command(client.full_name(), cmd)
+                .param(target)
+                .trailing_param(content);
+            let mut msg = MessageQueueItem::from(response);
+            msg.start = client_tags_len;
             if client.capabilities.echo_message {
                 client.send(msg.clone());
             }
@@ -749,28 +729,6 @@ mod tests {
     use super::*;
     use super::super::test;
     use crate::message::Command;
-
-    #[test]
-    fn test_is_valid_channel_name() {
-        assert!(is_valid_channel_name("#Channel9"));
-
-        assert!(!is_valid_channel_name(""));
-        assert!(!is_valid_channel_name("channel"));
-        assert!(!is_valid_channel_name("#chan nel"));
-    }
-
-    #[test]
-    fn test_is_valid_nickname() {
-        assert!(is_valid_nickname("nickname"));
-        assert!(is_valid_nickname("my{}_\\^"));
-        assert!(is_valid_nickname("brice007"));
-
-        assert!(!is_valid_nickname(""));
-        assert!(!is_valid_nickname(" space "));
-        assert!(!is_valid_nickname("sp ace"));
-        assert!(!is_valid_nickname("007brice"));
-        assert!(!is_valid_nickname("longnicknameverylongohwowthisisalongnickname"));
-    }
 
     #[test]
     fn test_cmd_invite() {

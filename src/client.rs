@@ -173,7 +173,7 @@ pub struct Capabilities {
 }
 
 impl Capabilities {
-    pub fn message_tags(&self) -> bool {
+    pub fn has_message_tags(&self) -> bool {
         self.message_tags
     }
 }
@@ -328,7 +328,11 @@ impl Client {
     pub fn send<M>(&self, msg: M)
         where M: Into<MessageQueueItem>
     {
-        let _ = self.queue.send(msg.into());
+        let mut msg = msg.into();
+        if self.capabilities.has_message_tags() {
+            msg.start = 0;
+        }
+        let _ = self.queue.send(msg);
     }
 
     pub fn full_name(&self) -> &str {
