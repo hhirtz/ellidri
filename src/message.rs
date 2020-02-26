@@ -165,7 +165,6 @@ pub struct Tag<'a> {
 
 impl<'a> Tag<'a> {
     pub fn parse(buf: &'a str) -> Tag<'a> {
-        // TODO handle empty keys
         let mut split = buf.splitn(2, '=');
         let key = split.next().unwrap();
         let value = match split.next() {
@@ -614,6 +613,23 @@ pub struct TagBuffer<'a> {
 }
 
 impl<'a> TagBuffer<'a> {
+    pub fn tag(self, key: &str, value: Option<&str>) -> TagBuffer<'a> {
+        // TODO handle tags better
+        if self.buf.is_empty() {
+            self.buf.push('@');
+        } else {
+            self.buf.pop();
+            self.buf.push(';');
+        }
+        self.buf.push_str(key);
+        if let Some(value) = value {
+            self.buf.push('=');
+            self.buf.push_str(value);
+        }
+        self.buf.push(' ');
+        self
+    }
+
     pub fn prefixed_command<C>(self, prefix: &str, cmd: C) -> MessageBuffer<'a>
         where C: Into<Command>
     {
@@ -719,6 +735,7 @@ impl Buffer {
         let old_len = self.buf.len();
         self.buf.push('@');
         for tag in client_tags.split(';').filter(|s| s.starts_with('+')) {
+            // TODO remove duplicates keys
             self.buf.push_str(tag);
             self.buf.push(';');
         }

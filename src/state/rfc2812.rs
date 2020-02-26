@@ -7,7 +7,7 @@ use crate::client::MessageQueueItem;
 use crate::lines;
 use crate::message::{Buffer, Command, ReplyBuffer, rpl};
 use crate::modes;
-use crate::util::time_str;
+use crate::util::{time_precise, time_str};
 use ellidri_unicase::UniCase;
 use std::collections::HashSet;
 use super::{CommandContext, HandlerResult as Result, find_channel, find_member, find_nick};
@@ -469,6 +469,7 @@ impl super::StateInner {
             let client = &self.clients[ctx.addr];
             let mut client_tags_len = 0;
             response.tagged_message(ctx.client_tags, &mut client_tags_len)
+                .tag("time", Some(&time_precise()))
                 .prefixed_command(client.full_name(), cmd)
                 .param(target)
                 .trailing_param(content);
@@ -483,6 +484,7 @@ impl super::StateInner {
             let mut client_tags_len = 0;
             let mut response = Buffer::new();
             response.tagged_message(ctx.client_tags, &mut client_tags_len)
+                .tag("time", Some(&time_precise()))
                 .prefixed_command(client.full_name(), cmd)
                 .param(target)
                 .trailing_param(content);
@@ -581,6 +583,7 @@ impl super::StateInner {
 
     // QUIT
 
+    // TODO append "Quit: " in front of the user supplied message
     pub fn cmd_quit(&mut self, ctx: CommandContext<'_>, reason: &str) -> Result {
         let mut response = Buffer::new();
         let client = self.clients.remove(ctx.addr).unwrap();

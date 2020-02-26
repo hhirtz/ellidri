@@ -3,6 +3,7 @@
 use crate::client::MessageQueueItem;
 use crate::lines;
 use crate::message::{Buffer, Command, rpl};
+use crate::util::time_precise;
 use super::{CommandContext, HandlerResult as Result, find_channel, find_nick};
 
 impl super::StateInner {
@@ -22,6 +23,7 @@ impl super::StateInner {
             let client = &self.clients[ctx.addr];
             let mut client_tags_len = 0;
             response.tagged_message(ctx.client_tags, &mut client_tags_len)
+                .tag("time", Some(&time_precise()))
                 .prefixed_command(client.full_name(), Command::TagMsg)
                 .param(target);
             let mut msg = MessageQueueItem::from(response);
@@ -35,6 +37,7 @@ impl super::StateInner {
             let mut client_tags_len = 0;
             let mut response = Buffer::new();
             response.tagged_message(ctx.client_tags, &mut client_tags_len)
+                .tag("time", Some(&time_precise()))
                 .prefixed_command(client.full_name(), Command::TagMsg)
                 .param(target);
             let mut msg = MessageQueueItem::from(response);

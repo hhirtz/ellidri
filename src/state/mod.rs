@@ -5,6 +5,7 @@
 //! - `mod.rs`: public API of the server state and send utilities
 //! - `rfc2812.rs` : handlers for messages defined in the RFC 2812
 //! - `capabilities.rs` : handlers for the CAP command
+//! - `message_tags.rs` : handler for the TAGMSG command
 
 use crate::channel::Channel;
 use crate::client::{Client, MessageQueue, MessageQueueItem};

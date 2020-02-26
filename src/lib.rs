@@ -34,6 +34,7 @@ mod util;
 
 /// The beginning of everything
 pub fn start() {
+    // TODO handle --help -h --version -v
     let config_path = env::args().nth(1).unwrap_or_else(|| {
         eprintln!("Usage: {} CONFIG_FILE", env::args().nth(0).unwrap());
         process::exit(1);

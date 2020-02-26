@@ -144,6 +144,7 @@ pub mod cap {
     pub const CAP_NOTIFY: &str   = "cap-notify";
     pub const ECHO_MESSAGE: &str = "echo-message";
     pub const MESSAGE_TAGS: &str = "message-tags";
+    pub const SERVER_TIME: &str = "server-time";
 
     // TODO replace with const fn
     lazy_static::lazy_static! {
@@ -151,10 +152,11 @@ pub mod cap {
             [ CAP_NOTIFY
             , ECHO_MESSAGE
             , MESSAGE_TAGS
+            , SERVER_TIME
             ].iter().cloned().collect();
     }
 
-    pub const LS: &str = "cap-notify echo-message message-tags";
+    pub const LS: &str = "cap-notify echo-message message-tags server-time";
 
     pub fn are_supported(capabilities: &str) -> bool {
         super::cap_query(capabilities).all(|(cap,  _)| ALL.contains(cap))
@@ -167,11 +169,12 @@ pub struct Capabilities {
     pub cap_notify: bool,
     pub echo_message: bool,
     pub message_tags: bool,
+    pub server_time: bool,
 }
 
 impl Capabilities {
     pub fn has_message_tags(&self) -> bool {
-        self.message_tags
+        self.message_tags || self.server_time
     }
 }
 

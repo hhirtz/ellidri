@@ -1,5 +1,9 @@
 use std::time;
 
+pub fn time_precise() -> String {
+    chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true)
+}
+
 pub fn time_str() -> String {
     chrono::Local::now().to_rfc2822()
 }
