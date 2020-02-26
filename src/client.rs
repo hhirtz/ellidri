@@ -71,7 +71,6 @@ impl ConnectionState {
     pub fn apply(self, command: Command, sub_command: &str) -> Result<ConnectionState, ()> {
         match self {
             ConnectionState::ConnectionEstablished => match command {
-                Command::Cap if sub_command == "END" => Ok(self),
                 Command::Cap if sub_command == "LS" => Ok(ConnectionState::CapGiven),
                 Command::Cap if sub_command == "REQ" => Ok(ConnectionState::CapGiven),
                 Command::Cap | Command::Pass => Ok(self),
@@ -81,7 +80,6 @@ impl ConnectionState {
                 _ => Err(()),
             }
             ConnectionState::NickGiven => match command {
-                Command::Cap if sub_command == "END" => Ok(self),
                 Command::Cap if sub_command == "LS" => Ok(ConnectionState::CapNickGiven),
                 Command::Cap if sub_command == "REQ" => Ok(ConnectionState::CapNickGiven),
                 Command::Cap | Command::Nick | Command::Pass => Ok(self),
@@ -90,7 +88,6 @@ impl ConnectionState {
                 _ => Err(()),
             }
             ConnectionState::UserGiven => match command {
-                Command::Cap if sub_command == "END" => Ok(self),
                 Command::Cap if sub_command == "LS" => Ok(ConnectionState::CapUserGiven),
                 Command::Cap if sub_command == "REQ" => Ok(ConnectionState::CapUserGiven),
                 Command::Cap | Command::Pass => Ok(self),
@@ -418,3 +415,46 @@ impl Client {
         applied
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_connection_state_apply() {
+        use Command::*;
+
+        let def = ConnectionState::default();
+
+        let normal = def
+            .apply(Nick, "").unwrap()
+            .apply(User, "").unwrap();
+        assert_eq!(normal, ConnectionState::Registered);
+
+        let with_password = def
+            .apply(Pass, "").unwrap()
+            .apply(Nick, "").unwrap()
+            .apply(User, "").unwrap();
+        assert_eq!(with_password, ConnectionState::Registered);
+
+        let choosing_caps = def
+            .apply(Cap, "LS").unwrap()
+            .apply(Nick, "").unwrap()
+            .apply(User, "").unwrap();
+        assert_eq!(choosing_caps, ConnectionState::CapNegotiation);
+
+        let requested_caps = def
+            .apply(Nick, "").unwrap()
+            .apply(Cap, "REQ").unwrap()
+            .apply(User, "").unwrap()
+            .apply(Cap, "END").unwrap();
+        assert_eq!(requested_caps, ConnectionState::Registered);
+
+        let spurious_commands = def
+            .apply(Nick, "").unwrap()
+            .apply(Cap, "LIST").unwrap()
+            .apply(Quit, "").unwrap()
+            .apply(Nick, "");
+        assert_eq!(spurious_commands, Err(()));
+    }
+}  // mod tests
