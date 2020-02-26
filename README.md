@@ -18,7 +18,9 @@ Supported capabilities:
 
 - [cap-notify](https://ircv3.net/specs/core/capability-negotiation#cap-notify)
 - [echo-message](https://ircv3.net/specs/extensions/echo-message-3.2)
+- [message-ids](https://ircv3.net/specs/extensions/message-ids)
 - [message-tags](https://ircv3.net/specs/extensions/message-tags)
+- [server-time](https://ircv3.net/specs/extensions/server-time-3.2.html)
 
 ellidri only supports the UTF-8 encoding for messages, though for now it only
 supports ASCII casemapping for channels.
