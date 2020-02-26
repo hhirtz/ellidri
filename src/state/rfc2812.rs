@@ -7,7 +7,7 @@ use crate::client::MessageQueueItem;
 use crate::lines;
 use crate::message::{Buffer, Command, ReplyBuffer, rpl};
 use crate::modes;
-use crate::util::{time_precise, time_str};
+use crate::util::{new_message_id, time_precise, time_str};
 use ellidri_unicase::UniCase;
 use std::collections::HashSet;
 use super::{CommandContext, HandlerResult as Result, find_channel, find_member, find_nick};
@@ -470,6 +470,7 @@ impl super::StateInner {
             let mut client_tags_len = 0;
             response.tagged_message(ctx.client_tags, &mut client_tags_len)
                 .tag("time", Some(&time_precise()))
+                .tag("msgid", Some(&new_message_id()))
                 .prefixed_command(client.full_name(), cmd)
                 .param(target)
                 .trailing_param(content);
@@ -485,6 +486,7 @@ impl super::StateInner {
             let mut response = Buffer::new();
             response.tagged_message(ctx.client_tags, &mut client_tags_len)
                 .tag("time", Some(&time_precise()))
+                .tag("msgid", Some(&new_message_id()))
                 .prefixed_command(client.full_name(), cmd)
                 .param(target)
                 .trailing_param(content);

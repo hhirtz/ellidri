@@ -41,3 +41,8 @@ chrono = { version = "0.4", default-features = false, features = ["clock"] }
 
 # Capabilities
 lazy_static = { version = "1", default-features = false }
+
+# message-id capability
+rand = { version = "0.7", default-features = false, features = ["std"] }
+rand_chacha = { version = "0.2", default-features = false, features = ["std"] }
+uuid = { version = "0.8", default-features = false, features = ["std"] }
