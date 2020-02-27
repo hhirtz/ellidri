@@ -105,6 +105,9 @@ pub const USER_NOT_IN_CHANNEL: &str =
 pub const USERS_DONT_MATCH: &str =
 "Kyaaa! Peeking is bad senpai! Please don't do that again!";
 
+pub const USER_ON_CHANNEL: &str =
+"Don't worry senpai! They're already on the channel!";
+
 pub const YOURE_OPER: &str =
 "You are now a BIG senpai!";
 

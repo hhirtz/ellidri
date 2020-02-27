@@ -83,6 +83,7 @@ pub mod rpl {
     pub const ERR_NICKNAMEINUSE: Reply    = "433";  // <nick> :Nickname in use
     pub const ERR_USERNOTINCHANNEL: Reply = "441";  // <nick> <channel> :User not in channel
     pub const ERR_NOTONCHANNEL: Reply     = "442";  // <channel> :You're not on that channel
+    pub const ERR_USERONCHANNEL: Reply    = "443";  // <user> <channel> :is already on channel
     pub const ERR_NOTREGISTERED: Reply    = "451";  // :You have not registered
     pub const ERR_NEEDMOREPARAMS: Reply   = "461";  // <command> :Not enough parameters
     pub const ERR_ALREADYREGISTRED: Reply = "462";  // :Already registered
