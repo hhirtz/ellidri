@@ -82,7 +82,7 @@ impl super::StateInner {
     // JOIN
 
     pub fn cmd_join(&mut self, ctx: CommandContext<'_>, target: &str, key: &str) -> Result {
-        if !super::is_valid_channel_name(target) {
+        if !super::is_valid_channel_name(target, self.channellen) {
             log::debug!("{}:     Invalid channel name", ctx.addr);
             ctx.rb.reply(rpl::ERR_NOSUCHCHANNEL).param(target).trailing_param(lines::NO_SUCH_CHANNEL);
             return Err(());
@@ -372,7 +372,7 @@ impl super::StateInner {
     pub fn cmd_mode(&mut self, mut ctx: CommandContext<'_>, target: &str,
                 modes: &str, modeparams: &[&str]) -> Result
     {
-        if super::is_valid_channel_name(target) {
+        if super::is_valid_channel_name(target, self.channellen) {
             if modes.is_empty() {
                 self.cmd_mode_chan_get(ctx, target)
             } else {
@@ -412,7 +412,7 @@ impl super::StateInner {
     // NICK
 
     pub fn cmd_nick(&mut self, ctx: CommandContext<'_>, nick: &str) -> Result {
-        if !super::is_valid_nickname(nick) {
+        if !super::is_valid_nickname(nick, self.nicklen) {
             log::debug!("{}:     Bad nickname", ctx.addr);
             ctx.rb.reply(rpl::ERR_ERRONEUSNICKNAME)
                 .param(nick)
@@ -461,7 +461,7 @@ impl super::StateInner {
             ctx.rb.reply(rpl::ERR_NOTEXTTOSEND).trailing_param(lines::NEED_MORE_PARAMS);
             return Err(());
         }
-        if super::is_valid_channel_name(target) {
+        if super::is_valid_channel_name(target, self.channellen) {
             let channel = find_channel(ctx.addr, ctx.rb, &self.channels, target)?;
             if !channel.can_talk(ctx.addr) {
                 log::debug!("{}:     can't send to channel", ctx.addr);

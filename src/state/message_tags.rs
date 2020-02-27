@@ -8,7 +8,7 @@ use super::{CommandContext, HandlerResult as Result, find_channel, find_nick};
 
 impl super::StateInner {
     pub fn cmd_tagmsg(&mut self, ctx: CommandContext<'_>, target: &str) -> Result {
-        if super::is_valid_channel_name(target) {
+        if super::is_valid_channel_name(target, self.channellen) {
             let channel = find_channel(ctx.addr, ctx.rb, &self.channels, target)?;
             if !channel.can_talk(ctx.addr) {
                 log::debug!("{}:     can't send to channel", ctx.addr);

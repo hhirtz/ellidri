@@ -21,6 +21,8 @@ pub(crate) fn simple_state() -> StateInner {
     StateInner::new(StateConfig {
         domain: DOMAIN.to_owned(),
         default_chan_mode: "+nt".to_owned(),
+        nicklen: 9,
+        channellen: 50,
         ..StateConfig::default()
     })
 }
@@ -55,7 +57,9 @@ pub(crate) fn handle_message(state: &mut StateInner, addr: &SocketAddr, message:
 pub fn flush(queue: &mut Queue) {
     loop {
         match queue.try_recv() {
-            Ok(_) => {},
+            Ok(msg) => {
+                println!("flushed: {:?}", msg);
+            },
             Err(mpsc::error::TryRecvError::Empty) => return,
             Err(_) => unreachable!(),
         }

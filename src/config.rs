@@ -19,6 +19,9 @@ pub struct StateConfig {
     pub org_name: String,
     pub org_location: String,
     pub org_mail: String,
+
+    pub nicklen: usize,
+    pub channellen: usize,
 }
 
 /// Listening address + port + optional TLS settings.
@@ -64,7 +67,8 @@ fn add_setting(config: &mut Config, key: &str, value: &str, lineno: u32) {
         if config.workers.is_some() {
             format_error(lineno, "duplicate workers setting");
         }
-        let workers = value.parse().unwrap_or_else(|_| format_error(lineno, "expected integer"));
+        let workers = value.parse()
+            .unwrap_or_else(|_| format_error(lineno, "expected positive integer"));
         if 32768 < workers {
             format_error(lineno, "workers should be between 0 and 32768");
         }
@@ -114,6 +118,26 @@ fn add_setting(config: &mut Config, key: &str, value: &str, lineno: u32) {
             format_error(lineno, "duplicate org_mail setting");
         }
         config.srv.org_mail.push_str(value);
+    } else if key == "nicklen" {
+        if config.srv.nicklen != 0 {
+            format_error(lineno, "duplicate nicklen setting");
+        }
+        let value = value.parse()
+            .unwrap_or_else(|_| format_error(lineno, "expected strictly positive number"));
+        if value == 0 {
+            format_error(lineno, "expected strictly positive number");
+        }
+        config.srv.nicklen = value;
+    } else if key == "channellen" {
+        if config.srv.channellen != 0 {
+            format_error(lineno, "duplicate channellen setting");
+        }
+        let value = value.parse()
+            .unwrap_or_else(|_| format_error(lineno, "expected strictly positive number"));
+        if value == 0 {
+            format_error(lineno, "expected strictly positive number");
+        }
+        config.srv.channellen = value;
     } else {
         format_error(lineno, "unknown setting");
     }
@@ -141,6 +165,12 @@ fn validate(config: &mut Config) {
     }
     if config.srv.org_mail.is_empty() {
         missing_setting_error("org_mail");
+    }
+    if config.srv.nicklen == 0 {
+        config.srv.nicklen = 9;
+    }
+    if config.srv.channellen == 0 {
+        config.srv.channellen = 50;
     }
 }
 

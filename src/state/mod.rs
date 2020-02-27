@@ -34,9 +34,6 @@ macro_rules! server_version(() => {concat!(env!("CARGO_PKG_NAME"), "-", env!("CA
 /// Sent to client with the INFO command.
 const SERVER_INFO: &str = include_str!("info.txt");
 
-// TODO make those configurable at runtime
-const MAX_CHANNEL_NAME_LENGTH: usize = 50;
-const MAX_NICKNAME_LENGTH: usize = 9;
 const MAX_TAG_DATA_LENGTH: usize = 4094;
 
 type ChannelMap = HashMap<UniCase<String>, Channel>;
@@ -184,6 +181,12 @@ pub(crate) struct StateInner {
 
     /// A list of (name, password) that are valid OPER parameters.
     opers: Vec<(String, String)>,
+
+    /// Nickname length limit
+    nicklen: usize,
+
+    /// Channel name length limit
+    channellen: usize,
 }
 
 impl StateInner {
@@ -207,6 +210,8 @@ impl StateInner {
             password: config.password,
             default_chan_mode: config.default_chan_mode,
             opers: config.opers,
+            nicklen: config.nicklen,
+            channellen: config.channellen,
         }
     }
 
@@ -447,13 +452,13 @@ impl StateInner {
     fn write_i_support(&self, rb: &mut ReplyBuffer) {
         rb.reply(rpl::ISUPPORT)
             .param("CASEMAPPING=ascii")
-            .param(&format!("CHANLEN={}", MAX_CHANNEL_NAME_LENGTH))
+            .param(&format!("CHANLEN={}", self.channellen))
             .param("CHANTYPES=#&")
             .param(modes::CHANMODES)
             .param("EXCEPTS")
             .param("INVEX")
             .param("MODES")
-            .param(&format!("NICKLEN={}", MAX_NICKNAME_LENGTH))
+            .param(&format!("NICKLEN={}", self.nicklen))
             .trailing_param(lines::I_SUPPORT);
     }
 
@@ -532,20 +537,20 @@ impl StateInner {
 }
 
 /// Whether a string is accepted as a channel name by ellidri or not.
-fn is_valid_channel_name(s: &str) -> bool {
+fn is_valid_channel_name(s: &str, max_len: usize) -> bool {
     // https://tools.ietf.org/html/rfc2811.html#section-2.1
     let ctrl_g = 7 as char;
     if s.is_empty() {
         return false;
     }
     let first = s.as_bytes()[0];
-    s.len() <= MAX_CHANNEL_NAME_LENGTH
+    s.len() <= max_len
         && (first == b'#' || first == b'&')
         && s.chars().all(|c| c != ' ' && c != ',' && c != ctrl_g && c != ':')
 }
 
 /// Whether a string is accepted as a nickname by ellidri or not.
-fn is_valid_nickname(s: &str) -> bool {
+fn is_valid_nickname(s: &str, max_len: usize) -> bool {
     let s = s.as_bytes();
     let is_valid_nickname_char = |&c: &u8| {
         (b'0' <= c && c <= b'9')
@@ -556,7 +561,7 @@ fn is_valid_nickname(s: &str) -> bool {
             || (0x7b <= c && c <= 0x7d)
     };
     !s.is_empty()
-        && s.len() <= MAX_NICKNAME_LENGTH
+        && s.len() <= max_len
         && s.iter().all(is_valid_nickname_char)
         && s[0] != b'-' && !(b'0' <= s[0] && s[0] <= b'9')
 }
@@ -567,23 +572,29 @@ mod tests {
 
     #[test]
     fn test_is_valid_channel_name() {
-        assert!(is_valid_channel_name("#Channel9"));
+        const MAX_LEN: usize = 50;
 
-        assert!(!is_valid_channel_name(""));
-        assert!(!is_valid_channel_name("channel"));
-        assert!(!is_valid_channel_name("#chan nel"));
+        assert!(is_valid_channel_name("#Channel9", MAX_LEN));
+
+        assert!(!is_valid_channel_name("", MAX_LEN));
+        assert!(!is_valid_channel_name("channel", MAX_LEN));
+        assert!(!is_valid_channel_name("#chan nel", MAX_LEN));
+        assert!(!is_valid_nickname("#longnicknameverylongohwowthisisalongnicknameohwowmuchlong01234",
+                                   MAX_LEN));
     }
 
     #[test]
     fn test_is_valid_nickname() {
-        assert!(is_valid_nickname("nickname"));
-        assert!(is_valid_nickname("my{}_\\^"));
-        assert!(is_valid_nickname("brice007"));
+        const DEFAULT_MAX_LEN: usize = 9;
 
-        assert!(!is_valid_nickname(""));
-        assert!(!is_valid_nickname(" space "));
-        assert!(!is_valid_nickname("sp ace"));
-        assert!(!is_valid_nickname("007brice"));
-        assert!(!is_valid_nickname("longnicknameverylongohwowthisisalongnickname"));
+        assert!(is_valid_nickname("nickname", DEFAULT_MAX_LEN));
+        assert!(is_valid_nickname("my{}_\\^", DEFAULT_MAX_LEN));
+        assert!(is_valid_nickname("brice007", DEFAULT_MAX_LEN));
+
+        assert!(!is_valid_nickname("", DEFAULT_MAX_LEN));
+        assert!(!is_valid_nickname(" space ", DEFAULT_MAX_LEN));
+        assert!(!is_valid_nickname("sp ace", DEFAULT_MAX_LEN));
+        assert!(!is_valid_nickname("007brice", DEFAULT_MAX_LEN));
+        assert!(!is_valid_nickname("longnicknameverylongohwowthisisalongnickname", DEFAULT_MAX_LEN));
     }
 }
