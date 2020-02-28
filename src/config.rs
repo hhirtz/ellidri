@@ -172,7 +172,7 @@ fn validate(config: &mut Config) {
     if config.srv.kicklen == 0 { config.srv.kicklen = 300; }
     if config.srv.nicklen == 0 { config.srv.nicklen = 9; }
     if config.srv.topiclen == 0 { config.srv.topiclen = 300; }
-    if config.srv.userlen == 0 { config.srv.userlen = 300; }
+    if config.srv.userlen == 0 { config.srv.userlen = 64; }
 }
 
 /// Reads the configuration file at the given path.
