@@ -174,7 +174,7 @@ impl super::StateInner {
                 .param(target)
                 .param(nick);
             if !reason.is_empty() {
-                msg.trailing_param(reason);
+                msg.trailing_param(&reason[..reason.len().min(self.kicklen)]);
             }
         }
         let msg = MessageQueueItem::from(kick_response);
@@ -636,7 +636,7 @@ impl super::StateInner {
         channel.topic = if topic.is_empty() { None } else { Some(topic.to_owned()) };
         response.message(self.clients[ctx.addr].full_name(), Command::Topic)
             .param(target)
-            .trailing_param(topic);
+            .trailing_param(&topic[..topic.len().min(self.topiclen)]);
         self.broadcast(target, MessageQueueItem::from(response));
 
         Ok(())
@@ -671,7 +671,7 @@ impl super::StateInner {
             ctx.rb.reply(rpl::ERR_PASSWDMISMATCH).trailing_param(lines::PASSWORD_MISMATCH);
             return Err(());
         }
-        client.set_user_real(user, real);
+        client.set_user_real(&user[..user.len().min(self.userlen)], real);
 
         Ok(())
     }

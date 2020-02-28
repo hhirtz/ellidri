@@ -182,11 +182,11 @@ pub(crate) struct StateInner {
     /// A list of (name, password) that are valid OPER parameters.
     opers: Vec<(String, String)>,
 
-    /// Nickname length limit
-    nicklen: usize,
-
-    /// Channel name length limit
     channellen: usize,
+    kicklen: usize,
+    nicklen: usize,
+    topiclen: usize,
+    userlen: usize,
 }
 
 impl StateInner {
@@ -210,8 +210,11 @@ impl StateInner {
             password: config.password,
             default_chan_mode: config.default_chan_mode,
             opers: config.opers,
-            nicklen: config.nicklen,
             channellen: config.channellen,
+            kicklen: config.kicklen,
+            nicklen: config.nicklen,
+            topiclen: config.topiclen,
+            userlen: config.userlen,
         }
     }
 
@@ -452,13 +455,16 @@ impl StateInner {
     fn write_i_support(&self, rb: &mut ReplyBuffer) {
         rb.reply(rpl::ISUPPORT)
             .param("CASEMAPPING=ascii")
-            .param(&format!("CHANLEN={}", self.channellen))
+            .param(&format!("CHANNELLEN={}", self.channellen))
             .param("CHANTYPES=#&")
             .param(modes::CHANMODES)
             .param("EXCEPTS")
+            .param("HOSTLEN=39")  // max size of an IPv6 address
             .param("INVEX")
+            .param(&format!("KICKLEN={}", self.kicklen))
             .param("MODES")
             .param(&format!("NICKLEN={}", self.nicklen))
+            .param(&format!("TOPICLEN={}", self.topiclen))
             .trailing_param(lines::I_SUPPORT);
     }
 

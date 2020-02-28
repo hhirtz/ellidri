@@ -4,7 +4,7 @@
 //!
 //! [1]: https://git.sr.ht/~taiite/ellidri/tree/master/doc/ellidri.conf
 
-use std::{fs, net, path, process};
+use std::{fs, net, path, process, str};
 
 /// Settings for `State`.
 #[derive(Default)]
@@ -20,8 +20,11 @@ pub struct StateConfig {
     pub org_location: String,
     pub org_mail: String,
 
-    pub nicklen: usize,
     pub channellen: usize,
+    pub kicklen: usize,
+    pub nicklen: usize,
+    pub topiclen: usize,
+    pub userlen: usize,
 }
 
 /// Listening address + port + optional TLS settings.
@@ -34,19 +37,57 @@ pub struct Binding {
 #[derive(Default)]
 pub struct Config {
     pub bindings: Vec<Binding>,
-    pub workers: Option<usize>,
+    pub workers: usize,
 
     pub srv: StateConfig,
 }
 
-fn format_error(lineno: u32, msg: &'static str) -> ! {
+fn format_error(lineno: u32, msg: &str) -> ! {
     eprintln!("Config file error at line {}: {}", lineno, msg);
-    process::exit(1)
+    process::exit(1);
 }
 
-fn missing_setting_error(setting: &'static str) -> ! {
+fn missing_setting_error(setting: &str) -> ! {
     eprintln!("Config file error: missing setting {}", setting);
     process::exit(1);
+}
+
+fn mod_setting<S, F>(setting: &mut S, key: &str, value: &str, lineno: u32, type_str: &str,
+                     validate: F)
+    where S: Default + str::FromStr + PartialEq,
+          F: FnOnce(&S)
+{
+    if setting != &S::default() {
+        format_error(lineno, &format!("duplicate {} setting", key));
+    }
+    let value = value.parse().unwrap_or_else(|_| {
+        format_error(lineno, &format!("expected {}", type_str));
+    });
+    validate(&value);
+    *setting = value;
+}
+
+fn mod_spi_setting(setting: &mut usize, key: &str, value: &str, lineno: u32) {
+    mod_setting(setting, key, value, lineno, "strictly positive integer", |&value| {
+        if value == 0 {
+            format_error(lineno, "expected strictly positive number");
+        }
+    });
+}
+
+fn mod_option_setting<S, F>(setting: &mut Option<S>, key: &str, value: &str, lineno: u32,
+                            type_str: &str, validate: F)
+    where S: str::FromStr,
+          F: FnOnce(&S)
+{
+    if setting.is_some() {
+        format_error(lineno, &format!("duplicate {} setting", key));
+    }
+    let value = value.parse().unwrap_or_else(|_| {
+        format_error(lineno, &format!("expected {}", type_str));
+    });
+    validate(&value);
+    *setting = Some(value);
 }
 
 fn add_setting(config: &mut Config, key: &str, value: &str, lineno: u32) {
@@ -64,38 +105,23 @@ fn add_setting(config: &mut Config, key: &str, value: &str, lineno: u32) {
         let id = value.parse().unwrap_or_else(|_| format_error(lineno, "expected path"));
         config.bindings[last].tls_identity = Some(id);
     } else if cfg!(feature = "threads") && key == "workers" {
-        if config.workers.is_some() {
-            format_error(lineno, "duplicate workers setting");
-        }
-        let workers = value.parse()
-            .unwrap_or_else(|_| format_error(lineno, "expected positive integer"));
-        if 32768 < workers {
-            format_error(lineno, "workers should be between 0 and 32768");
-        }
-        config.workers = Some(workers);
+        mod_setting(&mut config.workers, key, value, lineno, "positive integer", |&value| {
+            if 32768 < value {
+                format_error(lineno, "workers should be between 0 and 32768");
+            }
+        });
     } else if key == "domain" {
-        if !config.srv.domain.is_empty() {
-            format_error(lineno, "duplicate domain setting");
-        }
-        config.srv.domain.push_str(value);
+        mod_setting(&mut config.srv.domain, key, value, lineno, "", |_| ());
     } else if key == "default_chan_mode" {
-        if !config.srv.default_chan_mode.is_empty() {
-            format_error(lineno, "duplicate default_chan_mode setting");
-        }
-        if !crate::modes::is_channel_mode_string(value) {
-            format_error(lineno, "default_chan_mode is not a valid mode string");
-        }
-        config.srv.default_chan_mode.push_str(value);
+        mod_setting(&mut config.srv.default_chan_mode, key, value, lineno, "", |value| {
+            if !crate::modes::is_channel_mode_string(value) {
+                format_error(lineno, "default_chan_mode is not a valid mode string");
+            }
+        });
     } else if key == "motd_file" {
-        if config.srv.motd_file.is_some() {
-            format_error(lineno, "duplicate motd_file setting");
-        }
-        config.srv.motd_file = Some(value.to_owned());
+        mod_option_setting(&mut config.srv.motd_file, key, value, lineno, "", |_| ());
     } else if key == "password" {
-        if config.srv.password.is_some() {
-            format_error(lineno, "duplicate password setting");
-        }
-        config.srv.password = Some(value.to_owned());
+        mod_option_setting(&mut config.srv.password, key, value, lineno, "", |_| ());
     } else if key == "oper" {
         let mut words = value.split_whitespace();
         let oper_name = words.next().unwrap();
@@ -104,40 +130,19 @@ fn add_setting(config: &mut Config, key: &str, value: &str, lineno: u32) {
         });
         config.srv.opers.push((oper_name.to_owned(), oper_pass.to_owned()));
     } else if key == "org_name" {
-        if !config.srv.org_name.is_empty() {
-            format_error(lineno, "duplicate org_name setting");
-        }
-        config.srv.org_name.push_str(value);
+        mod_setting(&mut config.srv.org_name, key, value, lineno, "", |_| ());
     } else if key == "org_location" {
-        if !config.srv.org_location.is_empty() {
-            format_error(lineno, "duplicate org_location setting");
-        }
-        config.srv.org_location.push_str(value);
+        mod_setting(&mut config.srv.org_location, key, value, lineno, "", |_| ());
     } else if key == "org_mail" {
-        if !config.srv.org_mail.is_empty() {
-            format_error(lineno, "duplicate org_mail setting");
-        }
-        config.srv.org_mail.push_str(value);
-    } else if key == "nicklen" {
-        if config.srv.nicklen != 0 {
-            format_error(lineno, "duplicate nicklen setting");
-        }
-        let value = value.parse()
-            .unwrap_or_else(|_| format_error(lineno, "expected strictly positive number"));
-        if value == 0 {
-            format_error(lineno, "expected strictly positive number");
-        }
-        config.srv.nicklen = value;
+        mod_setting(&mut config.srv.org_mail, key, value, lineno, "", |_| ());
     } else if key == "channellen" {
-        if config.srv.channellen != 0 {
-            format_error(lineno, "duplicate channellen setting");
-        }
-        let value = value.parse()
-            .unwrap_or_else(|_| format_error(lineno, "expected strictly positive number"));
-        if value == 0 {
-            format_error(lineno, "expected strictly positive number");
-        }
-        config.srv.channellen = value;
+        mod_spi_setting(&mut config.srv.channellen, key, value, lineno);
+    } else if key == "kicklen" {
+        mod_spi_setting(&mut config.srv.kicklen, key, value, lineno);
+    } else if key == "topiclen" {
+        mod_spi_setting(&mut config.srv.topiclen, key, value, lineno);
+    } else if key == "userlen" {
+        mod_spi_setting(&mut config.srv.userlen, key, value, lineno);
     } else {
         format_error(lineno, "unknown setting");
     }
@@ -146,9 +151,6 @@ fn add_setting(config: &mut Config, key: &str, value: &str, lineno: u32) {
 fn validate(config: &mut Config) {
     if config.bindings.is_empty() {
         missing_setting_error("bind_to");
-    }
-    if let Some(0) = config.workers {
-        config.workers = None;
     }
 
     if config.srv.domain.is_empty() {
@@ -166,12 +168,11 @@ fn validate(config: &mut Config) {
     if config.srv.org_mail.is_empty() {
         missing_setting_error("org_mail");
     }
-    if config.srv.nicklen == 0 {
-        config.srv.nicklen = 9;
-    }
-    if config.srv.channellen == 0 {
-        config.srv.channellen = 50;
-    }
+    if config.srv.channellen == 0 { config.srv.channellen = 50; }
+    if config.srv.kicklen == 0 { config.srv.kicklen = 300; }
+    if config.srv.nicklen == 0 { config.srv.nicklen = 9; }
+    if config.srv.topiclen == 0 { config.srv.topiclen = 300; }
+    if config.srv.userlen == 0 { config.srv.userlen = 300; }
 }
 
 /// Reads the configuration file at the given path.

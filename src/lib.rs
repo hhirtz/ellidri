@@ -80,8 +80,8 @@ pub fn start() {
 fn runtime(cfg: &config::Config) -> tokio::runtime::Runtime {
     let mut builder = tokio::runtime::Builder::new();
 
-    if let Some(workers) = cfg.workers {
-        builder.core_threads(workers);
+    if cfg.workers != 0 {
+        builder.core_threads(cfg.workers);
     }
 
     builder
