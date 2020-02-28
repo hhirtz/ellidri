@@ -67,6 +67,8 @@ pub struct CommandContext<'a> {
 /// // Initialize a `StateConfig` and create the state.
 /// let state = State::new(StateConfig {
 ///     domain: "ellidri.dev".to_owned(),
+///     nicklen: 9,   // nickname length limit
+///     userlen: 64,  // username length limit
 ///     ..StateConfig::default()
 /// });
 ///

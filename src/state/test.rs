@@ -21,8 +21,11 @@ pub(crate) fn simple_state() -> StateInner {
     StateInner::new(StateConfig {
         domain: DOMAIN.to_owned(),
         default_chan_mode: "+nt".to_owned(),
-        nicklen: 9,
         channellen: 50,
+        kicklen: 50,
+        nicklen: 9,
+        topiclen: 50,
+        userlen: 50,
         ..StateConfig::default()
     })
 }

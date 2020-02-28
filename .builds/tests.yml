@@ -8,7 +8,7 @@ sources:
 tasks:
     - build: |
         cd ellidri
-        cargo build
+        cargo build --locked
     - test: |
         cd ellidri
-        cargo test
+        cargo test --locked --no-fail-fast
