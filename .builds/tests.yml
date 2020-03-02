@@ -11,4 +11,4 @@ tasks:
         cargo build --locked
     - test: |
         cd ellidri
-        cargo test --locked --no-fail-fast
+        RUST_BACKTRACE=1 cargo test --locked --no-fail-fast
