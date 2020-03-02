@@ -117,7 +117,7 @@ async fn handle<S>(conn: S, peer_addr: SocketAddr, shared: State)
 
 async fn handle_buffer(peer_addr: &SocketAddr, buf: &str, shared: &State) -> io::Result<()> {
     if buf.is_empty() {
-        return Err(io::Error::new(io::ErrorKind::UnexpectedEof, "eof"));
+        return Err(io::Error::new(io::ErrorKind::UnexpectedEof, "Connection reset by peer"));
     }
 
     if let Some(msg) = Message::parse(buf) {
