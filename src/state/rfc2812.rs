@@ -38,42 +38,44 @@ impl super::StateInner {
 
     // INVITE
 
-    pub fn cmd_invite(&mut self, ctx: CommandContext<'_>, nick: &str, channel_name: &str) -> Result {
+    pub fn cmd_invite(&mut self, ctx: CommandContext<'_>, nick: &str, target: &str) -> Result {
         let (target_addr, _) = find_nick(ctx.addr, ctx.rb, &self.clients, nick)?;
-
-        if let Some(channel) = self.channels.get(<&UniCase<str>>::from(channel_name)) {
-            let member_modes = find_member(ctx.addr, ctx.rb, channel, channel_name)?;
-            if channel.invite_only && !member_modes.operator {
-                log::debug!("{}:     not operator", ctx.addr);
-                ctx.rb.reply(rpl::ERR_CHANOPRIVSNEEDED)
-                    .param(channel_name)
-                    .trailing_param(lines::CHAN_O_PRIVS_NEEDED);
+        let channel = match self.channels.get_mut(<&UniCase<str>>::from(target)) {
+            Some(channel) => channel,
+            None => {
+                log::debug!("{}:     no such channel", ctx.addr);
+                ctx.rb.reply(rpl::ERR_NOSUCHCHANNEL)
+                    .param(target)
+                    .trailing_param(lines::NO_SUCH_CHANNEL);
                 return Err(());
-            }
-            if channel.members.contains_key(&target_addr) {
-                log::debug!("{}:     user on channel", ctx.addr);
-                ctx.rb.reply(rpl::ERR_USERONCHANNEL)
-                    .param(nick)
-                    .param(channel_name)
-                    .trailing_param(lines::USER_ON_CHANNEL);
-                return Err(());
-            }
-        }
-
-        let invited = match self.channels.get_mut(<&UniCase<str>>::from(channel_name)) {
-            Some(channel) => channel.invites.insert(target_addr),
-            None => true,
+            },
         };
-        if !invited {
+        let member_modes = find_member(ctx.addr, ctx.rb, channel, target)?;
+        if channel.invite_only && !member_modes.operator {
+            log::debug!("{}:     not operator", ctx.addr);
+            ctx.rb.reply(rpl::ERR_CHANOPRIVSNEEDED)
+                .param(target)
+                .trailing_param(lines::CHAN_O_PRIVS_NEEDED);
+            return Err(());
+        }
+        if channel.members.contains_key(&target_addr) {
+            log::debug!("{}:     user on channel", ctx.addr);
+            ctx.rb.reply(rpl::ERR_USERONCHANNEL)
+                .param(nick)
+                .param(target)
+                .trailing_param(lines::USER_ON_CHANNEL);
             return Err(());
         }
 
-        ctx.rb.reply(rpl::INVITING).param(channel_name).param(nick);
+        if !channel.invites.insert(target_addr) {
+            return Err(());
+        }
 
         let mut invite = Buffer::new();
+        ctx.rb.reply(rpl::INVITING).param(target).param(nick);
         invite.message(self.clients[ctx.addr].full_name(), Command::Invite)
             .param(nick)
-            .param(channel_name);
+            .param(target);
         self.clients[&target_addr].send(invite);
 
         Ok(())
@@ -757,23 +759,13 @@ mod tests {
         test::flush(&mut q3);
 
         // c1 c2 c3 all registered
-        test::handle_message(&mut state, &a1, "INVITE whoops #channel");
-        test::collect(&mut buf, &mut q1);
-        test::collect(&mut buf, &mut q2);
-        test::collect(&mut buf, &mut q3);
-        test::assert_msgs(&buf, &[
-            (Some(test::DOMAIN), Err(rpl::ERR_NOSUCHNICK), &["c1", "whoops", lines::NO_SUCH_NICK]),
-        ]);
-
-        // c1 c2 c3 all registered
         test::handle_message(&mut state, &a1, "INVITE c2 #channel");
         buf.clear();
         test::collect(&mut buf, &mut q1);
         test::collect(&mut buf, &mut q2);
         test::collect(&mut buf, &mut q3);
         test::assert_msgs(&buf, &[
-            (Some(test::DOMAIN), Err(rpl::INVITING), &["c1", "#channel", "c2"]),
-            (Some("c1!X@127.0.0.1"), Ok(Command::Invite), &["c2", "#channel"]),
+            (Some(test::DOMAIN), Err(rpl::ERR_NOSUCHCHANNEL), &["c1", "#channel", lines::NO_SUCH_CHANNEL]),
         ]);
 
         // c1 c2 c3 all registered - c2 invited
@@ -790,6 +782,17 @@ mod tests {
         ]);
         assert_eq!(state.channels[<&UniCase<str>>::from("#chAnnel")].members.len(), 1);
         assert!(state.channels[<&UniCase<str>>::from("#chAnnel")].members[&a1].operator);
+
+        // c1 c2 c3 all registered
+        test::handle_message(&mut state, &a1, "INVITE c2 #channel");
+        buf.clear();
+        test::collect(&mut buf, &mut q1);
+        test::collect(&mut buf, &mut q2);
+        test::collect(&mut buf, &mut q3);
+        test::assert_msgs(&buf, &[
+            (Some(test::DOMAIN), Err(rpl::INVITING), &["c1", "#channel", "c2"]),
+            (Some("c1!X@127.0.0.1"), Ok(Command::Invite), &["c2", "#channel"]),
+        ]);
 
         // c1 c2 c3 all registered - c1 on channel - c2 invited
         test::handle_message(&mut state, &a2, "JOIN #channel");
