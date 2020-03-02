@@ -22,9 +22,10 @@ impl super::StateInner {
 
             let client = &self.clients[ctx.addr];
             let mut client_tags_len = 0;
-            response.tagged_message(ctx.client_tags, &mut client_tags_len)
+            response.tagged_message(ctx.client_tags)
                 .tag("time", Some(&time_precise()))
                 .tag("msgid", Some(&new_message_id()))
+                .save_tags_len(&mut client_tags_len)
                 .prefixed_command(client.full_name(), Command::TagMsg)
                 .param(target);
             let mut msg = MessageQueueItem::from(response);
@@ -37,9 +38,10 @@ impl super::StateInner {
             let client = &self.clients[ctx.addr];
             let mut client_tags_len = 0;
             let mut response = Buffer::new();
-            response.tagged_message(ctx.client_tags, &mut client_tags_len)
+            response.tagged_message(ctx.client_tags)
                 .tag("time", Some(&time_precise()))
                 .tag("msgid", Some(&new_message_id()))
+                .save_tags_len(&mut client_tags_len)
                 .prefixed_command(client.full_name(), Command::TagMsg)
                 .param(target);
             let mut msg = MessageQueueItem::from(response);

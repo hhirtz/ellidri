@@ -611,15 +611,25 @@ impl Drop for MessageBuffer<'_> {
 
 pub struct TagBuffer<'a> {
     buf: &'a mut String,
+    tag_start: usize,
 }
 
 impl<'a> TagBuffer<'a> {
+    fn new(buf: &'a mut String) -> TagBuffer<'a> {
+        let tag_start = buf.len();
+        buf.push('@');
+        TagBuffer {
+            buf,
+            tag_start,
+        }
+    }
+
+    fn is_empty(&self) -> bool {
+        self.buf.len() == self.tag_start + 1
+    }
+
     pub fn tag(self, key: &str, value: Option<&str>) -> TagBuffer<'a> {
-        // TODO handle tags better
-        if self.buf.is_empty() {
-            self.buf.push('@');
-        } else {
-            self.buf.pop();
+        if !self.is_empty() {
             self.buf.push(';');
         }
         self.buf.push_str(key);
@@ -627,13 +637,34 @@ impl<'a> TagBuffer<'a> {
             self.buf.push('=');
             self.buf.push_str(value);
         }
-        self.buf.push(' ');
+        self
+    }
+
+    fn raw_tag(self, s: &str) -> TagBuffer<'a> {
+        if !self.is_empty() {
+            self.buf.push(';');
+        }
+        self.buf.push_str(s);
+        self
+    }
+
+    pub fn save_tags_len(self, out: &mut usize) -> TagBuffer<'a> {
+        if self.buf.ends_with('@') {
+            *out = 0;
+        } else {
+            *out = self.buf.len() + 1 - self.tag_start;
+        }
         self
     }
 
     pub fn prefixed_command<C>(self, prefix: &str, cmd: C) -> MessageBuffer<'a>
         where C: Into<Command>
     {
+        if self.is_empty() {
+            self.buf.pop();
+        } else {
+            self.buf.push(' ');
+        }
         MessageBuffer::with_prefix(self.buf, prefix, cmd)
     }
 }
@@ -732,23 +763,10 @@ impl Buffer {
     /// The length of the resulting tags (`@` and ` ` included) is written to `tags_len`.
     ///
     /// TODO example
-    pub fn tagged_message(&mut self, client_tags: &str, tags_len: &mut usize) -> TagBuffer<'_> {
-        let old_len = self.buf.len();
-        self.buf.push('@');
-        for tag in client_tags.split(';').filter(|s| s.starts_with('+')) {
-            // TODO remove duplicates keys
-            self.buf.push_str(tag);
-            self.buf.push(';');
-        }
-        self.buf.pop();
-        let new_len = self.buf.len();
-        if old_len == new_len {
-            *tags_len = 0;
-        } else {
-            self.buf.push(' ');
-            *tags_len = new_len + 1 - old_len;
-        }
-        TagBuffer { buf: &mut self.buf }
+    pub fn tagged_message(&mut self, client_tags: &str) -> TagBuffer<'_> {
+        client_tags.split(';')
+            .filter(|s| s.starts_with('+'))
+            .fold(TagBuffer::new(&mut self.buf), |buf, tag| buf.raw_tag(tag))
     }
 
     /// Consumes the `Buffer` and returns the underlying `String`.
