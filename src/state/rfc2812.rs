@@ -154,7 +154,7 @@ impl super::StateInner {
         }
         let clients = &self.clients;
         let kicked_addrs = channel.members.keys()
-            .find(|addr| clients[addr].nick() == nick)
+            .find(|addr| clients[addr].nick().eq_ignore_ascii_case(nick))
             .copied();
         let kicked_addrs = match kicked_addrs {
             Some(kicked_addrs) => kicked_addrs,
@@ -419,7 +419,7 @@ impl super::StateInner {
                 .trailing_param(lines::ERRONEOUS_NICNAME);
             return Err(());
         }
-        if self.clients.values().any(|c| c.nick() == nick) {
+        if self.clients.values().any(|c| c.nick().eq_ignore_ascii_case(nick)) {
             log::debug!("{}:     Already in use", ctx.addr);
             ctx.rb.reply(rpl::ERR_NICKNAMEINUSE).param(nick).trailing_param(lines::NICKNAME_IN_USE);
             return Err(());

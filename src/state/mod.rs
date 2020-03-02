@@ -427,7 +427,7 @@ fn find_member(addr: &net::SocketAddr, rb: &mut ReplyBuffer, channel: &Channel,
 fn find_nick<'a>(addr: &net::SocketAddr, rb: &mut ReplyBuffer, clients: &'a ClientMap,
                  nick: &str) -> Result<(net::SocketAddr, &'a Client), ()>
 {
-    match clients.iter().find(|(_, client)| client.nick() == nick && client.is_registered()) {
+    match clients.iter().find(|(_, c)| c.nick().eq_ignore_ascii_case(nick) && c.is_registered()) {
         Some((addr, client)) => Ok((*addr, client)),
         None => {
             log::debug!("{}:         nick doesn't exist", addr);
