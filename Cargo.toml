@@ -22,10 +22,12 @@ threads = ["tokio/rt-threaded"]
 
 
 [dependencies]
-# Runtime
+# Async runtime
 futures = { version = "0.3", default-features = false }
-native-tls = { version = "0.2", default-features = false }
 tokio = { version = "0.2", default-features = false, features = ["rt-core", "io-util", "tcp", "sync"] }
+
+# TLS support
+native-tls = { version = "0.2", default-features = false }
 tokio-tls = { version = "0.3", default-features = false }
 
 # Case-insensitive HashMap.
@@ -36,13 +38,13 @@ ellidri-unicase = { version = "1.0.0", path = "ellidri-unicase" }
 env_logger = { version = "0.7", default-features = false }
 log = { version = "0.4", default-features = false, features = ["max_level_trace", "release_max_level_info"] }
 
-# Time
+# Time string generation (@time message tag and RPL_TIME reply)
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 
-# Capabilities
+# Initialization of the HashSet of capabilities
 lazy_static = { version = "1", default-features = false }
 
-# message-id capability
+# msgid tag generation
 rand = { version = "0.7", default-features = false, features = ["std"] }
 rand_chacha = { version = "0.2", default-features = false, features = ["std"] }
 uuid = { version = "0.8", default-features = false, features = ["std"] }
