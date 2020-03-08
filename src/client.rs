@@ -265,6 +265,7 @@ impl Client {
                 cap::CAP_NOTIFY => self.capabilities.cap_notify = enable,
                 cap::ECHO_MESSAGE => self.capabilities.echo_message = enable,
                 cap::MESSAGE_TAGS => self.capabilities.message_tags = enable,
+                cap::SERVER_TIME => self.capabilities.server_time = enable,
                 _ => {}
             }
         }
@@ -291,6 +292,10 @@ impl Client {
         }
         if self.capabilities.message_tags {
             trailing.push_str(cap::MESSAGE_TAGS);
+            trailing.push(' ');
+        }
+        if self.capabilities.server_time {
+            trailing.push_str(cap::SERVER_TIME);
             trailing.push(' ');
         }
         trailing.pop();
