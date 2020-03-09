@@ -31,10 +31,16 @@ impl super::StateInner {
             let mut msg = MessageQueueItem::from(response);
             msg.start = client_tags_len;
             channel.members.keys()
-                .filter(|&a| client.capabilities.echo_message || a != ctx.addr)
+                .filter(|&a| {
+                    self.clients[a].capabilities.has_message_tags()
+                        && (client.capabilities.echo_message || a != ctx.addr)
+                })
                 .for_each(|member| self.send(member, msg.clone()));
         } else {
             let (_, target_client) = find_nick(ctx.addr, ctx.rb, &self.clients, target)?;
+            if !target_client.capabilities.has_message_tags() {
+                return Err(());
+            }
             let client = &self.clients[ctx.addr];
             let mut client_tags_len = 0;
             let mut response = Buffer::new();
