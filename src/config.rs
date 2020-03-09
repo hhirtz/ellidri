@@ -68,9 +68,9 @@ fn mod_setting<S, F>(setting: &mut S, key: &str, value: &str, lineno: u32, type_
 }
 
 fn mod_spi_setting(setting: &mut usize, key: &str, value: &str, lineno: u32) {
-    mod_setting(setting, key, value, lineno, "strictly positive integer", |&value| {
-        if value == 0 {
-            format_error(lineno, "expected strictly positive number");
+    mod_setting(setting, key, value, lineno, "a strictly positive integer", |&value| {
+        if value <= 0 {
+            format_error(lineno, "expected a strictly positive number");
         }
     });
 }
@@ -102,10 +102,10 @@ fn add_setting(config: &mut Config, key: &str, value: &str, lineno: u32) {
         if config.bindings[last].tls_identity.is_some() {
             format_error(lineno, "duplicate with_tls setting");
         }
-        let id = value.parse().unwrap_or_else(|_| format_error(lineno, "expected path"));
+        let id = value.parse().unwrap_or_else(|_| format_error(lineno, "expected a path"));
         config.bindings[last].tls_identity = Some(id);
     } else if cfg!(feature = "threads") && key == "workers" {
-        mod_setting(&mut config.workers, key, value, lineno, "positive integer", |&value| {
+        mod_setting(&mut config.workers, key, value, lineno, "a positive integer", |&value| {
             if 32768 < value {
                 format_error(lineno, "workers should be between 0 and 32768");
             }
