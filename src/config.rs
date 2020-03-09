@@ -139,6 +139,8 @@ fn add_setting(config: &mut Config, key: &str, value: &str, lineno: u32) {
         mod_spi_setting(&mut config.srv.channellen, key, value, lineno);
     } else if key == "kicklen" {
         mod_spi_setting(&mut config.srv.kicklen, key, value, lineno);
+    } else if key == "nicklen" {
+        mod_spi_setting(&mut config.srv.nicklen, key, value, lineno);
     } else if key == "topiclen" {
         mod_spi_setting(&mut config.srv.topiclen, key, value, lineno);
     } else if key == "userlen" {
