@@ -1,3 +1,4 @@
+use crate::lines;
 use crate::message::Message;
 use crate::state::State;
 use std::{fs, path, process, str};
@@ -117,7 +118,7 @@ async fn handle<S>(conn: S, peer_addr: SocketAddr, shared: State)
 
 async fn handle_buffer(peer_addr: &SocketAddr, buf: &str, shared: &State) -> io::Result<()> {
     if buf.is_empty() {
-        return Err(io::Error::new(io::ErrorKind::UnexpectedEof, "Connection reset by peer"));
+        return Err(io::Error::new(io::ErrorKind::UnexpectedEof, lines::CONNECTION_RESET));
     }
 
     if let Some(msg) = Message::parse(buf) {

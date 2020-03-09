@@ -1,5 +1,12 @@
 use crate::message::MessageBuffer;
 
+// Network messages
+
+pub const CONNECTION_RESET: &str =
+"This senpai left without saying anything...";
+
+// IRC replies
+
 pub const ADMIN_ME: &str =
 "Administrative info";
 
