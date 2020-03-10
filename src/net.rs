@@ -54,7 +54,7 @@ pub async fn listen(addr: SocketAddr, shared: State) -> io::Result<()> {
     loop {
         match ln.accept().await {
             Ok((conn, peer_addr)) => { tokio::spawn(handle(conn, peer_addr, shared.clone())); }
-            Err(err) => { log::debug!("Failed to accept connection: {}", err); }
+            Err(err) => { log::warn!("Failed to accept connection: {}", err); }
         }
     }
 }
@@ -71,13 +71,13 @@ pub async fn listen_tls(addr: SocketAddr, shared: State, acceptor: Arc<TlsAccept
                 let tls_conn = match acceptor.accept(conn)
                     .await
                     .map_err(|err| {
-                        log::debug!("TLS handshake failed: {}", err);
+                        log::warn!("TLS handshake failed: {}", err);
                     })
                 { Ok(tls_conn) => tls_conn, Err(_) => return, };
                 handle(tls_conn, peer_addr, shared).await;
             });
         }
-        Err(err) => log::debug!("Failed to accept connection: {}", err),
+        Err(err) => log::warn!("Failed to accept connection: {}", err),
     }}
 }
 
