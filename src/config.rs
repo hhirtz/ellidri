@@ -27,6 +27,26 @@ pub struct StateConfig {
     pub userlen: usize,
 }
 
+impl StateConfig {
+    pub /*const*/ fn sample() -> Self {
+        Self {
+            domain: "ellidri.localdomain".to_owned(),
+            default_chan_mode: "+nt".to_owned(),
+            motd_file: None,
+            password: None,
+            opers: vec![],
+            org_name: "Ellidri server showcase".to_owned(),
+            org_location: "Somewhere on Earth".to_owned(),
+            org_mail: "contact@ellidri.localdomain".to_owned(),
+            channellen: 50,
+            kicklen: 300,
+            nicklen: 16,
+            topiclen: 300,
+            userlen: 64,
+        }
+    }
+}
+
 /// Listening address + port + optional TLS settings.
 pub struct Binding {
     pub address: net::SocketAddr,
@@ -40,6 +60,21 @@ pub struct Config {
     pub workers: usize,
 
     pub srv: StateConfig,
+}
+
+impl Config {
+    pub /*const*/ fn sample() -> Self {
+        Self {
+            bindings: vec![
+                Binding {
+                    address: net::SocketAddr::from(([127, 0, 0, 1], 6667)),
+                    tls_identity: None,
+                }
+            ],
+            workers: 0,
+            srv: StateConfig::sample(),
+        }
+    }
 }
 
 fn format_error(lineno: u32, msg: &str) -> ! {
@@ -69,7 +104,7 @@ fn mod_setting<S, F>(setting: &mut S, key: &str, value: &str, lineno: u32, type_
 
 fn mod_spi_setting(setting: &mut usize, key: &str, value: &str, lineno: u32) {
     mod_setting(setting, key, value, lineno, "a strictly positive integer", |&value| {
-        if value <= 0 {
+        if value == 0 {
             format_error(lineno, "expected a strictly positive number");
         }
     });
@@ -151,15 +186,16 @@ fn add_setting(config: &mut Config, key: &str, value: &str, lineno: u32) {
 }
 
 fn validate(config: &mut Config) {
+    let def = Config::sample();
+
     if config.bindings.is_empty() {
         missing_setting_error("bind_to");
     }
-
     if config.srv.domain.is_empty() {
         missing_setting_error("domain");
     }
     if config.srv.default_chan_mode.is_empty() {
-        config.srv.default_chan_mode.push_str("+nt");
+        config.srv.default_chan_mode = def.srv.default_chan_mode;
     }
     if config.srv.org_name.is_empty() {
         missing_setting_error("org_name");
@@ -170,11 +206,11 @@ fn validate(config: &mut Config) {
     if config.srv.org_mail.is_empty() {
         missing_setting_error("org_mail");
     }
-    if config.srv.channellen == 0 { config.srv.channellen = 50; }
-    if config.srv.kicklen == 0 { config.srv.kicklen = 300; }
-    if config.srv.nicklen == 0 { config.srv.nicklen = 9; }
-    if config.srv.topiclen == 0 { config.srv.topiclen = 300; }
-    if config.srv.userlen == 0 { config.srv.userlen = 64; }
+    if config.srv.channellen == 0 { config.srv.channellen = def.srv.channellen; }
+    if config.srv.kicklen == 0 { config.srv.kicklen = def.srv.kicklen; }
+    if config.srv.nicklen == 0 { config.srv.nicklen = def.srv.kicklen; }
+    if config.srv.topiclen == 0 { config.srv.topiclen = def.srv.topiclen; }
+    if config.srv.userlen == 0 { config.srv.userlen = def.srv.userlen; }
 }
 
 /// Reads the configuration file at the given path.

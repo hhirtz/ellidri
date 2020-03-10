@@ -18,16 +18,7 @@ thread_local! {
 }
 
 pub(crate) fn simple_state() -> StateInner {
-    StateInner::new(StateConfig {
-        domain: DOMAIN.to_owned(),
-        default_chan_mode: "+nt".to_owned(),
-        channellen: 50,
-        kicklen: 50,
-        nicklen: 9,
-        topiclen: 50,
-        userlen: 50,
-        ..StateConfig::default()
-    })
+    StateInner::new(StateConfig { domain: DOMAIN.to_owned(), ..StateConfig::sample() })
 }
 
 pub(crate) fn add_client(s: &mut StateInner) -> (SocketAddr, Queue) {

@@ -57,6 +57,8 @@ pub struct CommandContext<'a> {
 ///
 /// The API is designed with `async` support only, because this type heavily relies on [tokio][1].
 ///
+/// [1]: https://tokio.rs
+///
 /// # Example
 ///
 /// ```rust
@@ -67,9 +69,7 @@ pub struct CommandContext<'a> {
 /// // Initialize a `StateConfig` and create the state.
 /// let state = State::new(StateConfig {
 ///     domain: "ellidri.dev".to_owned(),
-///     nicklen: 9,   // nickname length limit
-///     userlen: 64,  // username length limit
-///     ..StateConfig::default()
+///     ..StateConfig::sample()
 /// });
 ///
 /// // Each client is identified by its address.
@@ -102,8 +102,6 @@ pub struct CommandContext<'a> {
 ///            ":ellidri.dev 001 ser :Welcome home, ser!ser@127.0.0.1");
 /// # });
 /// ```
-///
-/// [1]: https://tokio.rs
 #[derive(Clone)]
 pub struct State(Arc<Mutex<StateInner>>);
 
