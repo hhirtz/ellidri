@@ -4,7 +4,7 @@ members = [".", "ellidri-unicase"]
 
 [package]
 name = "ellidri"
-version = "2.1.0"
+version = "2.2.0"
 authors = ["Hubert Hirtz <hubert.hirtz@laposte.net>"]
 edition = "2018"
 description = "Your kawaii IRC server"
