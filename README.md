@@ -7,7 +7,7 @@ ellidri, your kawaii IRC server.
 
 Join the IRC channel: [#ellidri on freenode][irc]!
 
-[irc]: https://webchat.freenode.net/#aerc
+[irc]: https://webchat.freenode.net/#ellidri
 
 
 ## Features
