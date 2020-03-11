@@ -1,6 +1,6 @@
 //! Testing utilities for `ellidri::state`
 
-use crate::config::{Config, StateConfig};
+use crate::{config, Config};
 use crate::client::MessageQueueItem;
 use crate::message::{assert_msg, Command, Message};
 use std::cell::RefCell;
@@ -18,7 +18,7 @@ thread_local! {
 }
 
 pub(crate) fn simple_state() -> StateInner {
-    StateInner::new(StateConfig { domain: DOMAIN.to_owned(), ..StateConfig::sample() })
+    StateInner::new(config::State { domain: DOMAIN.to_owned(), ..config::State::sample() })
 }
 
 pub(crate) fn add_client(s: &mut StateInner) -> (SocketAddr, Queue) {
@@ -37,15 +37,15 @@ pub(crate) fn add_registered_client(s: &mut StateInner, nickname: &str) -> (Sock
         buf.push_str(nickname);
         let nick = Message::parse(&buf).unwrap();
         let user = Message::parse("USER X X X X").unwrap();
-        s.handle_message(&addr, nick);
-        s.handle_message(&addr, user);
+        let _ = s.handle_message(&addr, nick);
+        let _ = s.handle_message(&addr, user);
     });
     (addr, queue)
 }
 
 pub(crate) fn handle_message(state: &mut StateInner, addr: &SocketAddr, message: &str) {
     let message = Message::parse(message).unwrap();
-    state.handle_message(addr, message);
+    let _ = state.handle_message(addr, message);
 }
 
 pub fn flush(queue: &mut Queue) {
