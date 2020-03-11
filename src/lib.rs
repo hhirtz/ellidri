@@ -57,7 +57,7 @@ pub fn start() {
         .init();
 
     let mut runtime = runtime(&cfg);
-    let shared = State::new(cfg.srv);
+    let shared = State::new(cfg.state);
 
     let mut store = net::TlsIdentityStore::default();
     for config::Binding { address, tls_identity } in cfg.bindings {

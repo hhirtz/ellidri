@@ -7,10 +7,11 @@
 //! - `capabilities.rs` : handlers for the CAP command
 //! - `message_tags.rs` : handler for the TAGMSG command
 
+#![allow(clippy::needless_pass_by_value)]
+
+use crate::{config, lines};
 use crate::channel::Channel;
 use crate::client::{Client, MessageQueue, MessageQueueItem};
-use crate::config::StateConfig;
-use crate::lines;
 use crate::message::{Buffer, Command, Message, ReplyBuffer, rpl};
 use crate::modes;
 use crate::util::time_str;
@@ -63,13 +64,13 @@ pub struct CommandContext<'a> {
 ///
 /// ```rust
 /// # use ellidri::State;
-/// # use ellidri::config::StateConfig;
+/// # use ellidri::config;
 /// # use ellidri::message::Message;
 /// # tokio::runtime::Runtime::new().unwrap().block_on(async {
 /// // Initialize a `StateConfig` and create the state.
-/// let state = State::new(StateConfig {
+/// let state = State::new(config::State {
 ///     domain: "ellidri.dev".to_owned(),
-///     ..StateConfig::sample()
+///     ..config::State::sample()
 /// });
 ///
 /// // Each client is identified by its address.
@@ -107,7 +108,7 @@ pub struct State(Arc<Mutex<StateInner>>);
 
 impl State {
     /// Intialize the IRC state from the given configuration.
-    pub fn new(config: StateConfig) -> Self {
+    pub fn new(config: config::State) -> Self {
         let inner = StateInner::new(config);
         Self(Arc::new(Mutex::new(inner)))
     }
@@ -190,7 +191,7 @@ pub(crate) struct StateInner {
 }
 
 impl StateInner {
-    pub fn new(config: StateConfig) -> Self {
+    pub fn new(config: config::State) -> Self {
         let motd = config.motd_file.and_then(|file| match fs::read_to_string(&file) {
             Ok(motd) => Some(motd),
             Err(err) => {
@@ -445,7 +446,7 @@ impl StateInner {
     }
 
     /// Sends the given message to all users in the given channel.
-    fn broadcast(&self, target: &str, msg: MessageQueueItem) {
+    fn broadcast(&self, target: &str, msg: &MessageQueueItem) {
         let channel = &self.channels[<&UniCase<str>>::from(target)];
         for member in channel.members.keys() {
             self.send(member, msg.clone());
@@ -543,6 +544,7 @@ impl StateInner {
 }
 
 /// Whether a string is accepted as a channel name by ellidri or not.
+#[must_use]
 fn is_valid_channel_name(s: &str, max_len: usize) -> bool {
     // https://tools.ietf.org/html/rfc2811.html#section-2.1
     let ctrl_g = 7 as char;
@@ -556,6 +558,7 @@ fn is_valid_channel_name(s: &str, max_len: usize) -> bool {
 }
 
 /// Whether a string is accepted as a nickname by ellidri or not.
+#[must_use]
 fn is_valid_nickname(s: &str, max_len: usize) -> bool {
     let s = s.as_bytes();
     let is_valid_nickname_char = |&c: &u8| {

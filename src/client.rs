@@ -139,6 +139,7 @@ impl ConnectionState {
 
 // TODO factorize this with a macro?
 pub mod cap {
+    use super::*;
     use std::collections::HashSet;
 
     pub const CAP_NOTIFY: &str   = "cap-notify";
@@ -159,7 +160,21 @@ pub mod cap {
     pub const LS: &str = "cap-notify echo-message message-tags server-time";
 
     pub fn are_supported(capabilities: &str) -> bool {
-        super::cap_query(capabilities).all(|(cap,  _)| ALL.contains(cap))
+        query(capabilities).all(|(cap,  _)| ALL.contains(cap))
+    }
+
+    pub fn write_ls(response: &mut ReplyBuffer) {
+        response.reply(Command::Cap).param("LS").trailing_param(cap::LS);
+    }
+
+    pub fn query(buf: &str) -> impl Iterator<Item=(&str, bool)> {
+        buf.split_whitespace().map(|word| {
+            if word.starts_with('-') {
+                (&word[1..], false)
+            } else {
+                (word, true)
+            }
+        })
     }
 }
 
@@ -176,16 +191,6 @@ impl Capabilities {
     pub fn has_message_tags(&self) -> bool {
         self.message_tags || self.server_time
     }
-}
-
-fn cap_query(buf: &str) -> impl Iterator<Item=(&str, bool)> {
-    buf.split_whitespace().map(|word| {
-        if word.starts_with('-') {
-            (&word[1..], false)
-        } else {
-            (word, true)
-        }
-    })
 }
 
 const FULL_NAME_LENGTH: usize = 63;
@@ -260,7 +265,7 @@ impl Client {
 
     // TODO factorize this with a macro?
     pub fn update_capabilities(&mut self, capabilities: &str) {
-        for (capability, enable) in cap_query(capabilities) {
+        for (capability, enable) in cap::query(capabilities) {
             match capability {
                 cap::CAP_NOTIFY => self.capabilities.cap_notify = enable,
                 cap::ECHO_MESSAGE => self.capabilities.echo_message = enable,
@@ -299,10 +304,6 @@ impl Client {
             trailing.push(' ');
         }
         trailing.pop();
-    }
-
-    pub fn write_capabilities(&self, response: &mut ReplyBuffer) {
-        response.reply(Command::Cap).param("LS").trailing_param(cap::LS);
     }
 
     /// Change the connection state of the client given the command it just sent.

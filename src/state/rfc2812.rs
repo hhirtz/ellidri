@@ -133,7 +133,7 @@ impl super::StateInner {
 
         let mut join_response = Buffer::new();
         join_response.message(client.full_name(), Command::Join).param(target);
-        self.broadcast(target, MessageQueueItem::from(join_response));
+        self.broadcast(target, &MessageQueueItem::from(join_response));
         self.write_topic(ctx.rb, target);
         self.write_names(ctx.addr, ctx.rb, target);
 
@@ -320,7 +320,7 @@ impl super::StateInner {
                     msg = msg.param(&mp);
                 }
             }
-            self.broadcast(target, MessageQueueItem::from(response));
+            self.broadcast(target, &MessageQueueItem::from(response));
         }
 
         Ok(())
@@ -560,12 +560,12 @@ impl super::StateInner {
             response.message(client.full_name(), Command::Part).param(target).trailing_param(reason);
         }
         let msg = MessageQueueItem::from(response);
-        client.send(msg.clone());
         if channel.members.is_empty() {
             self.channels.remove(<&UniCase<str>>::from(target));
         } else {
-            self.broadcast(target, msg);
+            self.broadcast(target, &msg);
         }
+        client.send(msg);
 
         Ok(())
     }
@@ -641,7 +641,7 @@ impl super::StateInner {
         response.message(self.clients[ctx.addr].full_name(), Command::Topic)
             .param(target)
             .trailing_param(&topic[..topic.len().min(self.topiclen)]);
-        self.broadcast(target, MessageQueueItem::from(response));
+        self.broadcast(target, &MessageQueueItem::from(response));
 
         Ok(())
     }

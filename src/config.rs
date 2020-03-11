@@ -8,7 +8,7 @@ use std::{fs, net, path, process, str};
 
 /// Settings for `State`.
 #[derive(Default)]
-pub struct StateConfig {
+pub struct State {
     pub domain: String,
 
     pub default_chan_mode: String,
@@ -27,7 +27,7 @@ pub struct StateConfig {
     pub userlen: usize,
 }
 
-impl StateConfig {
+impl State {
     pub /*const*/ fn sample() -> Self {
         Self {
             domain: "ellidri.localdomain".to_owned(),
@@ -58,8 +58,7 @@ pub struct Binding {
 pub struct Config {
     pub bindings: Vec<Binding>,
     pub workers: usize,
-
-    pub srv: StateConfig,
+    pub state: State,
 }
 
 impl Config {
@@ -72,7 +71,7 @@ impl Config {
                 }
             ],
             workers: 0,
-            srv: StateConfig::sample(),
+            state: State::sample(),
         }
     }
 }
@@ -146,40 +145,40 @@ fn add_setting(config: &mut Config, key: &str, value: &str, lineno: u32) {
             }
         });
     } else if key == "domain" {
-        mod_setting(&mut config.srv.domain, key, value, lineno, "", |_| ());
+        mod_setting(&mut config.state.domain, key, value, lineno, "", |_| ());
     } else if key == "default_chan_mode" {
-        mod_setting(&mut config.srv.default_chan_mode, key, value, lineno, "", |value| {
+        mod_setting(&mut config.state.default_chan_mode, key, value, lineno, "", |value| {
             if !crate::modes::is_channel_mode_string(value) {
                 format_error(lineno, "default_chan_mode is not a valid mode string");
             }
         });
     } else if key == "motd_file" {
-        mod_option_setting(&mut config.srv.motd_file, key, value, lineno, "", |_| ());
+        mod_option_setting(&mut config.state.motd_file, key, value, lineno, "", |_| ());
     } else if key == "password" {
-        mod_option_setting(&mut config.srv.password, key, value, lineno, "", |_| ());
+        mod_option_setting(&mut config.state.password, key, value, lineno, "", |_| ());
     } else if key == "oper" {
         let mut words = value.split_whitespace();
         let oper_name = words.next().unwrap();
         let oper_pass = words.next().unwrap_or_else(|| {
             format_error(lineno, "oper must follow the format 'oper <name> <password>'");
         });
-        config.srv.opers.push((oper_name.to_owned(), oper_pass.to_owned()));
+        config.state.opers.push((oper_name.to_owned(), oper_pass.to_owned()));
     } else if key == "org_name" {
-        mod_setting(&mut config.srv.org_name, key, value, lineno, "", |_| ());
+        mod_setting(&mut config.state.org_name, key, value, lineno, "", |_| ());
     } else if key == "org_location" {
-        mod_setting(&mut config.srv.org_location, key, value, lineno, "", |_| ());
+        mod_setting(&mut config.state.org_location, key, value, lineno, "", |_| ());
     } else if key == "org_mail" {
-        mod_setting(&mut config.srv.org_mail, key, value, lineno, "", |_| ());
+        mod_setting(&mut config.state.org_mail, key, value, lineno, "", |_| ());
     } else if key == "channellen" {
-        mod_spi_setting(&mut config.srv.channellen, key, value, lineno);
+        mod_spi_setting(&mut config.state.channellen, key, value, lineno);
     } else if key == "kicklen" {
-        mod_spi_setting(&mut config.srv.kicklen, key, value, lineno);
+        mod_spi_setting(&mut config.state.kicklen, key, value, lineno);
     } else if key == "nicklen" {
-        mod_spi_setting(&mut config.srv.nicklen, key, value, lineno);
+        mod_spi_setting(&mut config.state.nicklen, key, value, lineno);
     } else if key == "topiclen" {
-        mod_spi_setting(&mut config.srv.topiclen, key, value, lineno);
+        mod_spi_setting(&mut config.state.topiclen, key, value, lineno);
     } else if key == "userlen" {
-        mod_spi_setting(&mut config.srv.userlen, key, value, lineno);
+        mod_spi_setting(&mut config.state.userlen, key, value, lineno);
     } else {
         format_error(lineno, "unknown setting");
     }
@@ -191,26 +190,26 @@ fn validate(config: &mut Config) {
     if config.bindings.is_empty() {
         missing_setting_error("bind_to");
     }
-    if config.srv.domain.is_empty() {
+    if config.state.domain.is_empty() {
         missing_setting_error("domain");
     }
-    if config.srv.default_chan_mode.is_empty() {
-        config.srv.default_chan_mode = def.srv.default_chan_mode;
+    if config.state.default_chan_mode.is_empty() {
+        config.state.default_chan_mode = def.state.default_chan_mode;
     }
-    if config.srv.org_name.is_empty() {
+    if config.state.org_name.is_empty() {
         missing_setting_error("org_name");
     }
-    if config.srv.org_location.is_empty() {
+    if config.state.org_location.is_empty() {
         missing_setting_error("org_location");
     }
-    if config.srv.org_mail.is_empty() {
+    if config.state.org_mail.is_empty() {
         missing_setting_error("org_mail");
     }
-    if config.srv.channellen == 0 { config.srv.channellen = def.srv.channellen; }
-    if config.srv.kicklen == 0 { config.srv.kicklen = def.srv.kicklen; }
-    if config.srv.nicklen == 0 { config.srv.nicklen = def.srv.kicklen; }
-    if config.srv.topiclen == 0 { config.srv.topiclen = def.srv.topiclen; }
-    if config.srv.userlen == 0 { config.srv.userlen = def.srv.userlen; }
+    if config.state.channellen == 0 { config.state.channellen = def.state.channellen; }
+    if config.state.kicklen == 0 { config.state.kicklen = def.state.kicklen; }
+    if config.state.nicklen == 0 { config.state.nicklen = def.state.kicklen; }
+    if config.state.topiclen == 0 { config.state.topiclen = def.state.topiclen; }
+    if config.state.userlen == 0 { config.state.userlen = def.state.userlen; }
 }
 
 /// Reads the configuration file at the given path.

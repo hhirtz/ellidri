@@ -17,7 +17,7 @@ impl super::StateInner {
     fn cmd_cap_ls(&mut self, ctx: CommandContext<'_>, version: &str) -> Result {
         let client = self.clients.get_mut(ctx.addr).unwrap();
         client.set_cap_version(version);
-        client.write_capabilities(ctx.rb);
+        cap::write_ls(ctx.rb);
         Ok(())
     }
 
