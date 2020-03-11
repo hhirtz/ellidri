@@ -491,9 +491,11 @@ impl<'a> MessageBuffer<'a> {
     fn with_prefix<C>(buf: &'a mut String, prefix: &str, command: C) -> MessageBuffer<'a>
         where C: Into<Command>
     {
-        buf.push(':');
-        buf.push_str(prefix);
-        buf.push(' ');
+        if !prefix.is_empty() {
+            buf.push(':');
+            buf.push_str(prefix);
+            buf.push(' ');
+        }
         buf.push_str(command.into().as_str());
         MessageBuffer { buf }
     }
