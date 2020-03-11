@@ -130,8 +130,8 @@ impl State {
     }
 
     /// Updates the state according to the given message from the given client.
-    pub async fn handle_message(&self, addr: &net::SocketAddr, msg: Message<'_>) {
-        self.0.lock().await.handle_message(addr, msg);
+    pub async fn handle_message(&self, addr: &net::SocketAddr, msg: Message<'_>) -> HandlerResult {
+        self.0.lock().await.handle_message(addr, msg)
     }
 }
 
@@ -269,11 +269,10 @@ impl StateInner {
         });
     }
 
-    pub fn handle_message(&mut self, addr: &net::SocketAddr, msg: Message<'_>) {
-        // TODO unwrap clients.get(addr) when ellidri closes the connection to clients that have quit?
+    pub fn handle_message(&mut self, addr: &net::SocketAddr, msg: Message<'_>) -> HandlerResult {
         let client = match self.clients.get(addr) {
             Some(client) => client,
-            None => return,
+            None => return Err(()),
         };
         let mut rb = ReplyBuffer::new(&self.domain, client.nick());
 
@@ -288,14 +287,14 @@ impl StateInner {
                     rb.reply(rpl::ERR_NOTREGISTERED).trailing_param(lines::NOT_REGISTERED);
                 }
                 client.send(rb);
-                return;
+                return Ok(());
             }
         };
 
         if MAX_TAG_DATA_LENGTH < msg.tags.len() {
             rb.reply(rpl::ERR_INPUTTOOLONG).trailing_param(lines::INPUT_TOO_LONG);
             client.send(rb);
-            return;
+            return Ok(());
         }
 
         if !msg.has_enough_params() {
@@ -317,7 +316,7 @@ impl StateInner {
                 }
             }
             client.send(rb);
-            return;
+            return Ok(());
         }
 
         if !client.can_issue_command(command, msg.params[0]) {
@@ -327,7 +326,7 @@ impl StateInner {
                 rb.reply(rpl::ERR_NOTREGISTERED).trailing_param(lines::NOT_REGISTERED);
             }
             client.send(rb);
-            return;
+            return Ok(());
         }
 
         let ps = msg.params;
@@ -374,16 +373,22 @@ impl StateInner {
             self.send(addr, MessageQueueItem::from(rb));
         }
         if cmd_result.is_ok() {
-            let client = self.clients.get_mut(addr).unwrap();
-            let old_state = client.state();
-            let new_state = client.apply_command(command, msg.params[0]);
-            if new_state.is_registered() && !old_state.is_registered() {
-                let client = &self.clients[addr];
-                let mut rb = ReplyBuffer::new(&self.domain, client.nick());
-                self.write_welcome(&mut rb, client.full_name());
-                client.send(rb);
+            if let Some(client) = self.clients.get_mut(addr) {
+                let old_state = client.state();
+                let new_state = client.apply_command(command, msg.params[0]);
+                if new_state.is_registered() && !old_state.is_registered() {
+                    let client = &self.clients[addr];
+                    let mut rb = ReplyBuffer::new(&self.domain, client.nick());
+                    self.write_welcome(&mut rb, client.full_name());
+                    client.send(rb);
+                }
+                log::error!("{}: {:?} + {:?} == {:?}", addr, old_state, command, new_state);
+            } else {
+                return Err(());
             }
         }
+
+        Ok(())
     }
 }
 

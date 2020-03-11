@@ -600,11 +600,10 @@ impl super::StateInner {
     pub fn cmd_quit(&mut self, ctx: CommandContext<'_>, reason: &str) -> Result {
         let mut response = Buffer::new();
         let client = self.clients.remove(ctx.addr).unwrap();
-        response.message(&self.domain, "ERROR").trailing_param(lines::CLOSING_LINK);
+        response.message("", "ERROR").trailing_param(lines::CLOSING_LINK);
         client.send(MessageQueueItem::from(response));
         self.remove_client(ctx.addr, client, if reason.is_empty() {None} else {Some(reason)});
-
-        Err(())
+        Ok(())
     }
 
     // TIME

@@ -47,6 +47,9 @@ fn build_acceptor(p: &path::Path) -> tokio_tls::TlsAcceptor {
     tokio_tls::TlsAcceptor::from(acceptor)
 }
 
+// TODO make listen and listen_tls poll a Notify future and return when they are notified
+// https://docs.rs/tokio/0.2.13/tokio/sync/struct.Notify.html
+
 /// Returns a future that listens, accepts and handles incoming plain-text connections.
 pub async fn listen(addr: SocketAddr, shared: State) -> io::Result<()> {
     let mut ln = net::TcpListener::bind(&addr).await?;
@@ -111,9 +114,8 @@ async fn handle<S>(conn: S, peer_addr: SocketAddr, shared: State)
         Ok(())
     };
 
-    // TODO irssi waiting for server to close connection
-    let res: io::Result<((), ())> = futures::future::try_join(incoming, outgoing).await;
-    shared.peer_quit(&peer_addr, res.err()).await;
+    let res: (io::Result<()>, io::Result<()>) = futures::future::join(incoming, outgoing).await;
+    shared.peer_quit(&peer_addr, res.0.or(res.1).err()).await;
 }
 
 async fn handle_buffer(peer_addr: &SocketAddr, buf: &str, shared: &State) -> io::Result<()> {
@@ -122,7 +124,8 @@ async fn handle_buffer(peer_addr: &SocketAddr, buf: &str, shared: &State) -> io:
     }
 
     if let Some(msg) = Message::parse(buf) {
-        shared.handle_message(peer_addr, msg).await;
+        shared.handle_message(peer_addr, msg).await
+            .map_err(|_| io::Error::from(io::ErrorKind::Other))?;
     }
 
     Ok(())
