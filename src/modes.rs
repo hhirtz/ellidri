@@ -1,7 +1,7 @@
 use std::iter;
 
 pub const USER_MODES: &str = "aiorsw";
-pub const SIMPLE_CHAN_MODES: &str = "aimnqst";
+pub const SIMPLE_CHAN_MODES: &str = "imnst";
 pub const EXTENDED_CHAN_MODES: &str = "beIklov";
 pub const CHANMODES: &str = "CHANMODES=beI,k,l,aimnpqst";
 

@@ -29,6 +29,7 @@ impl TlsIdentityStore {
 
 /// Read the file at `p`, parse the identity and builds a `TlsAcceptor` object.
 fn build_acceptor(p: &path::Path) -> tokio_tls::TlsAcceptor {
+    log::info!("Loading TLS identity from {:?}", p.display());
     let der = fs::read(p).unwrap_or_else(|err| {
         log::error!("Failed to read {:?}: {}", p.display(), err);
         process::exit(1);

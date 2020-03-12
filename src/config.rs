@@ -4,7 +4,54 @@
 //!
 //! [1]: https://git.sr.ht/~taiite/ellidri/tree/master/doc/ellidri.conf
 
-use std::{fs, net, path, process, str};
+use std::{fmt, fs, io, net, path, str};
+use std::collections::{BTreeMap, HashMap};
+use std::ops::Range;
+
+#[derive(Debug)]
+pub enum Error {
+    Io(io::Error),
+    Format(Parser, Option<usize>, Range<usize>, String),
+}
+
+impl From<io::Error> for Error {
+    fn from(val: io::Error) -> Self { Self::Io(val) }
+}
+
+impl fmt::Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Io(err) => err.fmt(f),
+            Self::Format(parser, lineno, col, msg) => {
+                writeln!(f, "{}", msg)?;
+                if let Some(lineno) = lineno {
+                    writeln!(f, "     |")?;
+                    parser.lines.iter().enumerate()
+                        .skip_while(|(lno, _)| lno + 3 < *lineno)
+                        .take_while(|(lno, _)| lno <= lineno)
+                        .try_for_each(|(lno, line)| writeln!(f, "{:4} | {}", lno + 1, line))?;
+                    let start = col.start + 1;
+                    let len = col.end - col.start;
+                    writeln!(f, "     |{0:1$}{2:^<3$}", ' ', start, '^', len)?;
+                }
+                Ok(())
+            }
+        }
+    }
+}
+
+pub type Result<T> = std::result::Result<T, Error>;
+
+fn rangestr(inner: &str, outer: &str) -> Range<usize> {
+    let ilen = inner.len();
+    let inner = inner.as_ptr() as usize;
+    let outer = outer.as_ptr() as usize;
+    let offset = inner - outer;
+    offset..offset + ilen
+}
+
+struct ModeString(pub String);
+struct Oper(pub String, pub String);
 
 /// Settings for `State`.
 #[derive(Default)]
@@ -61,6 +108,197 @@ pub struct Config {
     pub state: State,
 }
 
+pub trait TypeName {
+    fn type_name() -> String;
+}
+
+impl TypeName for usize {
+    fn type_name() -> String { "a positive integer".to_owned() }
+}
+
+impl TypeName for String {
+    fn type_name() -> String { "a string".to_owned() }
+}
+
+impl TypeName for Binding {
+    fn type_name() -> String { "following the format \"bind_to <address> [path]\"".to_owned() }
+}
+
+impl TypeName for ModeString {
+    fn type_name() -> String { "a valid mode string".to_owned() }
+}
+
+impl TypeName for Oper {
+    fn type_name() -> String { "following the format \"oper <name> <password>\"".to_owned() }
+}
+
+impl str::FromStr for ModeString {
+    type Err = ();
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        if crate::modes::is_channel_mode_string(s) {
+            Ok(ModeString(s.to_owned()))
+        } else {
+            Err(())
+        }
+    }
+}
+
+impl str::FromStr for Oper {
+    type Err = ();
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        let mut words = s.split_whitespace();
+        let name = words.next().ok_or(())?;
+        let pass = words.next().ok_or(())?;
+        Ok(Oper(name.to_owned(), pass.to_owned()))
+    }
+}
+
+impl str::FromStr for Binding {
+    type Err = ();
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        let mut words = s.splitn(2, char::is_whitespace).map(str::trim);
+        let address = words.next().ok_or(())?
+            .parse().map_err(|_| ())?;
+        let tls_identity = words.next()
+            .map(|word| word.parse().map_err(|_| ()))
+            .transpose()?;
+        Ok(Binding { address, tls_identity })
+    }
+}
+
+#[derive(Default, Debug)]
+pub struct Parser {
+    lines: Vec<String>,
+    settings: BTreeMap<usize, Setting>,
+    occurences: HashMap<String, Vec<usize>>,
+}
+
+#[derive(Debug, Clone)]
+pub struct Setting {
+    lineno: usize,
+    krange: Range<usize>,
+    vrange: Range<usize>,
+}
+
+impl Parser {
+    pub fn read<P>(path: P) -> Result<Self>
+        where P: AsRef<path::Path>
+    {
+        let lines = fs::read_to_string(path)?.lines().map(str::to_owned).collect();
+        let mut res = Self { lines, ..Self::default() };
+
+        for (lineno, line) in res.lines.iter().enumerate() {
+            let mut split = line.splitn(2, ' ').map(str::trim).filter(|s| !s.is_empty());
+
+            let key = if let Some(key) = split.next() {key} else {continue};
+            if key.starts_with('#') { continue; }
+            let krange = rangestr(key, line);
+
+            let value = if let Some(value) = split.next() {
+                value
+            } else {
+                return Err(res.error(lineno, krange, "this setting has no value"));
+            };
+            let vrange = rangestr(value, line);
+
+            res.settings.insert(lineno, Setting { lineno, krange, vrange });
+            res.occurences.entry(key.to_owned()).or_default().push(lineno);
+        }
+
+        Ok(res)
+    }
+
+    pub fn unique_required_setting<S, F>(self, key: &str, and_then: F) -> Result<Self>
+        where S: str::FromStr + TypeName,
+              F: FnOnce(S),
+    {
+        if !self.occurences.contains_key(key) {
+            return Err(Error::Format(self, None, 0..0, format!("missing setting {:?}", key)));
+        }
+        self.unique_setting(key, and_then)
+    }
+
+    pub fn unique_setting<S, F>(mut self, key: &str, and_then: F) -> Result<Self>
+        where S: str::FromStr + TypeName,
+              F: FnOnce(S),
+    {
+        if let Some(occ) = self.occurences.get(key) {
+            if occ.is_empty() {
+                unreachable!("occurences must not have empty Vecs");
+            }
+            if occ.len() > 1 {
+                let last = *occ.last().unwrap();
+                let setting = &self.settings[&last];
+                let krange = setting.krange.clone();
+                let msg = format!("{:?} must not appear more than once. Specified at lines {:?}",
+                                  key, occ);
+                return Err(self.error(last, krange, msg));
+            }
+            let lineno = occ[0];
+            let setting = &self.settings[&lineno];
+            let value = match self.lines[lineno][setting.vrange.clone()].parse() {
+                Ok(value) => value,
+                Err(_) => {
+                    let msg = format!("this setting must be {}", S::type_name());
+                    let vrange = setting.vrange.clone();
+                    return Err(self.error(lineno, vrange, msg));
+                }
+            };
+            and_then(value);
+        }
+        self.occurences.remove(key);
+        Ok(self)
+    }
+
+    pub fn setting<S, F>(mut self, key: &str, and_then: F) -> Result<Self>
+        where S: str::FromStr + TypeName,
+              F: FnOnce(Vec<S>),
+    {
+        if let Some(occ) = self.occurences.get(key) {
+            if occ.is_empty() {
+                unreachable!("occurences must not have empty Vecs");
+            }
+            let mut res = Vec::new();
+            for setting in occ.iter().map(|lno| self.settings[lno].clone()) {
+                let value = match self.lines[setting.lineno][setting.vrange.clone()].parse() {
+                    Ok(value) => value,
+                    Err(_) => {
+                        let msg = format!("this setting must be {}", S::type_name());
+                        return Err(self.error(setting.lineno, setting.vrange, msg));
+                    }
+                };
+                res.push(value);
+            }
+            and_then(res);
+        }
+        self.occurences.remove(key);
+        Ok(self)
+    }
+
+    pub fn check_unknown_settings(self) -> Result<()> {
+        if let Some((key, occ)) = self.occurences.iter().next() {
+            if occ.is_empty() {
+                unreachable!("occurences must not have empty Vecs");
+            }
+            let lineno = occ[0];
+            let setting = &self.settings[&lineno];
+            let krange = setting.krange.clone();
+            let msg = format!("unknown setting {:?}", key);
+            return Err(self.error(lineno, krange, msg));
+        }
+        Ok(())
+    }
+
+    pub fn error<S>(self, lineno: usize, col: Range<usize>, msg: S) -> Error
+        where S: Into<String>
+    {
+        Error::Format(self, Some(lineno), col, msg.into())
+    }
+}
+
 impl Config {
     pub /*const*/ fn sample() -> Self {
         Self {
@@ -74,165 +312,59 @@ impl Config {
             state: State::sample(),
         }
     }
-}
 
-fn format_error(lineno: u32, msg: &str) -> ! {
-    eprintln!("Config file error at line {}: {}", lineno, msg);
-    process::exit(1);
-}
+    /// Reads the configuration file at the given path.
+    ///
+    /// Exits the program on failure (this behavior could change).
+    pub fn from_file<P>(path: P) -> Result<Config>
+        where P: AsRef<path::Path>
+    {
+        let mut res = Self::default();
+        let mut default_chan_mode = ModeString(String::new());
+        let mut opers = Vec::new();
+        let mut parser = Parser::read(path)?;
 
-fn missing_setting_error(setting: &str) -> ! {
-    eprintln!("Config file error: missing setting {}", setting);
-    process::exit(1);
-}
-
-fn mod_setting<S, F>(setting: &mut S, key: &str, value: &str, lineno: u32, type_str: &str,
-                     validate: F)
-    where S: Default + str::FromStr + PartialEq,
-          F: FnOnce(&S)
-{
-    if setting != &S::default() {
-        format_error(lineno, &format!("duplicate {} setting", key));
-    }
-    let value = value.parse().unwrap_or_else(|_| {
-        format_error(lineno, &format!("expected {}", type_str));
-    });
-    validate(&value);
-    *setting = value;
-}
-
-fn mod_spi_setting(setting: &mut usize, key: &str, value: &str, lineno: u32) {
-    mod_setting(setting, key, value, lineno, "a strictly positive integer", |&value| {
-        if value == 0 {
-            format_error(lineno, "expected a strictly positive number");
+        if cfg!(feature = "threads") {
+            parser = parser.unique_setting("workers", |value| res.workers = value)?;
         }
-    });
-}
 
-fn mod_option_setting<S, F>(setting: &mut Option<S>, key: &str, value: &str, lineno: u32,
-                            type_str: &str, validate: F)
-    where S: str::FromStr,
-          F: FnOnce(&S)
-{
-    if setting.is_some() {
-        format_error(lineno, &format!("duplicate {} setting", key));
-    }
-    let value = value.parse().unwrap_or_else(|_| {
-        format_error(lineno, &format!("expected {}", type_str));
-    });
-    validate(&value);
-    *setting = Some(value);
-}
+        parser
+            .setting("bind_to", |values| res.bindings = values)?
+            .unique_required_setting("domain", |value| res.state.domain = value)?
+            .unique_setting("default_chan_mode", |value| default_chan_mode = value)?
+            .unique_setting("motd_file", |value| res.state.motd_file = Some(value))?
+            .unique_setting("password", |value| res.state.password = Some(value))?
+            .setting("oper", |values| opers = values)?
+            .unique_required_setting("org_name", |value| res.state.org_name = value)?
+            .unique_required_setting("org_location", |value| res.state.org_location = value)?
+            .unique_required_setting("org_mail", |value| res.state.org_mail = value)?
+            .unique_setting("channellen", |value| res.state.channellen = value)?
+            .unique_setting("kicklen", |value| res.state.kicklen = value)?
+            .unique_setting("nicklen", |value| res.state.nicklen = value)?
+            .unique_setting("topiclen", |value| res.state.topiclen = value)?
+            .unique_setting("userlen", |value| res.state.userlen = value)?
+            .check_unknown_settings()?;
 
-fn add_setting(config: &mut Config, key: &str, value: &str, lineno: u32) {
-    if key == "bind_to" {
-        let address = value.parse().unwrap_or_else(|_| format_error(lineno, "expected IP address"));
-        config.bindings.push(Binding { address, tls_identity: None });
-    } else if key == "with_tls" {
-        if config.bindings.is_empty() {
-            format_error(lineno, "with_tls must be set after a bind_to setting");
+        res.state.default_chan_mode = default_chan_mode.0;
+        for Oper(name, pass) in opers {
+            res.state.opers.push((name, pass));
         }
-        let last = config.bindings.len() - 1;
-        if config.bindings[last].tls_identity.is_some() {
-            format_error(lineno, "duplicate with_tls setting");
+
+        res.validate()?;
+        Ok(res)
+    }
+
+    fn validate(&mut self) -> Result<()> {
+        let def = Config::sample();
+
+        if self.state.default_chan_mode.is_empty() {
+            self.state.default_chan_mode = def.state.default_chan_mode;
         }
-        let id = value.parse().unwrap_or_else(|_| format_error(lineno, "expected a path"));
-        config.bindings[last].tls_identity = Some(id);
-    } else if cfg!(feature = "threads") && key == "workers" {
-        mod_setting(&mut config.workers, key, value, lineno, "a positive integer", |&value| {
-            if 32768 < value {
-                format_error(lineno, "workers should be between 0 and 32768");
-            }
-        });
-    } else if key == "domain" {
-        mod_setting(&mut config.state.domain, key, value, lineno, "", |_| ());
-    } else if key == "default_chan_mode" {
-        mod_setting(&mut config.state.default_chan_mode, key, value, lineno, "", |value| {
-            if !crate::modes::is_channel_mode_string(value) {
-                format_error(lineno, "default_chan_mode is not a valid mode string");
-            }
-        });
-    } else if key == "motd_file" {
-        mod_option_setting(&mut config.state.motd_file, key, value, lineno, "", |_| ());
-    } else if key == "password" {
-        mod_option_setting(&mut config.state.password, key, value, lineno, "", |_| ());
-    } else if key == "oper" {
-        let mut words = value.split_whitespace();
-        let oper_name = words.next().unwrap();
-        let oper_pass = words.next().unwrap_or_else(|| {
-            format_error(lineno, "oper must follow the format 'oper <name> <password>'");
-        });
-        config.state.opers.push((oper_name.to_owned(), oper_pass.to_owned()));
-    } else if key == "org_name" {
-        mod_setting(&mut config.state.org_name, key, value, lineno, "", |_| ());
-    } else if key == "org_location" {
-        mod_setting(&mut config.state.org_location, key, value, lineno, "", |_| ());
-    } else if key == "org_mail" {
-        mod_setting(&mut config.state.org_mail, key, value, lineno, "", |_| ());
-    } else if key == "channellen" {
-        mod_spi_setting(&mut config.state.channellen, key, value, lineno);
-    } else if key == "kicklen" {
-        mod_spi_setting(&mut config.state.kicklen, key, value, lineno);
-    } else if key == "nicklen" {
-        mod_spi_setting(&mut config.state.nicklen, key, value, lineno);
-    } else if key == "topiclen" {
-        mod_spi_setting(&mut config.state.topiclen, key, value, lineno);
-    } else if key == "userlen" {
-        mod_spi_setting(&mut config.state.userlen, key, value, lineno);
-    } else {
-        format_error(lineno, "unknown setting");
+        if self.state.channellen == 0 { self.state.channellen = def.state.channellen; }
+        if self.state.kicklen == 0 { self.state.kicklen = def.state.kicklen; }
+        if self.state.nicklen == 0 { self.state.nicklen = def.state.kicklen; }
+        if self.state.topiclen == 0 { self.state.topiclen = def.state.topiclen; }
+        if self.state.userlen == 0 { self.state.userlen = def.state.userlen; }
+        Ok(())
     }
-}
-
-fn validate(config: &mut Config) {
-    let def = Config::sample();
-
-    if config.bindings.is_empty() {
-        missing_setting_error("bind_to");
-    }
-    if config.state.domain.is_empty() {
-        missing_setting_error("domain");
-    }
-    if config.state.default_chan_mode.is_empty() {
-        config.state.default_chan_mode = def.state.default_chan_mode;
-    }
-    if config.state.org_name.is_empty() {
-        missing_setting_error("org_name");
-    }
-    if config.state.org_location.is_empty() {
-        missing_setting_error("org_location");
-    }
-    if config.state.org_mail.is_empty() {
-        missing_setting_error("org_mail");
-    }
-    if config.state.channellen == 0 { config.state.channellen = def.state.channellen; }
-    if config.state.kicklen == 0 { config.state.kicklen = def.state.kicklen; }
-    if config.state.nicklen == 0 { config.state.nicklen = def.state.kicklen; }
-    if config.state.topiclen == 0 { config.state.topiclen = def.state.topiclen; }
-    if config.state.userlen == 0 { config.state.userlen = def.state.userlen; }
-}
-
-/// Reads the configuration file at the given path.
-///
-/// Exits the program on failure (this behavior could change).
-pub fn from_file(filename: String) -> Config {
-    let contents = fs::read_to_string(&filename).unwrap_or_else(|err| {
-        eprintln!("Could not open {:?}: {}", filename, err);
-        process::exit(1);
-    });
-    let mut res = Config::default();
-
-    for (line, lineno) in contents.lines().zip(1..) {
-        let mut split = line.splitn(2, ' ').map(str::trim).filter(|s| !s.is_empty());
-        let key = if let Some(key) = split.next() {key} else {continue};
-        if key.starts_with('#') {
-            continue;
-        }
-        let value = split.next().unwrap_or_else(|| format_error(lineno, "setting with no value"));
-        add_setting(&mut res, key, value, lineno);
-    }
-
-    validate(&mut res);
-
-    res
 }

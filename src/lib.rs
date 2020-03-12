@@ -45,8 +45,6 @@ pub fn start() {
         env::set_var("RUST_BACKTRACE", "1");
     }
 
-    let cfg = config::from_file(config_path);
-
     let log_settings = env_logger::Env::new()
         .filter_or("ELLIDRI_LOG", "ellidri=debug")
         .write_style("ELLIDRI_LOG_STYLE");
@@ -57,6 +55,10 @@ pub fn start() {
         })
         .init();
 
+    let cfg = Config::from_file(&config_path).unwrap_or_else(|err| {
+        log::error!("Failed to read {:?}: {}", config_path, err);
+        process::exit(1);
+    });
     let mut runtime = runtime(&cfg);
     let shared = State::new(cfg.state);
 
