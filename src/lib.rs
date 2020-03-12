@@ -35,11 +35,15 @@ mod util;
 
 /// The beginning of everything
 pub fn start() {
-    // TODO handle --help -h --version -v
-    let config_path = env::args().nth(1).unwrap_or_else(|| {
-        eprintln!("Usage: {} CONFIG_FILE", env::args().nth(0).unwrap());
-        process::exit(1);
-    });
+    let matches = clap::App::new(env!("CARGO_PKG_NAME"))
+        .version(env!("CARGO_PKG_VERSION"))
+        .author(env!("CARGO_PKG_AUTHORS"))
+        .about(env!("CARGO_PKG_DESCRIPTION"))
+        .arg(clap::Arg::with_name("CONFIG_FILE")
+            .help("ellidri's configuration file")
+            .required(true))
+        .get_matches();
+    let config_path = matches.value_of("CONFIG_FILE").unwrap();
 
     if cfg!(debug_assertions) {
         env::set_var("RUST_BACKTRACE", "1");

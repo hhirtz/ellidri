@@ -34,7 +34,8 @@ tokio-tls = { version = "0.3", default-features = false }
 # Separated from the main crate because it contains unsafe code.
 ellidri-unicase = { version = "1.0.0", path = "ellidri-unicase" }
 
-# Logging
+# Logging and CLI
+clap = { version = "2.33", default-features = false }
 env_logger = { version = "0.7", default-features = false }
 log = { version = "0.4", default-features = false, features = ["max_level_trace", "release_max_level_info"] }
 
