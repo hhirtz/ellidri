@@ -269,11 +269,29 @@ pub fn simple_channel_query(modes: &str) -> impl Iterator<Item=Result<ChannelMod
 }
 
 /// Whether the given string is a valid channel MODE query.
+///
+/// **Note:** the string must not contain spaces nor mode params.
+///
+/// # Example
+///
+/// ```rust
+/// # use ellidri::modes;
+/// assert!(modes::is_channel_mode_string("+nt"));
+/// assert!(!modes::is_channel_mode_string("+X"));
+/// ```
 pub fn is_channel_mode_string(s: &str) -> bool {
     simple_channel_query(s).all(|r| r.is_ok())
 }
 
 /// Whether the channel MODE query needs chanop priviledges.
+///
+/// # Example
+///
+/// ```rust
+/// # use ellidri::modes;
+/// assert!(modes::needs_chanop("+o"));
+/// assert!(!modes::needs_chanop("+b"));
+/// ```
 pub fn needs_chanop(modes: &str) -> bool {
     simple_channel_query(modes).any(|mode| match mode {
         Ok(ChannelModeChange::GetBans) | Ok(ChannelModeChange::GetExceptions)
