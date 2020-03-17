@@ -16,6 +16,16 @@ categories = ["network-programming"]
 license = "ISC"
 
 
+[features]
+default = ["postgres", "sqlite"]
+
+# PostgreSQL support
+postgres = ["r2d2", "r2d2_postgres", "tokio-postgres"]
+
+# SQLite support
+sqlite = ["r2d2", "r2d2_sqlite", "rusqlite"]
+
+
 [dependencies]
 # Async runtime
 futures = { version = "0.3", default-features = false, features = ["std"] }
@@ -47,8 +57,8 @@ uuid = { version = "0.8", default-features = false, features = ["std"] }
 
 # SASL
 base64 = { version = "0.12", default-features = false, features = ["std"] }
-r2d2 = { version = "0.8", default-features = false }
-r2d2_sqlite = { version = "0.14", default-features = false }
-r2d2_postgres = { version = "0.16", default-features = false }
-rusqlite = { version = "0.21", default-features = false }
-tokio-postgres = { version = "0.5", default-features = false }
+r2d2 = { version = "0.8", default-features = false, optional = true }
+r2d2_sqlite = { version = "0.14", default-features = false, optional = true }
+r2d2_postgres = { version = "0.16", default-features = false, optional = true }
+rusqlite = { version = "0.21", default-features = false, optional = true }
+tokio-postgres = { version = "0.5", default-features = false, optional = true }

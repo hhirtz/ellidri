@@ -58,6 +58,7 @@ pub trait Plain {
     fn plain(&self, user: &str, pass: &str) -> Result<(), ()>;
 }
 
+#[cfg(feature = "sqlite")]
 impl Plain for r2d2::Pool<r2d2_sqlite::SqliteConnectionManager> {
     fn plain(&self, user: &str, pass: &str) -> Result<(), ()> {
         let conn = self.get().map_err(|_| ())?;
@@ -71,6 +72,7 @@ impl Plain for r2d2::Pool<r2d2_sqlite::SqliteConnectionManager> {
     }
 }
 
+#[cfg(feature = "postgres")]
 impl<T> Plain for r2d2::Pool<r2d2_postgres::PostgresConnectionManager<T>>
     where T: tokio_postgres::tls::MakeTlsConnect<tokio_postgres::Socket> + Clone + Sync + Send + 'static,
           T::TlsConnect: Send,
@@ -86,10 +88,12 @@ impl<T> Plain for r2d2::Pool<r2d2_postgres::PostgresConnectionManager<T>>
     }
 }
 
+#[cfg(any(feature = "postgres", feature = "sqlite"))]
 pub struct DbProvider<M: r2d2::ManageConnection> {
     pool: r2d2::Pool<M>,
 }
 
+#[cfg(any(feature = "postgres", feature = "sqlite"))]
 impl<M> DbProvider<M>
     where M: r2d2::ManageConnection
 {
@@ -99,6 +103,7 @@ impl<M> DbProvider<M>
     }
 }
 
+#[cfg(any(feature = "postgres", feature = "sqlite"))]
 impl<M> Provider for DbProvider<M>
     where M: r2d2::ManageConnection,
           r2d2::Pool<M>: Plain,
@@ -142,6 +147,7 @@ impl<M> Provider for DbProvider<M>
 
 fn choose_db_provider(url: db::Url) -> Result<Box<dyn Provider>, Box<dyn std::error::Error>> {
     match url.0 {
+        #[cfg(feature = "sqlite")]
         db::Driver::Sqlite => {
             log::info!("Loading SQLite database at {:?}", url.1);
             let manager = r2d2_sqlite::SqliteConnectionManager::file(&url.1);
@@ -158,6 +164,7 @@ fn choose_db_provider(url: db::Url) -> Result<Box<dyn Provider>, Box<dyn std::er
 
             Ok(Box::new(provider))
         }
+        #[cfg(feature = "postgres")]
         db::Driver::Postgres => {
             let no_tls = r2d2_postgres::postgres::NoTls;
             let config = url.1.parse()?;

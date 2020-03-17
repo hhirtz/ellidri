@@ -84,7 +84,9 @@ impl Default for SaslBackend {
 
 pub mod db {
     pub enum Driver {
+        #[cfg(feature = "sqlite")]
         Sqlite,
+        #[cfg(feature = "postgres")]
         Postgres,
     }
 

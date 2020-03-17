@@ -47,11 +47,31 @@ impl TypeName for SaslBackend {
 }
 
 impl TypeName for db::Driver {
-    fn type_name() -> String { "\"sqlite\" or \"postgres\"".to_owned() }
+    fn type_name() -> String {
+        if cfg!(all(feature = "sqlite", feature = "postgres")) {
+            "\"sqlite\" or \"postgres\"".to_owned()
+        } else if cfg!(feature = "sqlite") {
+            "\"sqlite\"".to_owned()
+        } else if cfg!(feature = "postgres") {
+            "\"postgres\"".to_owned()
+        } else {
+            "omitted, ellidri hasn't been built with database support".to_owned()
+        }
+    }
 }
 
 impl TypeName for db::Url {
-    fn type_name() -> String { "\"sqlite://...\", \"postgres://...\", etc.".to_owned() }
+    fn type_name() -> String {
+        if cfg!(all(feature = "sqlite", feature = "postgres")) {
+            "an url like \"sqlite://...\" or \"postgres://...\"".to_owned()
+        } else if cfg!(feature = "sqlite") {
+            "an url like \"sqlite://...\"".to_owned()
+        } else if cfg!(feature = "postgres") {
+            "an url like \"postgres://...\"".to_owned()
+        } else {
+            "omitted, ellidri hasn't been built with database support".to_owned()
+        }
+    }
 }
 
 impl str::FromStr for SaslBackend {
@@ -71,7 +91,9 @@ impl str::FromStr for db::Driver {
 
     fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
         match s {
+            #[cfg(feature = "sqlite")]
             "sqlite" => Ok(Self::Sqlite),
+            #[cfg(feature = "postgres")]
             "postgres" | "postgresql" | "psql" => Ok(Self::Postgres),
             _ => Err(()),
         }

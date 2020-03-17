@@ -8,7 +8,7 @@ sources:
 tasks:
     - build: |
         cd ellidri
-        cargo build --locked
+        cargo build --locked --no-default-features
     - test: |
         cd ellidri
-        RUST_BACKTRACE=1 cargo test --locked --no-fail-fast
+        RUST_BACKTRACE=1 cargo test --locked --no-fail-fast --no-default-features
