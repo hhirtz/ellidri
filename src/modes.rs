@@ -1,10 +1,22 @@
+//! Mode parsing and validation
+
 use std::iter;
 
+/// User modes supported by ellidri.  Advertised in welcome messages.
 pub const USER_MODES: &str = "aiorsw";
+
+/// Channel modes that have no parameters and are supported by ellidri.  Advertised in welcome
+/// messages.
 pub const SIMPLE_CHAN_MODES: &str = "imnst";
+
+/// Channel modes that require a parameter and are supported by ellidri.  Advertised in welcome
+/// messages.
 pub const EXTENDED_CHAN_MODES: &str = "beIklov";
+
+/// CHANMODES feature advertised in RPL_ISUPPORT.
 pub const CHANMODES: &str = "CHANMODES=beI,k,l,aimnpqst";
 
+/// Iterator over the modes of a string.
 struct SimpleQuery<'a> {
     modes: &'a [u8],
     value: bool,
@@ -40,26 +52,37 @@ impl Iterator for SimpleQuery<'_> {
     }
 }
 
+/// *_query related errors.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Error {
+    /// One of the modes in the query is unknown.
     UnknownMode(char),
+
+    /// A mode is missing its required parameter.
     MissingModeParam,
+
+    /// This mode is supported by ellidri, but cannot be setted with the MODE command.
     UnsettableMode
 }
 
+/// Alias to std's Result using this module's Error.
 pub type Result<T> = std::result::Result<T, Error>;
 
-#[derive(Clone, Copy, Debug)]
+/// Item of a user mode query.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum UserModeChange {
     Invisible(bool),
 }
 
 impl UserModeChange {
+    /// Whether this change is enabling or disabling a mode.
     pub fn value(self) -> bool {
         match self {
             Self::Invisible(v) => v,
         }
     }
 
+    /// The letter of this mode change.
     pub fn symbol(self) -> char {
         match self {
             Self::Invisible(_) => 'i',
@@ -67,6 +90,22 @@ impl UserModeChange {
     }
 }
 
+/// An iterator over the changes of a MODE query.
+///
+/// # Example
+///
+/// ```rust
+/// # use ellidri::modes;
+/// # use ellidri::modes::UserModeChange;
+/// let mut query = modes::user_query("+ii-iXa");
+///
+/// assert_eq!(query.next(), Some(Ok(UserModeChange::Invisible(true))));
+/// assert_eq!(query.next(), Some(Ok(UserModeChange::Invisible(true))));
+/// assert_eq!(query.next(), Some(Ok(UserModeChange::Invisible(false))));
+/// assert_eq!(query.next(), Some(Err(Error::UnknownMode('X'))));
+/// assert_eq!(query.next(), Some(Err(Error::UnsettableMode)));
+/// assert_eq!(query.next(), None);
+/// ```
 pub fn user_query(modes: &str) -> impl Iterator<Item=Result<UserModeChange>> + '_ {
     SimpleQuery::new(modes).map(|(value, mode)| {
         match mode {
@@ -77,7 +116,8 @@ pub fn user_query(modes: &str) -> impl Iterator<Item=Result<UserModeChange>> + '
     })
 }
 
-#[derive(Clone, Copy, Debug)]
+/// Item of a channel mode query.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ChannelModeChange<'a> {
     InviteOnly(bool),
     Moderated(bool),
@@ -96,7 +136,8 @@ pub enum ChannelModeChange<'a> {
     ChangeVoice(bool, &'a str),
 }
 
-impl<'a> ChannelModeChange<'a> {
+impl ChannelModeChange<'_> {
+    /// Whether this change is enabling or disabling a mode.
     pub fn value(&self) -> bool {
         use ChannelModeChange::*;
         match self {
@@ -116,6 +157,7 @@ impl<'a> ChannelModeChange<'a> {
         }
     }
 
+    /// The letter of this mode change.
     pub fn symbol(&self) -> Option<char> {
         use ChannelModeChange::*;
         match self {
@@ -135,7 +177,8 @@ impl<'a> ChannelModeChange<'a> {
         }
     }
 
-    pub fn param(&self) -> Option<&'a str> {
+    /// The parameter of this mode change.
+    pub fn param(&self) -> Option<&str> {
         use ChannelModeChange::*;
         match self {
             Key(_, p) | ChangeBan(_, p) | ChangeException(_, p) | ChangeInvitation(_, p)
@@ -146,6 +189,23 @@ impl<'a> ChannelModeChange<'a> {
     }
 }
 
+/// An iterator over the changes of a MODE query.
+///
+/// # Example
+///
+/// ```rust
+/// # use ellidri::modes;
+/// # use ellidri::modes::{ChannelModeChange, Error};
+/// let mut query = modes::channel_query("-olX+kmv", &["admin", "secret_key"]);
+///
+/// assert_eq!(query.next(), Some(Ok(ChannelModeChange::ChangeOperator(false, "admin"))));
+/// assert_eq!(query.next(), Some(Ok(ChannelModeChange::UserLimit(None))));
+/// assert_eq!(query.next(), Some(Err(Error::UnknownMode('X'))));
+/// assert_eq!(query.next(), Some(Ok(ChannelModeChange::Key(true, "secret_key"))));
+/// assert_eq!(query.next(), Some(Ok(ChannelModeChange::Moderated(true))));
+/// assert_eq!(query.next(), Some(Err(Error::MissingModeParam)));
+/// assert_eq!(query.next(), None);
+/// ```
 pub fn channel_query<'a, I>(modes: &'a str, params: I)
     -> impl Iterator<Item=Result<ChannelModeChange<'a>>>
 where
@@ -203,14 +263,17 @@ where
     })
 }
 
+/// Same as `channel_query`, but with no mode parameters.
 pub fn simple_channel_query(modes: &str) -> impl Iterator<Item=Result<ChannelModeChange<'_>>> {
     channel_query(modes, iter::empty())
 }
 
+/// Whether the given string is a valid channel MODE query.
 pub fn is_channel_mode_string(s: &str) -> bool {
     simple_channel_query(s).all(|r| r.is_ok())
 }
 
+/// Whether the channel MODE query needs chanop priviledges.
 pub fn needs_chanop(modes: &str) -> bool {
     simple_channel_query(modes).any(|mode| match mode {
         Ok(ChannelModeChange::GetBans) | Ok(ChannelModeChange::GetExceptions)

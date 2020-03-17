@@ -2,11 +2,11 @@
 //!
 //! # Usage
 //!
-//! You need a configuration file, and pass its name as an argument. The git
-//! repository contains an example `ellidri.conf`, with comments describing the
-//! different options. The `config` module also has documentation about it.
+//! You need a configuration file, and pass its name as an argument. The git repository contains an
+//! example `doc/ellidri.conf`, with comments describing the different options.
 //!
-//! During development: `cargo run -- ellidri.conf`
+//!
+//! During development: `cargo run -- doc/ellidri.conf`
 //!
 //! For an optimized build:
 //!
@@ -28,7 +28,7 @@ mod client;
 pub mod config;
 mod lines;
 pub mod message;
-mod modes;
+pub mod modes;
 mod net;
 mod state;
 mod util;
