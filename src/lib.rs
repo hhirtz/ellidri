@@ -23,6 +23,7 @@ pub use crate::config::Config;
 pub use crate::state::State;
 use std::{env, process};
 
+mod auth;
 mod channel;
 mod client;
 pub mod config;
@@ -63,8 +64,13 @@ pub fn start() {
         log::error!("Failed to read {:?}: {}", config_path, err);
         process::exit(1);
     });
-    let mut runtime = runtime(&cfg);
-    let shared = State::new(cfg.state);
+    let sasl_backend = cfg.sasl_backend;
+    let auth_provider = auth::choose_provider(sasl_backend, cfg.db_url).unwrap_or_else(|err| {
+        log::warn!("Failed to initialize the {:?} SASL backend: {}", sasl_backend, err);
+        Box::new(auth::DummyProvider)
+    });
+    let mut runtime = runtime(cfg.workers);
+    let shared = State::new(cfg.state, auth_provider);
 
     let mut store = net::TlsIdentityStore::default();
     for config::Binding { address, tls_identity } in cfg.bindings {

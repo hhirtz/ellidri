@@ -6,3 +6,4 @@ target/
 
 *.pem
 *.pfx
+*.db

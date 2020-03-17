@@ -99,6 +99,16 @@ pub mod rpl {
 
     pub const ERR_UMODEUNKNOWNFLAG: Reply = "501";  // :Unknown mode flag
     pub const ERR_USERSDONTMATCH: Reply   = "502";  // :Can't change mode for other users
+
+    pub const LOGGEDIN: Reply        = "900";  // <nick> <nick>!<ident>@<host> <account> :You are now logged in as <user>
+    pub const LOGGEDOUT: Reply       = "901";  // <nick> <nick>!<ident>@<host> :You are now logged out
+    pub const ERR_NICKLOCKED: Reply  = "902";  // :You must use a nick assigned to you
+    pub const SASLSUCCESS: Reply     = "903";  // :SASL authentication successful
+    pub const ERR_SASLFAIL: Reply    = "904";  // :SASL authentication failed
+    pub const ERR_SASLTOOLONG: Reply = "905";  // :SASL message too long
+    pub const ERR_SASLABORTED: Reply = "906";  // :SASL authentication aborted
+    pub const ERR_SASLALREADY: Reply = "907";  // :You have already authenticated using SASL
+    pub const SASLMECHS: Reply       = "908";  // <mechanisms> :are available SASL mechanisms
 }
 
 /// Returns `(word, rest)` where `word` is the first word of the given string and `rest` is the
@@ -165,7 +175,7 @@ pub struct Tag<'a> {
 }
 
 impl<'a> Tag<'a> {
-    pub fn parse(buf: &'a str) -> Tag<'a> {
+    pub fn parse(buf: &'a str) -> Self {
         let mut split = buf.splitn(2, '=');
         let key = split.next().unwrap();
         let value = match split.next() {
@@ -177,7 +187,7 @@ impl<'a> Tag<'a> {
             }
         };
         let is_client = key.starts_with('+');
-        Tag {
+        Self {
             key: if is_client {&key[1..]} else {key},
             value,
             is_client,
@@ -219,7 +229,7 @@ macro_rules! commands {
             /// assert_eq!(join2, Some(Command::Join));
             /// assert_eq!(not_join, None);
             /// ```
-            pub fn parse(s: &str) -> Option<Command> {
+            pub fn parse(s: &str) -> Option<Self> {
                 $( if s.eq_ignore_ascii_case(stringify!($cmd)) {
                     Some(Command::$cmd)
                 } else )* {
@@ -275,7 +285,7 @@ macro_rules! commands {
             ///
             /// This trait is used by `Buffer` to accept both `Command` and `Reply` when
             /// building messages.
-            fn from(reply: &'static str) -> Command {
+            fn from(reply: &'static str) -> Self {
                 Command::Reply(reply)
             }
         }
@@ -290,6 +300,7 @@ macro_rules! commands {
 
 commands! {
     Admin => 0,
+    Authenticate => 1,
     Cap => 1,
     Info => 0,
     Invite => 2,
@@ -488,7 +499,7 @@ pub struct MessageBuffer<'a> {
 }
 
 impl<'a> MessageBuffer<'a> {
-    fn with_prefix<C>(buf: &'a mut String, prefix: &str, command: C) -> MessageBuffer<'a>
+    fn with_prefix<C>(buf: &'a mut String, prefix: &str, command: C) -> Self
         where C: Into<Command>
     {
         if !prefix.is_empty() {
@@ -518,7 +529,7 @@ impl<'a> MessageBuffer<'a> {
     ///
     /// assert_eq!(&response.build(), ":nick!user@127.0.0.1 Quit chiao\r\n");
     /// ```
-    pub fn param(self, param: &str) -> MessageBuffer<'a>
+    pub fn param(self, param: &str) -> Self
     {
         let param = param.trim();
         if param.is_empty() {
@@ -617,7 +628,8 @@ pub struct TagBuffer<'a> {
 }
 
 impl<'a> TagBuffer<'a> {
-    fn new(buf: &'a mut String) -> TagBuffer<'a> {
+    fn new(buf: &'a mut String) -> Self {
+        buf.reserve(MESSAGE_LENGTH);
         let tag_start = buf.len();
         buf.push('@');
         TagBuffer {
@@ -630,7 +642,7 @@ impl<'a> TagBuffer<'a> {
         self.buf.len() == self.tag_start + 1
     }
 
-    pub fn tag(self, key: &str, value: Option<&str>) -> TagBuffer<'a> {
+    pub fn tag(self, key: &str, value: Option<&str>) -> Self {
         if !self.is_empty() {
             self.buf.push(';');
         }
@@ -642,7 +654,7 @@ impl<'a> TagBuffer<'a> {
         self
     }
 
-    fn raw_tag(self, s: &str) -> TagBuffer<'a> {
+    fn raw_tag(self, s: &str) -> Self {
         if !self.is_empty() {
             self.buf.push(';');
         }
@@ -650,7 +662,7 @@ impl<'a> TagBuffer<'a> {
         self
     }
 
-    pub fn save_tags_len(self, out: &mut usize) -> TagBuffer<'a> {
+    pub fn save_tags_len(self, out: &mut usize) -> Self {
         if self.buf.ends_with('@') {
             *out = 0;
         } else {
@@ -822,7 +834,7 @@ pub struct ReplyBuffer {
 impl ReplyBuffer {
     /// Creates a new `ReplyBuffer` and initialize the thread-local storage with the given domain
     /// and nickname.
-    pub fn new(domain: &str, nickname: &str) -> ReplyBuffer {
+    pub fn new(domain: &str, nickname: &str) -> Self {
         DOMAIN.with(|s| {
             let mut s = s.borrow_mut();
             s.clear();
@@ -833,7 +845,7 @@ impl ReplyBuffer {
             n.clear();
             n.push_str(nickname);
         });
-        ReplyBuffer {
+        Self {
             buf: Buffer::new(),
         }
     }

@@ -73,7 +73,7 @@ impl ConnectionState {
             ConnectionState::ConnectionEstablished => match command {
                 Command::Cap if sub_command == "LS" => Ok(ConnectionState::CapGiven),
                 Command::Cap if sub_command == "REQ" => Ok(ConnectionState::CapGiven),
-                Command::Cap | Command::Pass => Ok(self),
+                Command::Authenticate | Command::Cap | Command::Pass => Ok(self),
                 Command::Nick => Ok(ConnectionState::NickGiven),
                 Command::User => Ok(ConnectionState::UserGiven),
                 Command::Quit => Ok(ConnectionState::Quit),
@@ -82,7 +82,7 @@ impl ConnectionState {
             ConnectionState::NickGiven => match command {
                 Command::Cap if sub_command == "LS" => Ok(ConnectionState::CapNickGiven),
                 Command::Cap if sub_command == "REQ" => Ok(ConnectionState::CapNickGiven),
-                Command::Cap | Command::Nick | Command::Pass => Ok(self),
+                Command::Authenticate | Command::Cap | Command::Nick | Command::Pass => Ok(self),
                 Command::User => Ok(ConnectionState::Registered),
                 Command::Quit => Ok(ConnectionState::Quit),
                 _ => Err(()),
@@ -90,14 +90,14 @@ impl ConnectionState {
             ConnectionState::UserGiven => match command {
                 Command::Cap if sub_command == "LS" => Ok(ConnectionState::CapUserGiven),
                 Command::Cap if sub_command == "REQ" => Ok(ConnectionState::CapUserGiven),
-                Command::Cap | Command::Pass => Ok(self),
+                Command::Authenticate | Command::Cap | Command::Pass => Ok(self),
                 Command::Nick => Ok(ConnectionState::Registered),
                 Command::Quit => Ok(ConnectionState::Quit),
                 _ => Err(()),
             }
             ConnectionState::CapGiven => match command {
                 Command::Cap if sub_command == "END" => Ok(ConnectionState::ConnectionEstablished),
-                Command::Cap | Command::Pass => Ok(self),
+                Command::Authenticate | Command::Cap | Command::Pass => Ok(self),
                 Command::Nick => Ok(ConnectionState::CapNickGiven),
                 Command::User => Ok(ConnectionState::CapUserGiven),
                 Command::Quit => Ok(ConnectionState::Quit),
@@ -105,21 +105,21 @@ impl ConnectionState {
             }
             ConnectionState::CapNickGiven => match command {
                 Command::Cap if sub_command == "END" => Ok(ConnectionState::NickGiven),
-                Command::Cap | Command::Pass | Command::Nick => Ok(self),
+                Command::Authenticate | Command::Cap | Command::Pass | Command::Nick => Ok(self),
                 Command::User => Ok(ConnectionState::CapNegotiation),
                 Command::Quit => Ok(ConnectionState::Quit),
                 _ => Err(()),
             }
             ConnectionState::CapUserGiven => match command {
                 Command::Cap if sub_command == "END" => Ok(ConnectionState::UserGiven),
-                Command::Cap | Command::Pass => Ok(self),
+                Command::Authenticate | Command::Cap | Command::Pass => Ok(self),
                 Command::Nick => Ok(ConnectionState::CapNegotiation),
                 Command::Quit => Ok(ConnectionState::Quit),
                 _ => Err(()),
             }
             ConnectionState::CapNegotiation => match command {
                 Command::Cap if sub_command == "END" => Ok(ConnectionState::Registered),
-                Command::Cap | Command::Pass | Command::Nick => Ok(self),
+                Command::Authenticate | Command::Cap | Command::Pass | Command::Nick => Ok(self),
                 Command::Quit => Ok(ConnectionState::Quit),
                 _ => Err(()),
             }
@@ -139,12 +139,12 @@ impl ConnectionState {
 
 // TODO factorize this with a macro?
 pub mod cap {
-    use super::*;
     use std::collections::HashSet;
 
     pub const CAP_NOTIFY: &str   = "cap-notify";
     pub const ECHO_MESSAGE: &str = "echo-message";
     pub const MESSAGE_TAGS: &str = "message-tags";
+    pub const SASL: &str = "sasl";
     pub const SERVER_TIME: &str = "server-time";
 
     // TODO replace with const fn
@@ -153,18 +153,15 @@ pub mod cap {
             [ CAP_NOTIFY
             , ECHO_MESSAGE
             , MESSAGE_TAGS
+            , SASL
             , SERVER_TIME
             ].iter().cloned().collect();
     }
 
-    pub const LS: &str = "cap-notify echo-message message-tags server-time";
+    pub const LS_COMMON: &str = "cap-notify echo-message message-tags server-time";
 
     pub fn are_supported(capabilities: &str) -> bool {
         query(capabilities).all(|(cap,  _)| ALL.contains(cap))
-    }
-
-    pub fn write_ls(response: &mut ReplyBuffer) {
-        response.reply(Command::Cap).param("LS").trailing_param(cap::LS);
     }
 
     pub fn query(buf: &str) -> impl Iterator<Item=(&str, bool)> {
@@ -178,12 +175,16 @@ pub mod cap {
     }
 }
 
+pub const AUTHENTICATE_CHUNK_LEN: usize = 400;
+pub const AUTHENTICATE_WHOLE_LEN: usize = 1024;
+
 #[derive(Default)]
 pub struct Capabilities {
     pub v302: bool,
     pub cap_notify: bool,
     pub echo_message: bool,
     pub message_tags: bool,
+    pub sasl: bool,
     pub server_time: bool,
 }
 
@@ -205,11 +206,15 @@ pub struct Client {
 
     pub capabilities: Capabilities,
     state: ConnectionState,
+    auth_buffer: String,
+    auth_buffer_complete: bool,
+    auth_id: Option<usize>,
 
     nick: String,
     user: String,
     real: String,
     host: String,
+    identity: Option<String>,
 
     /// The nick!user@host
     full_name: String,
@@ -237,18 +242,19 @@ impl Client {
     /// the realname are set to empty strings.
     pub fn new(queue: MessageQueue, host: String) -> Self {
         let now = time();
-        let mut full_name = String::with_capacity(FULL_NAME_LENGTH);
-        full_name.push('*');
-        full_name.push_str(&host);
         Self {
             queue,
-            nick: String::from("*"),
-            host,
-            full_name,
+            full_name: String::with_capacity(FULL_NAME_LENGTH),
             capabilities: Capabilities::default(),
             state: ConnectionState::default(),
+            auth_buffer: String::new(),
+            auth_buffer_complete: false,
+            auth_id: None,
+            nick: String::from("*"),
             user: String::new(),
             real: String::new(),
+            host,
+            identity: None,
             signon_time: now,
             last_action_time: now,
             has_given_password: false,
@@ -270,6 +276,7 @@ impl Client {
                 cap::CAP_NOTIFY => self.capabilities.cap_notify = enable,
                 cap::ECHO_MESSAGE => self.capabilities.echo_message = enable,
                 cap::MESSAGE_TAGS => self.capabilities.message_tags = enable,
+                cap::SASL => self.capabilities.sasl = enable,
                 cap::SERVER_TIME => self.capabilities.server_time = enable,
                 _ => {}
             }
@@ -299,6 +306,10 @@ impl Client {
             trailing.push_str(cap::MESSAGE_TAGS);
             trailing.push(' ');
         }
+        if self.capabilities.sasl {
+            trailing.push_str(cap::SASL);
+            trailing.push(' ');
+        }
         if self.capabilities.server_time {
             trailing.push_str(cap::SERVER_TIME);
             trailing.push(' ');
@@ -326,6 +337,45 @@ impl Client {
 
     pub fn is_registered(&self) -> bool {
         self.state == ConnectionState::Registered
+    }
+
+    pub fn auth_id(&self) -> Option<usize> {
+        self.auth_id
+    }
+
+    pub fn auth_set_id(&mut self, auth_id: usize) {
+        self.auth_id = Some(auth_id);
+    }
+
+    pub fn auth_buffer_push(&mut self, buf: &str) -> Result<bool, ()> {
+        if self.auth_buffer_complete {
+            self.auth_buffer_complete = false;
+            self.auth_buffer.clear();
+        }
+        if AUTHENTICATE_CHUNK_LEN < buf.len() ||
+            AUTHENTICATE_WHOLE_LEN < self.auth_buffer.len() + buf.len()
+        {
+            return Err(());
+        }
+        if buf != "+" {
+            self.auth_buffer.push_str(buf);
+        }
+        self.auth_buffer_complete = buf.len() < AUTHENTICATE_CHUNK_LEN;
+        Ok(self.auth_buffer_complete)
+    }
+
+    pub fn auth_buffer_decode(&self) -> Result<Vec<u8>, base64::DecodeError> {
+        if !self.auth_buffer_complete {
+            return Err(base64::DecodeError::InvalidLength);
+        }
+        base64::decode(&self.auth_buffer)
+    }
+
+    /// Free authentication-related buffers.
+    pub fn auth_reset(&mut self) {
+        self.auth_buffer = String::new();
+        self.auth_buffer_complete = false;
+        self.auth_id = None;
     }
 
     /// Add a message to the client message queue.
@@ -390,6 +440,14 @@ impl Client {
         self.user.push_str(user);
         self.real.push_str(real);
         self.update_full_name();
+    }
+
+    pub fn identity(&self) -> Option<&str> {
+        self.identity.as_ref().map(|s| s.as_ref())
+    }
+
+    pub fn log_in(&mut self, identity: String) {
+        self.identity = Some(identity);
     }
 
     pub fn signon_time(&self) -> u64 {

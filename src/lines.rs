@@ -129,8 +129,6 @@ concat!("Your host is ellidri, running version ", crate::server_version!());
 pub const I_SUPPORT: &str =
 "are allowed by ellidri";
 
-// lines with parameters
-
 pub fn created(mut r: MessageBuffer<'_>, since: &str) {
     let trailing = r.raw_trailing_param();
     trailing.push_str("I've been looking at you since ");
@@ -158,9 +156,34 @@ pub fn motd_start(mut r: MessageBuffer<'_>, domain: &str) {
     trailing.push_str(" message of the day -");
 }
 
-// TODO add network name
 pub fn welcome(mut r: MessageBuffer<'_>, name: &str) {
     let trailing = r.raw_trailing_param();
     trailing.push_str("Welcome home, ");
     trailing.push_str(name);
+}
+
+// SASL
+
+pub const SASL_ABORTED: &str =
+"ABORT BAKA";
+
+pub const SASL_ALREADY: &str =
+"I can't authenticate you again senpai!";
+
+pub const SASL_FAILED: &str =
+"it's not like I wanted to do my best for you, but it didn't worked";
+
+pub const SASL_MECHS: &str =
+"please use these to authenticate!";
+
+pub const SASL_SUCCESSFUL: &str =
+"sugoi~~! looks like it worked!";
+
+pub const SASL_TOO_LONG: &str =
+"senpai, it's too big!";
+
+pub fn logged_in(mut r: MessageBuffer<'_>, user: &str) {
+    let trailing = r.raw_trailing_param();
+    trailing.push_str("okaeri ");
+    trailing.push_str(user);
 }

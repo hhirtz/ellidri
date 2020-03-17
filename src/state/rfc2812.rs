@@ -300,7 +300,7 @@ impl super::StateInner {
                 Err(rpl::ERR_KEYSET) => {
                     ctx.rb.reply(rpl::ERR_KEYSET).param(target).trailing_param(lines::KEY_SET);
                 }
-                Err(_) => {}
+                Err(_) => { unreachable!(); }
             }
             Err(modes::Error::UnknownMode(mode)) => {
                 ctx.rb.reply(rpl::ERR_UNKNOWNMODE)

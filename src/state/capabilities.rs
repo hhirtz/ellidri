@@ -17,7 +17,18 @@ impl super::StateInner {
     fn cmd_cap_ls(&mut self, ctx: CommandContext<'_>, version: &str) -> Result {
         let client = self.clients.get_mut(ctx.addr).unwrap();
         client.set_cap_version(version);
-        cap::write_ls(ctx.rb);
+        let mut msg = ctx.rb.reply(Command::Cap).param("LS");
+        let mut trailing = msg.raw_trailing_param();
+
+        trailing.push_str(cap::LS_COMMON);
+        if self.auth_provider.is_available() {
+            trailing.push_str(" sasl");
+            if client.capabilities.v302 {
+                trailing.push('=');
+                self.auth_provider.write_mechanisms(&mut trailing);
+            }
+        }
+
         Ok(())
     }
 

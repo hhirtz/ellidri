@@ -9,7 +9,7 @@
 
 #![allow(clippy::needless_pass_by_value)]
 
-use crate::{config, lines};
+use crate::{auth, config, lines};
 use crate::channel::Channel;
 use crate::client::{Client, MessageQueue, MessageQueueItem};
 use crate::message::{Buffer, Command, Message, ReplyBuffer, rpl};
@@ -24,6 +24,7 @@ use tokio::sync::Mutex;
 mod capabilities;
 mod message_tags;
 mod rfc2812;
+mod sasl;
 #[cfg(test)]
 mod test;
 
@@ -108,8 +109,8 @@ pub struct State(Arc<Mutex<StateInner>>);
 
 impl State {
     /// Intialize the IRC state from the given configuration.
-    pub fn new(config: config::State) -> Self {
-        let inner = StateInner::new(config);
+    pub fn new(config: config::State, auth_provider: Box<dyn auth::Provider>) -> Self {
+        let inner = StateInner::new(config, auth_provider);
         Self(Arc::new(Mutex::new(inner)))
     }
 
@@ -126,6 +127,8 @@ impl State {
     /// If the peer has quit unexpctedly, `err` should be set to `Some` and reflect the cause of
     /// the quit, so that other peers can be correctly informed.
     pub async fn peer_quit(&self, addr: &net::SocketAddr, err: Option<io::Error>) {
+        // TODO remove `addr` and instead make it return a usize to identify the client
+        // then clients can be a Slab
         self.0.lock().await.peer_quit(addr, err);
     }
 
@@ -188,10 +191,12 @@ pub(crate) struct StateInner {
     nicklen: usize,
     topiclen: usize,
     userlen: usize,
+
+    auth_provider: Box<dyn auth::Provider>,
 }
 
 impl StateInner {
-    pub fn new(config: config::State) -> Self {
+    pub fn new(config: config::State, auth_provider: Box<dyn auth::Provider>) -> Self {
         let motd = config.motd_file.and_then(|file| match fs::read_to_string(&file) {
             Ok(motd) => Some(motd),
             Err(err) => {
@@ -216,6 +221,7 @@ impl StateInner {
             nicklen: config.nicklen,
             topiclen: config.topiclen,
             userlen: config.userlen,
+            auth_provider,
         }
     }
 
@@ -340,6 +346,7 @@ impl StateInner {
         log::debug!("{}: {} {:?}", addr, command, &ps[..n]);
         let cmd_result = match command {
             Command::Admin => self.cmd_admin(ctx),
+            Command::Authenticate => self.cmd_authenticate(ctx, ps[0]),
             Command::Cap => self.cmd_cap(ctx, &ps[..n]),
             Command::Info => self.cmd_info(ctx),
             Command::Invite => self.cmd_invite(ctx, ps[0], ps[1]),
@@ -382,7 +389,7 @@ impl StateInner {
                     self.write_welcome(&mut rb, client.full_name());
                     client.send(rb);
                 }
-                log::error!("{}: {:?} + {:?} == {:?}", addr, old_state, command, new_state);
+                log::debug!("{}: {:?} + {:?} == {:?}", addr, old_state, command, new_state);
             } else {
                 return Err(());
             }
