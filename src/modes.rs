@@ -96,7 +96,7 @@ impl UserModeChange {
 ///
 /// ```rust
 /// # use ellidri::modes;
-/// # use ellidri::modes::UserModeChange;
+/// # use ellidri::modes::{Error, UserModeChange};
 /// let mut query = modes::user_query("+ii-iXa");
 ///
 /// assert_eq!(query.next(), Some(Ok(UserModeChange::Invisible(true))));
@@ -196,7 +196,7 @@ impl ChannelModeChange<'_> {
 /// ```rust
 /// # use ellidri::modes;
 /// # use ellidri::modes::{ChannelModeChange, Error};
-/// let mut query = modes::channel_query("-olX+kmv", &["admin", "secret_key"]);
+/// let mut query = modes::channel_query("-olX+kmv", vec!["admin", "secret_key"]);
 ///
 /// assert_eq!(query.next(), Some(Ok(ChannelModeChange::ChangeOperator(false, "admin"))));
 /// assert_eq!(query.next(), Some(Ok(ChannelModeChange::UserLimit(None))));

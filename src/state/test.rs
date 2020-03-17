@@ -1,6 +1,6 @@
 //! Testing utilities for `ellidri::state`
 
-use crate::{config, Config};
+use crate::{auth, config, Config};
 use crate::client::MessageQueueItem;
 use crate::message::{assert_msg, Command, Message};
 use std::cell::RefCell;
@@ -18,7 +18,8 @@ thread_local! {
 }
 
 pub(crate) fn simple_state() -> StateInner {
-    StateInner::new(config::State { domain: DOMAIN.to_owned(), ..config::State::sample() })
+    let config = config::State { domain: DOMAIN.to_owned(), ..config::State::sample() };
+    StateInner::new(config, auth::choose_provider(config::SaslBackend::None, None).unwrap())
 }
 
 pub(crate) fn add_client(s: &mut StateInner) -> (SocketAddr, Queue) {

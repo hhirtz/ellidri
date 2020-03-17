@@ -23,7 +23,7 @@ pub use crate::config::Config;
 pub use crate::state::State;
 use std::{env, process};
 
-mod auth;
+pub mod auth;
 mod channel;
 mod client;
 pub mod config;

@@ -65,14 +65,15 @@ pub struct CommandContext<'a> {
 ///
 /// ```rust
 /// # use ellidri::State;
-/// # use ellidri::config;
+/// # use ellidri::{auth, config};
 /// # use ellidri::message::Message;
 /// # tokio::runtime::Runtime::new().unwrap().block_on(async {
 /// // Initialize a `StateConfig` and create the state.
+/// let sasl_backend = auth::choose_provider(config::SaslBackend::None, None).unwrap();
 /// let state = State::new(config::State {
 ///     domain: "ellidri.dev".to_owned(),
 ///     ..config::State::sample()
-/// });
+/// }, sasl_backend);
 ///
 /// // Each client is identified by its address.
 /// let client_addr = std::net::SocketAddr::from(([127, 0, 0, 1], 12345));
