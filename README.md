@@ -44,8 +44,8 @@ supports ASCII casemapping for channels.
 Prerequisites:
 
 - The Rust compiler (at least version 1.39) and Cargo: <https://rustup.rs/>
-- SQLite 3
-- PostgreSQL client libraries
+- SQLite 3 (if the `sqlite` feature is enabled)
+- PostgreSQL client libraries (if the `postgres` feature is enabled)
 - On Linux, the OpenSSL library and its development files
 
 Install ellidri with `cargo install ellidri`
