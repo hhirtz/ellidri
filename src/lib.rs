@@ -78,11 +78,9 @@ pub fn start() {
             let acceptor = store.acceptor(identity_path);
             let server = net::listen_tls(address, shared.clone(), acceptor);
             runtime.spawn(server);
-            log::info!("Listening on {} for tls connections...", address);
         } else {
             let server = net::listen(address, shared.clone());
             runtime.spawn(server);
-            log::info!("Listening on {} for plain-text connections...", address);
         }
     }
 
