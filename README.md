@@ -16,6 +16,7 @@ Join the IRC channel: [#ellidri on freenode][irc]!
 - TLS support
 - Multiple listening ports
 - Capabilities (version 302)
+- SASL support with SQLite and PostgreSQL
 - kawaii messages
 
 Supported capabilities:
@@ -24,7 +25,11 @@ Supported capabilities:
 - [echo-message](https://ircv3.net/specs/extensions/echo-message-3.2)
 - [message-ids](https://ircv3.net/specs/extensions/message-ids)
 - [message-tags](https://ircv3.net/specs/extensions/message-tags)
+- [sasl](https://ircv3.net/specs/extensions/sasl-3.1)
 - [server-time](https://ircv3.net/specs/extensions/server-time-3.2.html)
+
+ellidri doesn't support any server-to-server (S2S) protocol.  As such, it is
+impossible to make several instances of ellidri manage the same IRC network.
 
 ellidri only supports the UTF-8 encoding for messages, though for now it only
 supports ASCII casemapping for channels.
@@ -39,6 +44,8 @@ supports ASCII casemapping for channels.
 Prerequisites:
 
 - The Rust compiler (at least version 1.39) and Cargo: <https://rustup.rs/>
+- SQLite 3
+- PostgreSQL client libraries
 - On Linux, the OpenSSL library and its development files
 
 Install ellidri with `cargo install ellidri`
