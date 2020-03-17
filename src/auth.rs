@@ -150,8 +150,16 @@ fn choose_db_provider(url: db::Url) -> Result<Box<dyn Provider>, Box<dyn std::er
         #[cfg(feature = "sqlite")]
         db::Driver::Sqlite => {
             log::info!("Loading SQLite database at {:?}", url.1);
+
             let manager = r2d2_sqlite::SqliteConnectionManager::file(&url.1);
             let provider = DbProvider::try_from(manager)?;
+
+            let conn = provider.pool.get()?;
+            conn.query_row("SELECT name FROM SQLITE_MASTER WHERE name = 'users'",
+                           rusqlite::NO_PARAMS,
+                           |_row| Ok(()))
+                .map_err(|_| "table \"users\" is missing")?;
+
             Ok(Box::new(provider))
         }
         #[cfg(feature = "postgres")]
@@ -162,7 +170,9 @@ fn choose_db_provider(url: db::Url) -> Result<Box<dyn Provider>, Box<dyn std::er
             log::info!("Loading PostgreSQL database at {:?}", config);
 
             let manager = r2d2_postgres::PostgresConnectionManager::new(config, no_tls);
-            Ok(Box::new(DbProvider::try_from(manager)?))
+            let provider = DbProvider::try_from(manager)?;
+
+            Ok(Box::new(provider))
         }
     }
 }

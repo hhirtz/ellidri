@@ -82,6 +82,15 @@ impl Default for SaslBackend {
     fn default() -> Self { Self::None }
 }
 
+impl fmt::Display for SaslBackend {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::None => write!(f, "none"),
+            Self::Database => write!(f, "db"),
+        }
+    }
+}
+
 pub mod db {
     pub enum Driver {
         #[cfg(feature = "sqlite")]
