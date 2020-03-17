@@ -84,11 +84,11 @@ pub fn start() {
 }
 
 #[cfg(feature = "threads")]
-fn runtime(cfg: &config::Config) -> tokio::runtime::Runtime {
+fn runtime(workers: usize) -> tokio::runtime::Runtime {
     let mut builder = tokio::runtime::Builder::new();
 
-    if cfg.workers != 0 {
-        builder.core_threads(cfg.workers);
+    if workers != 0 {
+        builder.core_threads(workers);
     }
 
     builder
@@ -102,7 +102,7 @@ fn runtime(cfg: &config::Config) -> tokio::runtime::Runtime {
 }
 
 #[cfg(not(feature = "threads"))]
-fn runtime(_cfg: &config::Config) -> tokio::runtime::Runtime {
+fn runtime(_cfg: usize) -> tokio::runtime::Runtime {
     tokio::runtime::Runtime::new()
         .unwrap_or_else(|err| {
             log::error!("Failed to start the tokio runtime: {}", err);
