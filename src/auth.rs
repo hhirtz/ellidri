@@ -152,16 +152,6 @@ fn choose_db_provider(url: db::Url) -> Result<Box<dyn Provider>, Box<dyn std::er
             log::info!("Loading SQLite database at {:?}", url.1);
             let manager = r2d2_sqlite::SqliteConnectionManager::file(&url.1);
             let provider = DbProvider::try_from(manager)?;
-
-            let conn = provider.pool.get()?;
-            let mut stmt = conn.prepare("SELECT username,password FROM users")?;
-            let mut rows = stmt.query(rusqlite::NO_PARAMS)?;
-            while let Some(row) = rows.next()? {
-                let s: String = row.get(0)?;
-                let t: String = row.get(1)?;
-                println!("{:?} {:?}", s, t);
-            }
-
             Ok(Box::new(provider))
         }
         #[cfg(feature = "postgres")]
