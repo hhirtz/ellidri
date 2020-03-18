@@ -469,6 +469,7 @@ impl StateInner {
     fn write_i_support(&self, rb: &mut ReplyBuffer) {
         rb.reply(rpl::ISUPPORT)
             .param("CASEMAPPING=ascii")
+            .param("CHANLIMIT=#:,&:")
             .param(&format!("CHANNELLEN={}", self.channellen))
             .param("CHANTYPES=#&")
             .param(modes::CHANMODES)
@@ -478,6 +479,10 @@ impl StateInner {
             .param(&format!("KICKLEN={}", self.kicklen))
             .param("MODES")
             .param(&format!("NICKLEN={}", self.nicklen))
+            .param("PREFIX=(ov)@+")
+            .param("SAFELIST")
+            .trailing_param(lines::I_SUPPORT);
+        rb.reply(rpl::ISUPPORT)
             .param(&format!("TOPICLEN={}", self.topiclen))
             .trailing_param(lines::I_SUPPORT);
     }
