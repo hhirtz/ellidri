@@ -5,14 +5,19 @@
 
 ellidri, your kawaii IRC server.
 
+ellidri is an [IRC server][ircd] (or IRCd, for short), that aims to be simple to
+setup, widely compatible, feature complete and scalable.
+
 Join the IRC channel: [#ellidri on freenode][irc]!
 
+[ircd]: https://en.wikipedia.org/wiki/IRCd
+[v3]: https://ircv3.net/
 [irc]: https://webchat.freenode.net/#ellidri
 
 
 ## Features
 
-- RFC [1459][0] and [2812][1] compliance (almost! see [#1][2])
+- RFC [1459][r1] and [2812][r2] compliance (almost! see [#1][i1])
 - TLS support
 - Multiple listening ports
 - Capabilities (version 302)
@@ -34,9 +39,9 @@ impossible to make several instances of ellidri manage the same IRC network.
 ellidri only supports the UTF-8 encoding for messages, though for now it only
 supports ASCII casemapping for channels.
 
-[0]: https://tools.ietf.org/html/rfc1459
-[1]: https://tools.ietf.org/html/rfc2812
-[2]: https://todo.sr.ht/~taiite/ellidri/1
+[r1]: https://tools.ietf.org/html/rfc1459
+[r2]: https://tools.ietf.org/html/rfc2812
+[i1]: https://todo.sr.ht/~taiite/ellidri/1
 
 
 ## Build and install
