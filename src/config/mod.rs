@@ -125,7 +125,7 @@ impl State {
             org_mail: "contact@ellidri.localdomain".to_owned(),
             channellen: 50,
             kicklen: 300,
-            nicklen: 16,
+            nicklen: 32,
             topiclen: 300,
             userlen: 64,
         }
@@ -198,7 +198,7 @@ impl Config {
         }
         if self.state.channellen == 0 { self.state.channellen = def.state.channellen; }
         if self.state.kicklen == 0 { self.state.kicklen = def.state.kicklen; }
-        if self.state.nicklen == 0 { self.state.nicklen = def.state.kicklen; }
+        if self.state.nicklen == 0 { self.state.nicklen = def.state.nicklen; }
         if self.state.topiclen == 0 { self.state.topiclen = def.state.topiclen; }
         if self.state.userlen == 0 { self.state.userlen = def.state.userlen; }
         Ok(())
