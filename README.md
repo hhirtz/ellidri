@@ -37,7 +37,7 @@ ellidri doesn't support any server-to-server (S2S) protocol.  As such, it is
 impossible to make several instances of ellidri manage the same IRC network.
 
 ellidri only supports the UTF-8 encoding for messages, though for now it only
-supports ASCII casemapping for channels.
+supports the `ascii` casemapping.
 
 [r1]: https://tools.ietf.org/html/rfc1459
 [r2]: https://tools.ietf.org/html/rfc2812
@@ -53,10 +53,12 @@ Prerequisites:
 - PostgreSQL client libraries (if the `postgres` feature is enabled)
 - On Linux, the OpenSSL library and its development files
 
-Install ellidri with `cargo install ellidri`
+Install ellidri with `cargo install ellidri`, or with the [AUR package][aur].
 
 Build it with `cargo build`.  Append the `--release` flag to build with
 optimizations enabled.
+
+[aur]: https://aur.archlinux.org/packages/ellidri/
 
 
 ## Usage
