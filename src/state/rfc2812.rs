@@ -694,7 +694,9 @@ impl super::StateInner {
         let mask = if mask.is_empty() {"*"} else {mask};
         let o = o == "o";  // best line
         for client in self.clients.values() {
-            if client.nick() != mask || (o && !client.operator) || client.invisible {
+            if (o && !client.operator) || client.invisible ||
+                !client.is_registered() || client.nick() != mask
+            {
                 continue;
             }
             ctx.rb.reply(rpl::WHOREPLY)
