@@ -50,7 +50,7 @@ pub mod rpl {
     pub const CHANNELMODEIS: Reply   = "324";  // <channel> <modes> <modeparams>
     pub const NOTOPIC: Reply         = "331";  // <channel> :No topic set
     pub const TOPIC: Reply           = "332";  // <channel> <topic>
-    pub const INVITING: Reply        = "341";  // <channel> <nick>
+    pub const INVITING: Reply        = "341";  // <nick> <channel>
     pub const INVITELIST: Reply      = "346";  // <channel> <invite mask>
     pub const ENDOFINVITELIST: Reply = "347";  // <channel> :End of invite list
     pub const EXCEPTLIST: Reply      = "348";  // <channel> <exception mask>

@@ -72,7 +72,7 @@ impl super::StateInner {
         }
 
         let mut invite = Buffer::new();
-        ctx.rb.reply(rpl::INVITING).param(target).param(nick);
+        ctx.rb.reply(rpl::INVITING).param(nick).param(target);
         invite.message(self.clients[ctx.addr].full_name(), Command::Invite)
             .param(nick)
             .param(target);
@@ -789,7 +789,7 @@ mod tests {
         test::collect(&mut buf, &mut q2);
         test::collect(&mut buf, &mut q3);
         test::assert_msgs(&buf, &[
-            (Some(test::DOMAIN), Err(rpl::INVITING), &["c1", "#channel", "c2"]),
+            (Some(test::DOMAIN), Err(rpl::INVITING), &["c1", "c2", "#channel"]),
             (Some("c1!X@127.0.0.1"), Ok(Command::Invite), &["c2", "#channel"]),
         ]);
 
@@ -845,7 +845,7 @@ mod tests {
         test::collect(&mut buf, &mut q2);
         test::collect(&mut buf, &mut q3);
         test::assert_msgs(&buf, &[
-            (Some(test::DOMAIN), Err(rpl::INVITING), &["c1", "#channel", "c3"]),
+            (Some(test::DOMAIN), Err(rpl::INVITING), &["c1", "c3", "#channel"]),
             (Some("c1!X@127.0.0.1"), Ok(Command::Invite), &["c3", "#channel"]),
         ]);
 
