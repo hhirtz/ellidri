@@ -266,9 +266,9 @@ macro_rules! commands {
             ///
             /// ```rust
             /// # use ellidri::message::Command;
-            /// let quit = Command::parse("QUIT").unwrap();
+            /// let quit = Command::parse("Quit").unwrap();
             ///
-            /// assert_eq!(quit.as_str(), "Quit");
+            /// assert_eq!(quit.as_str(), "QUIT");
             /// ```
             pub fn as_str(&self) -> &'static str {
                 match self {
@@ -528,7 +528,7 @@ impl<'a> MessageBuffer<'a> {
     /// response.message("nick!user@127.0.0.1", Command::Quit)
     ///     .param("  chiao ");
     ///
-    /// assert_eq!(&response.build(), ":nick!user@127.0.0.1 Quit chiao\r\n");
+    /// assert_eq!(&response.build(), ":nick!user@127.0.0.1 QUIT chiao\r\n");
     /// ```
     pub fn param(self, param: &str) -> Self
     {
@@ -557,7 +557,7 @@ impl<'a> MessageBuffer<'a> {
     /// response.message("nick!user@127.0.0.1", Command::Quit)
     ///     .trailing_param("long quit message");
     ///
-    /// assert_eq!(&response.build(), ":nick!user@127.0.0.1 Quit :long quit message\r\n");
+    /// assert_eq!(&response.build(), ":nick!user@127.0.0.1 QUIT :long quit message\r\n");
     /// ```
     pub fn trailing_param(self, param: &str)
     {
@@ -582,7 +582,7 @@ impl<'a> MessageBuffer<'a> {
     ///     param.push('t');
     /// }
     ///
-    /// assert_eq!(&response.build(), ":nick!user@127.0.0.1 Mode #my_channel +nt\r\n");
+    /// assert_eq!(&response.build(), ":nick!user@127.0.0.1 MODE #my_channel +nt\r\n");
     /// ```
     pub fn raw_param(&mut self) -> &mut String {
         self.buf.push(' ');
@@ -704,7 +704,7 @@ impl<'a> TagBuffer<'a> {
 ///     .trailing_param("Welcome to new users!");
 ///
 /// let result = response.build();
-/// assert_eq!(&result, ":nick!user@127.0.0.1 Topic #hall :Welcome to new users!\r\n\
+/// assert_eq!(&result, ":nick!user@127.0.0.1 TOPIC #hall :Welcome to new users!\r\n\
 /// :ellidri.dev 332 nickname #hall :Welcome to new users!\r\n");
 /// ```
 ///
@@ -761,7 +761,7 @@ impl Buffer {
     ///
     /// response.message("unneeded_prefix", Command::Admin);
     ///
-    /// assert_eq!(&response.build(), ":unneeded_prefix Admin\r\n");
+    /// assert_eq!(&response.build(), ":unneeded_prefix ADMIN\r\n");
     /// ```
     pub fn message<C>(&mut self, prefix: &str, command: C) -> MessageBuffer<'_>
         where C: Into<Command>
@@ -814,7 +814,7 @@ thread_local! {
 ///     .trailing_param("Welcome to new users!");
 ///
 /// let result = response.build();
-/// assert_eq!(&result, ":nick!user@127.0.0.1 Topic #hall :Welcome to new users!\r\n\
+/// assert_eq!(&result, ":nick!user@127.0.0.1 TOPIC #hall :Welcome to new users!\r\n\
 /// :ellidri.dev 332 nickname #hall :Welcome to new users!\r\n");
 /// ```
 ///
@@ -905,7 +905,7 @@ impl ReplyBuffer {
     ///
     /// response.message("unneeded_prefix", Command::Admin);
     ///
-    /// assert_eq!(&response.build(), ":unneeded_prefix Admin\r\n");
+    /// assert_eq!(&response.build(), ":unneeded_prefix ADMIN\r\n");
     /// ```
     pub fn message<C>(&mut self, prefix: &str, command: C) -> MessageBuffer<'_>
         where C: Into<Command>
