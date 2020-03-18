@@ -15,6 +15,14 @@ impl Default for State {
     }
 }
 
+pub enum Error {
+    BadBase64,
+    BadFormat,
+    InvalidCredentials,
+    ProviderUnavailable,
+}
+
+// TODO make an Error type instead of ()
 pub trait Provider: Send + Sync {
     /// Whether the SASL backend is available.
     ///
@@ -127,16 +135,10 @@ impl<M> Provider for DbProvider<M>
         -> Result<Option<String>, ()>
     {
         let mut split = response.split(|b| *b == 0);
-        let (user, pass) = {
-            let first = split.next().ok_or(())?;
-            let second = split.next().ok_or(())?;
-            let third = split.next();
-            if let Some(third) = third {
-                (second, third)
-            } else {
-                (first, second)
-            }
-        };
+        let _ = split.next().ok_or(())?;
+        let user = split.next().ok_or(())?;
+        let pass = split.next().ok_or(())?;
+
         let user = str::from_utf8(user).map_err(|_| ())?;
         let pass = str::from_utf8(pass).map_err(|_| ())?;
 
