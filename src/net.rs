@@ -5,8 +5,13 @@ use std::{fs, path, process, str};
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
-use tokio::{io, net, sync};
+use tokio::{io, net, sync, time};
 use tokio_tls::TlsAcceptor;
+
+// Timeouts, in milliseconds.
+// TODO: make them configurable.
+const READ_TIMEOUT: u64 = 5_000;
+const REGISTRATION_TIMEOUT: u64 = 60_000;
 
 /// `TlsAcceptor` cache, to avoid reading the same identity file several times.
 #[derive(Default)]
@@ -106,6 +111,7 @@ async fn handle<S>(conn: S, peer_addr: SocketAddr, shared: State)
     let mut reader = io::BufReader::new(reader);
     let (msg_queue, mut outgoing_msgs) = sync::mpsc::unbounded_channel();
     shared.peer_joined(peer_addr, msg_queue).await;
+    // TODO spawn task that kill the client if it's not registered after a delay
 
     let incoming = async {
         use io::AsyncBufReadExt as _;
@@ -113,6 +119,10 @@ async fn handle<S>(conn: S, peer_addr: SocketAddr, shared: State)
         let mut buf = String::new();
         loop {
             buf.clear();
+            // TODO better control of the reading.  Especially:
+            // - put a limit on line length (4096 + 512  if starts with @, 512 otherwise)
+            //   (also 512 should be configurable)
+            // - kill clients that send 1-byte (or so) reads every time
             reader.read_line(&mut buf).await?;
             log::trace!("{} >> {}", peer_addr, buf.trim());
             handle_buffer(&peer_addr, &buf, &shared).await?;
@@ -125,11 +135,13 @@ async fn handle<S>(conn: S, peer_addr: SocketAddr, shared: State)
         while let Some(msg) = outgoing_msgs.recv().await {
             writer.write_all(msg.as_ref()).await?;
         }
-        Ok(())
+        // The client is not in `shared` anymore.  Let it read for a bit, then close the connection.
+        time::delay_for(time::Duration::from_millis(READ_TIMEOUT)).await;
+        Err(io::ErrorKind::TimedOut.into())
     };
 
-    let res: (io::Result<()>, io::Result<()>) = futures::future::join(incoming, outgoing).await;
-    shared.peer_quit(&peer_addr, res.0.or(res.1).err()).await;
+    let res: io::Result<((), ())> = futures::future::try_join(incoming, outgoing).await;
+    shared.peer_quit(&peer_addr, res.err()).await;
 }
 
 async fn handle_buffer(peer_addr: &SocketAddr, buf: &str, shared: &State) -> io::Result<()> {
