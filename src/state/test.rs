@@ -78,8 +78,9 @@ pub fn messages(s: &str) -> impl Iterator<Item=Message<'_>> {
     s.lines().map(|line| Message::parse(line).expect("bad message"))
 }
 
-#[allow(clippy::type_complexity)]  // TODO
-pub fn assert_msgs(s: &str, expected: &[(Option<&str>, Result<Command, &str>, &[&str])]) {
+type ExpectedMessage<'a> = (Option<&'a str>, Result<Command, &'a str>, &'a [&'a str]);
+
+pub fn assert_msgs(s: &str, expected: &[ExpectedMessage<'_>]) {
     let mut i = 0;
     for msg in messages(s) {
         let (prefix, command, params) = expected[i];
