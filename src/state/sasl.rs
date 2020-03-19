@@ -50,8 +50,8 @@ impl super::StateInner {
                         Ok(None) => {
                             auth::write_buffer(ctx.rb, &challenge);
                         }
-                        Err(()) => {
-                            log::debug!("{}:     bad response", ctx.addr);
+                        Err(err) => {
+                            log::debug!("{}:     bad response: {:?}", ctx.addr, err);
                             ctx.rb.reply(rpl::ERR_SASLFAIL).trailing_param(lines::SASL_FAILED);
                             client.auth_reset();
                             return Err(());
@@ -69,11 +69,16 @@ impl super::StateInner {
             let mut challenge = Vec::new();
             let id = match self.auth_provider.start_auth(payload, &mut challenge) {
                 Ok(id) => id,
-                Err(()) => {
+                Err(auth::Error::ProviderUnavailable) => {
+                    log::debug!("{}:     sasl unavailable for {:?}", ctx.addr, payload);
+                    ctx.rb.reply(rpl::ERR_SASLFAIL).trailing_param(lines::SASL_FAILED);
+                    return Err(());
+                }
+                Err(_) => {
+                    log::debug!("{}:     unknown mechanism {:?}", ctx.addr, payload);
                     let mut msg = ctx.rb.reply(rpl::SASLMECHS);
                     self.auth_provider.write_mechanisms(msg.raw_param());
                     msg.trailing_param(lines::SASL_MECHS);
-                    log::debug!("{}:     unknown mechanism {:?}", ctx.addr, payload);
                     return Err(());
                 }
             };

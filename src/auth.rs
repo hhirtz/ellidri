@@ -15,11 +15,13 @@ impl Default for State {
     }
 }
 
+#[derive(Debug)]
 pub enum Error {
     BadBase64,
     BadFormat,
     InvalidCredentials,
     ProviderUnavailable,
+    UnsupportedMechanism,
 }
 
 // TODO make an Error type instead of ()
@@ -40,7 +42,7 @@ pub trait Provider: Send + Sync {
     ///
     /// On success, returns an identifier that must be passed to `next_challenge` to continue the
     /// authentication, so that multiple clients can authenticate at the same time.
-    fn start_auth(&self, mechanism: &str, next: &mut Vec<u8>) -> Result<usize, ()>;
+    fn start_auth(&self, mechanism: &str, next: &mut Vec<u8>) -> Result<usize, Error>;
 
     /// Given the authentication process identifier `auth`, and the response to the previous
     /// challenge from the client `response`, returns whether the client is authenticated or not.
@@ -48,7 +50,7 @@ pub trait Provider: Send + Sync {
     /// If the client is not authenticated yet, the next challenge to be sent to the client is
     /// appended to `next`.
     fn next_challenge(&self, auth: usize, response: &[u8], next: &mut Vec<u8>)
-        -> Result<Option<String>, ()>;
+        -> Result<Option<String>, Error>;
 }
 
 pub struct DummyProvider;
@@ -56,25 +58,29 @@ pub struct DummyProvider;
 impl Provider for DummyProvider {
     fn is_available(&self) -> bool { false }
     fn write_mechanisms(&self, _: &mut String) {}
-    fn start_auth(&self, _: &str, _: &mut Vec<u8>) -> Result<usize, ()> { Err(()) }
-    fn next_challenge(&self, _: usize, _: &[u8], _: &mut Vec<u8>) -> Result<Option<String>, ()> {
-        Err(())
+    fn start_auth(&self, _: &str, _: &mut Vec<u8>) -> Result<usize, Error> {
+        Err(Error::ProviderUnavailable)
+    }
+    fn next_challenge(&self, _: usize, _: &[u8], _: &mut Vec<u8>) -> Result<Option<String>, Error> {
+        Err(Error::ProviderUnavailable)
     }
 }
 
 pub trait Plain {
-    fn plain(&self, user: &str, pass: &str) -> Result<(), ()>;
+    fn plain(&self, user: &str, pass: &str) -> Result<(), Error>;
 }
 
 #[cfg(feature = "sqlite")]
 impl Plain for r2d2::Pool<r2d2_sqlite::SqliteConnectionManager> {
-    fn plain(&self, user: &str, pass: &str) -> Result<(), ()> {
-        let conn = self.get().map_err(|_| ())?;
+    fn plain(&self, user: &str, pass: &str) -> Result<(), Error> {
+        let conn = self.get().map_err(|_| Error::ProviderUnavailable)?;
         let mut stmt = conn.prepare("SELECT username FROM users WHERE username = ? AND password = ?")
-            .map_err(|_| ())?;
+            .map_err(|_| Error::ProviderUnavailable)?;
         let mut rows = stmt.query(&[user, pass])
-            .map_err(|_| ())?;
-        rows.next().map_err(|_| ())?.ok_or(())?;
+            .map_err(|_| Error::ProviderUnavailable)?;
+        rows.next()
+            .map_err(|_| Error::ProviderUnavailable)?
+            .ok_or(Error::ProviderUnavailable)?;
 
         Ok(())
     }
@@ -87,11 +93,11 @@ impl<T> Plain for r2d2::Pool<r2d2_postgres::PostgresConnectionManager<T>>
           T::Stream: Send,
           <T::TlsConnect as tokio_postgres::tls::TlsConnect<tokio_postgres::Socket>>::Future: Send,
 {
-    fn plain(&self, user: &str, pass: &str) -> Result<(), ()> {
-        let mut conn = self.get().map_err(|_| ())?;
+    fn plain(&self, user: &str, pass: &str) -> Result<(), Error> {
+        let mut conn = self.get().map_err(|_| Error::ProviderUnavailable)?;
         conn.query_one("SELECT username FROM users WHERE username = ? AND password = ?",
                        &[&user, &pass])
-            .map_err(|_| ())?;
+            .map_err(|_| Error::ProviderUnavailable)?;
         Ok(())
     }
 }
@@ -124,23 +130,23 @@ impl<M> Provider for DbProvider<M>
         buf.push_str("PLAIN");
     }
 
-    fn start_auth(&self, mechanism: &str, _: &mut Vec<u8>) -> Result<usize, ()> {
+    fn start_auth(&self, mechanism: &str, _: &mut Vec<u8>) -> Result<usize, Error> {
         if mechanism != "PLAIN" {
-            return Err(());
+            return Err(Error::UnsupportedMechanism);
         }
         Ok(0)
     }
 
     fn next_challenge(&self, _: usize, response: &[u8], _: &mut Vec<u8>)
-        -> Result<Option<String>, ()>
+        -> Result<Option<String>, Error>
     {
         let mut split = response.split(|b| *b == 0);
-        let _ = split.next().ok_or(())?;
-        let user = split.next().ok_or(())?;
-        let pass = split.next().ok_or(())?;
+        let _ = split.next().ok_or(Error::BadFormat)?;
+        let user = split.next().ok_or(Error::BadFormat)?;
+        let pass = split.next().ok_or(Error::BadFormat)?;
 
-        let user = str::from_utf8(user).map_err(|_| ())?;
-        let pass = str::from_utf8(pass).map_err(|_| ())?;
+        let user = str::from_utf8(user).map_err(|_| Error::BadFormat)?;
+        let pass = str::from_utf8(pass).map_err(|_| Error::BadFormat)?;
 
         self.pool.plain(user, pass)?;
         Ok(Some(user.to_owned()))
