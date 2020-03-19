@@ -294,6 +294,7 @@ impl Client {
     pub fn write_enabled_capabilities(&self, response: &mut ReplyBuffer) {
         let mut msg = response.reply(Command::Cap).param("LIST");
         let trailing = msg.raw_trailing_param();
+        let len = trailing.len();
         if self.capabilities.cap_notify {
             trailing.push_str(cap::CAP_NOTIFY);
             trailing.push(' ');
@@ -314,7 +315,9 @@ impl Client {
             trailing.push_str(cap::SERVER_TIME);
             trailing.push(' ');
         }
-        trailing.pop();
+        if len < trailing.len() {
+            trailing.pop();
+        }
     }
 
     /// Change the connection state of the client given the command it just sent.
