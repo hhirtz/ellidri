@@ -3,13 +3,14 @@
 //! <https://tools.ietf.org/html/rfc2812.html>
 
 use crate::channel::Channel;
-use crate::client::MessageQueueItem;
+use crate::client::{Client, MessageQueueItem};
 use crate::lines;
 use crate::message::{Buffer, Command, ReplyBuffer, rpl};
 use crate::modes;
 use crate::util::{new_message_id, time_precise, time_str};
 use ellidri_unicase::UniCase;
 use std::collections::HashSet;
+use std::iter;
 use super::{CommandContext, HandlerResult as Result, find_channel, find_member, find_nick};
 
 // Command handlers
@@ -83,59 +84,86 @@ impl super::StateInner {
 
     // JOIN
 
-    pub fn cmd_join(&mut self, ctx: CommandContext<'_>, target: &str, key: &str) -> Result {
-        if !super::is_valid_channel_name(target, self.channellen) {
-            log::debug!("{}:     Invalid channel name", ctx.addr);
-            ctx.rb.reply(rpl::ERR_NOSUCHCHANNEL).param(target).trailing_param(lines::NO_SUCH_CHANNEL);
+    fn check_join(client: &Client, channel: &Channel, target: &str, key: &str,
+                  ctx: &mut CommandContext<'_>) -> Result
+    {
+        if channel.members.contains_key(ctx.addr) {
+            log::debug!("{}:     Already in channel", ctx.addr);
             return Err(());
         }
-        if let Some(channel) = self.channels.get(<&UniCase<str>>::from(target)) {
-            if channel.members.contains_key(ctx.addr) {
-                log::debug!("{}:     Already in channel", ctx.addr);
-                return Err(());
-            }
-            let nick = self.clients[ctx.addr].nick();
-            if channel.key.as_ref().map_or(false, |ck| key == ck) {
-                log::debug!("{}:     Bad key", ctx.addr);
-                ctx.rb.reply(rpl::ERR_BADCHANKEY).param(target).trailing_param(lines::BAD_CHAN_KEY);
-                return Err(());
-            }
-            if channel.user_limit.map_or(false, |user_limit| user_limit <= channel.members.len()) {
-                log::debug!("{}:     user limit reached", ctx.addr);
-                ctx.rb.reply(rpl::ERR_CHANNELISFULL)
+        if channel.key.as_ref().map_or(false, |ck| key != ck) {
+            log::debug!("{}:     Bad key", ctx.addr);
+            ctx.rb.reply(rpl::ERR_BADCHANKEY).param(target).trailing_param(lines::BAD_CHAN_KEY);
+            return Err(());
+        }
+        if channel.user_limit.map_or(false, |user_limit| user_limit <= channel.members.len()) {
+            log::debug!("{}:     user limit reached", ctx.addr);
+            ctx.rb.reply(rpl::ERR_CHANNELISFULL)
+                .param(target)
+                .trailing_param(lines::CHANNEL_IS_FULL);
+            return Err(());
+        }
+        if !channel.is_invited(ctx.addr, client.nick()) {
+            log::debug!("{}:     not invited", ctx.addr);
+            ctx.rb.reply(rpl::ERR_INVITEONLYCHAN)
+                .param(target)
+                .trailing_param(lines::INVITE_ONLY_CHAN);
+            return Err(());
+        }
+        if channel.is_banned(client.nick()) {
+            log::debug!("{}:     Banned", ctx.addr);
+            ctx.rb.reply(rpl::ERR_BANNEDFROMCHAN)
+                .param(target)
+                .trailing_param(lines::BANNED_FROM_CHAN);
+            return Err(());
+        }
+        Ok(())
+    }
+
+    fn chan_and_keys<'a>(channels: &'a str, keys: &'a str)
+        -> impl Iterator<Item=(&'a str,&'a str)> + 'a
+    {
+        channels.split(',')
+            .zip(keys.split(',').chain(iter::repeat("")))
+            .filter(|(chan, _)| !chan.is_empty())
+    }
+
+    pub fn cmd_join(&mut self, mut ctx: CommandContext<'_>, targets: &str, keys: &str) -> Result {
+        let client = &self.clients[ctx.addr];
+
+        let mut update_idle = false;
+        for (target, key) in super::StateInner::chan_and_keys(targets, keys) {
+            if !super::is_valid_channel_name(target, self.channellen) {
+                log::debug!("{}:     Invalid channel name", ctx.addr);
+                ctx.rb.reply(rpl::ERR_NOSUCHCHANNEL)
                     .param(target)
-                    .trailing_param(lines::CHANNEL_IS_FULL);
+                    .trailing_param(lines::NO_SUCH_CHANNEL);
                 return Err(());
             }
-            if !channel.is_invited(ctx.addr, nick) {
-                log::debug!("{}:     not invited", ctx.addr);
-                ctx.rb.reply(rpl::ERR_INVITEONLYCHAN)
-                    .param(target)
-                    .trailing_param(lines::INVITE_ONLY_CHAN);
-                return Err(());
-            }
-            if channel.is_banned(nick) {
-                log::debug!("{}:     Banned", ctx.addr);
-                ctx.rb.reply(rpl::ERR_BANNEDFROMCHAN)
-                    .param(target)
-                    .trailing_param(lines::BANNED_FROM_CHAN);
-                return Err(());
+            let ok = self.channels.get(<&UniCase<str>>::from(target))
+                .map_or(Ok(()), |channel| {
+                    super::StateInner::check_join(client, channel, target, key, &mut ctx)
+                })
+                .is_ok();
+
+            if ok {
+                let default_chan_mode = &self.default_chan_mode;
+                let channel = self.channels.entry(UniCase(target.to_owned()))
+                    .or_insert_with(|| Channel::new(&default_chan_mode));
+                channel.add_member(*ctx.addr);
+
+                let mut join_response = Buffer::new();
+                join_response.message(client.full_name(), Command::Join).param(target);
+                self.broadcast(target, &MessageQueueItem::from(join_response));
+                self.write_topic(ctx.rb, target);
+                self.write_names(ctx.addr, ctx.rb, target);
+                update_idle = true;
             }
         }
-
-        let client = self.clients.get_mut(ctx.addr).unwrap();
-
-        let default_chan_mode = &self.default_chan_mode;
-        let channel = self.channels.entry(UniCase(target.to_owned()))
-            .or_insert_with(|| Channel::new(&default_chan_mode));
-        channel.add_member(*ctx.addr);
-        client.update_idle_time();
-
-        let mut join_response = Buffer::new();
-        join_response.message(client.full_name(), Command::Join).param(target);
-        self.broadcast(target, &MessageQueueItem::from(join_response));
-        self.write_topic(ctx.rb, target);
-        self.write_names(ctx.addr, ctx.rb, target);
+        if update_idle {
+            let client = self.clients.get_mut(ctx.addr).unwrap();
+            client.update_idle_time();
+        }
 
         Ok(())
     }
@@ -897,5 +925,63 @@ mod tests {
         test::assert_msgs(&buf, &[
             (Some(test::DOMAIN), Err(rpl::ERR_USERONCHANNEL), &["c1", "c2", "#channel", lines::USER_ON_CHANNEL]),
         ]);
+    }
+
+    #[test]
+    fn test_cmd_join() {
+        let mut state = test::simple_state();
+        let mut buf = String::with_capacity(512);
+
+        let (a1, mut q1) = test::add_registered_client(&mut state, "c1");
+        test::flush(&mut q1);
+        let (a2, mut q2) = test::add_registered_client(&mut state, "c2");
+        test::flush(&mut q2);
+
+        // c1 c2 all registered
+        test::handle_message(&mut state, &a1, "JOIN #channel");
+        buf.clear();
+        test::collect(&mut buf, &mut q1);
+        test::collect(&mut buf, &mut q2);
+        test::assert_msgs(&buf, &[
+            (Some("c1!X@127.0.0.1"), Ok(Command::Join), &["#channel"]),
+            (Some(test::DOMAIN), Err(rpl::NOTOPIC), &["c1", "#channel", lines::NO_TOPIC]),
+            (Some(test::DOMAIN), Err(rpl::NAMREPLY), &["c1", "=", "#channel", "@c1"]),
+            (Some(test::DOMAIN), Err(rpl::ENDOFNAMES), &["c1", "#channel", lines::END_OF_NAMES]),
+        ]);
+        assert!(state.channels.get(<&UniCase<str>>::from("#channel")).is_some());
+        assert!(state.channels[<&UniCase<str>>::from("#channel")].members.contains_key(&a1));
+
+        // c2 all registered - c1 on #channel
+        test::handle_message(&mut state, &a1, "JOIN #channel");
+        buf.clear();
+        test::collect(&mut buf, &mut q1);
+        test::collect(&mut buf, &mut q2);
+        test::assert_msgs(&buf, &[]);
+
+        // c2 all registered - c1 on #channel
+        test::handle_message(&mut state, &a1, "MODE #channel +k key");
+        buf.clear();
+        test::collect(&mut buf, &mut q1);
+        test::collect(&mut buf, &mut q2);
+        test::assert_msgs(&buf, &[
+            (Some("c1!X@127.0.0.1"), Ok(Command::Mode), &["#channel", "+k", "key"]),
+        ]);
+        assert!(state.channels[<&UniCase<str>>::from("#channel")].key.as_ref().unwrap() == "key");
+
+        // c2 all registered - c1 on #channel+kkey
+        test::handle_message(&mut state, &a2, "JOIN #channel,#home");
+        buf.clear();
+        test::collect(&mut buf, &mut q1);
+        test::collect(&mut buf, &mut q2);
+        test::assert_msgs(&buf, &[
+            (Some("c2!X@127.0.0.1"), Ok(Command::Join), &["#home"]),
+            (Some(test::DOMAIN), Err(rpl::ERR_BADCHANKEY), &["c2", "#channel", lines::BAD_CHAN_KEY]),
+            (Some(test::DOMAIN), Err(rpl::NOTOPIC), &["c2", "#home", lines::NO_TOPIC]),
+            (Some(test::DOMAIN), Err(rpl::NAMREPLY), &["c2", "=", "#home", "@c2"]),
+            (Some(test::DOMAIN), Err(rpl::ENDOFNAMES), &["c2", "#home", lines::END_OF_NAMES]),
+        ]);
+        assert!(state.channels.get(<&UniCase<str>>::from("#home")).is_some());
+        assert!(state.channels[<&UniCase<str>>::from("#home")].members.contains_key(&a2));
+        // TODO continue
     }
 }  // mod tests
