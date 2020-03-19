@@ -467,24 +467,31 @@ impl StateInner {
     }
 
     fn write_i_support(&self, rb: &mut ReplyBuffer) {
-        rb.reply(rpl::ISUPPORT)
-            .param("CASEMAPPING=ascii")
-            .param("CHANLIMIT=#:,&:")
-            .param(&format!("CHANNELLEN={}", self.channellen))
-            .param("CHANTYPES=#&")
-            .param(modes::CHANMODES)
-            .param("EXCEPTS")
-            .param("HOSTLEN=39")  // max size of an IPv6 address
-            .param("INVEX")
-            .param(&format!("KICKLEN={}", self.kicklen))
-            .param("MODES")
-            .param(&format!("NICKLEN={}", self.nicklen))
-            .param("PREFIX=(ov)@+")
-            .param("SAFELIST")
-            .trailing_param(lines::I_SUPPORT);
-        rb.reply(rpl::ISUPPORT)
-            .param(&format!("TOPICLEN={}", self.topiclen))
-            .trailing_param(lines::I_SUPPORT);
+        use std::fmt::Write as _;
+
+        {
+            let mut msg = rb.reply(rpl::ISUPPORT)
+                .param("CASEMAPPING=ascii")
+                .param("CHANLIMIT=#:,&:")
+                .param("CHANTYPES=#&")
+                .param(modes::CHANMODES)
+                .param("EXCEPTS")
+                .param("HOSTLEN=39")  // max size of an IPv6 address
+                .param("INVEX")
+                .param("MODES")
+                .param("PREFIX=(ov)@+")
+                .param("SAFELIST");
+            write!(msg.raw_param(), "CHANNELLEN={}", self.channellen).unwrap();
+            write!(msg.raw_param(), "KICKLEN={}", self.kicklen).unwrap();
+            write!(msg.raw_param(), "NICKLEN={}", self.nicklen).unwrap();
+            msg.trailing_param(lines::I_SUPPORT);
+        }
+        {
+            let mut msg = rb.reply(rpl::ISUPPORT)
+                .param("TARGMAX=JOIN:,KICK:1,LIST:,NAMES:,NOTICE:1,PART:1,PRIVMSG:1,WHOIS:1");
+            write!(msg.raw_param(), "TOPICLEN={}", self.topiclen).unwrap();
+            msg.trailing_param(lines::I_SUPPORT);
+        }
     }
 
     fn write_lusers(&self, rb: &mut ReplyBuffer) {
