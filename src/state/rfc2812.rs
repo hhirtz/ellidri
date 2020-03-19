@@ -565,35 +565,41 @@ impl super::StateInner {
 
     // PART
 
-    pub fn cmd_part(&mut self, ctx: CommandContext<'_>, target: &str, reason: &str) -> Result {
-        let channel = match self.channels.get_mut(<&UniCase<str>>::from(target)) {
-            Some(channel) => channel,
-            None => {
-                log::debug!("{}:     Not on channel", ctx.addr);
-                ctx.rb.reply(rpl::ERR_NOTONCHANNEL)
-                    .param(target)
-                    .trailing_param(lines::NOT_ON_CHANNEL);
-                return Err(());
-            }
-        };
-        find_member(ctx.addr, ctx.rb, channel, target)?;
-
-        let mut response = Buffer::new();
+    pub fn cmd_part(&mut self, ctx: CommandContext<'_>, targets: &str, reason: &str) -> Result {
         let client = &self.clients[ctx.addr];
 
-        channel.members.remove(ctx.addr);
-        if reason.is_empty() {
-            response.message(client.full_name(), Command::Part).param(target);
-        } else {
-            response.message(client.full_name(), Command::Part).param(target).trailing_param(reason);
+        for target in targets.split(',').filter(|s| !s.is_empty()) {
+            let channel = match self.channels.get_mut(<&UniCase<str>>::from(target)) {
+                Some(channel) => channel,
+                None => {
+                    log::debug!("{}:     Not on channel", ctx.addr);
+                    ctx.rb.reply(rpl::ERR_NOTONCHANNEL)
+                        .param(target)
+                        .trailing_param(lines::NOT_ON_CHANNEL);
+                    return Err(());
+                }
+            };
+            find_member(ctx.addr, ctx.rb, channel, target)?;
+
+            let mut response = Buffer::new();
+
+            channel.members.remove(ctx.addr);
+            if reason.is_empty() {
+                response.message(client.full_name(), Command::Part).param(target);
+            } else {
+                response.message(client.full_name(), Command::Part)
+                    .param(target)
+                    .trailing_param(reason);
+            }
+
+            let msg = MessageQueueItem::from(response);
+            if channel.members.is_empty() {
+                self.channels.remove(<&UniCase<str>>::from(target));
+            } else {
+                self.broadcast(target, &msg);
+            }
+            client.send(msg);
         }
-        let msg = MessageQueueItem::from(response);
-        if channel.members.is_empty() {
-            self.channels.remove(<&UniCase<str>>::from(target));
-        } else {
-            self.broadcast(target, &msg);
-        }
-        client.send(msg);
 
         Ok(())
     }

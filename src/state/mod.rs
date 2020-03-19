@@ -488,7 +488,7 @@ impl StateInner {
         }
         {
             let mut msg = rb.reply(rpl::ISUPPORT)
-                .param("TARGMAX=JOIN:,KICK:1,LIST:,NAMES:,NOTICE:1,PART:1,PRIVMSG:1,WHOIS:1");
+                .param("TARGMAX=JOIN:,KICK:1,LIST:,NAMES:,NOTICE:1,PART:,PRIVMSG:1,WHOIS:1");
             write!(msg.raw_param(), "TOPICLEN={}", self.topiclen).unwrap();
             msg.trailing_param(lines::I_SUPPORT);
         }
