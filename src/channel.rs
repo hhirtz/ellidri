@@ -8,25 +8,62 @@ use std::net::SocketAddr;
 /// <https://tools.ietf.org/html/rfc2811.html#section-4.1>
 #[derive(Clone, Copy, Default)]
 pub struct MemberModes {
-    pub creator: bool,
+    pub founder: bool,
+    pub protected: bool,
     pub operator: bool,
+    pub halfop: bool,
     pub voice: bool,
 }
 
 impl MemberModes {
     pub fn all_symbols(self, out: &mut String) {
+        if self.founder { out.push('~'); }
+        if self.protected { out.push('&'); }
         if self.operator { out.push('@'); }
+        if self.halfop { out.push('%'); }
         if self.voice { out.push('+'); }
     }
 
     pub fn symbol(self) -> Option<char> {
-        if self.operator {
+        if self.founder {
+            Some('~')
+        } else if self.protected {
+            Some('&')
+        } else if self.operator {
             Some('@')
+        } else if self.halfop {
+            Some('%')
         } else if self.voice {
             Some('+')
         } else {
             None
         }
+    }
+
+    pub fn is_at_least_op(self) -> bool {
+        self.operator || self.founder
+    }
+
+    pub fn is_at_least_halfop(self) -> bool {
+        self.halfop || self.operator || self.founder
+    }
+
+    pub fn has_voice(self) -> bool {
+        self.voice || self.halfop || self.operator || self.protected || self.founder
+    }
+
+    pub fn can_change(self, modes: &str) -> bool {
+        use modes::ChannelModeChange::*;
+
+        modes::simple_channel_query(modes).all(|mode| match mode {
+            Err(_) => true,
+            Ok(GetBans) | Ok(GetExceptions) | Ok(GetInvitations) => true,
+            Ok(Moderated(_)) | Ok(TopicRestricted(_)) | Ok(UserLimit(_)) |
+                Ok(ChangeBan(_, _)) | Ok(ChangeException(_, _)) |
+                Ok(ChangeInvitation(_, _)) | Ok(ChangeVoice(_, _)) => self.is_at_least_halfop(),
+            Ok(InviteOnly(_)) | Ok(NoPrivMsgFromOutside(_)) | Ok(Secret(_)) | Ok(Key(_, _)) |
+                Ok(ChangeOperator(_, _)) | Ok(ChangeHalfop(_, _)) => self.is_at_least_op(),
+        })
     }
 }
 
@@ -75,8 +112,10 @@ impl Channel {
     pub fn add_member(&mut self, addr: SocketAddr) {
         let modes = if self.members.is_empty() {
             MemberModes {
-                creator: true,
+                founder: false,
+                protected: false,
                 operator: true,
+                halfop: false,
                 voice: false,
             }
         } else {
@@ -103,7 +142,7 @@ impl Channel {
 
     pub fn can_talk(&self, addr: &SocketAddr) -> bool {
         if self.moderated {
-            self.members.get(&addr).map_or(false, |m| m.voice || m.operator)
+            self.members.get(&addr).map_or(false, |m| m.has_voice())
         } else {
             !self.no_privmsg_from_outside || self.members.contains_key(&addr)
         }
@@ -214,7 +253,22 @@ impl Channel {
                     return Err(rpl::ERR_USERNOTINCHANNEL);
                 }
             },
+            ChangeHalfop(value, param) => {
+                let mut has_it = false;
+                for (member, modes) in &mut self.members {
+                    if nick_of(member) == param {
+                        has_it = true;
+                        applied = modes.halfop != value;
+                        modes.halfop = value;
+                        break;
+                    }
+                }
+                if !has_it {
+                    return Err(rpl::ERR_USERNOTINCHANNEL);
+                }
+            },
             ChangeVoice(value, param) => {
+                // TODO don't allow halfop to change voice of halfop/operator/etc
                 let mut has_it = false;
                 for (member, modes) in &mut self.members {
                     if nick_of(member) == param {

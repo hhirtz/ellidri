@@ -498,7 +498,7 @@ impl StateInner {
                 .param("HOSTLEN=39")  // max size of an IPv6 address
                 .param("INVEX")
                 .param("MODES")
-                .param("PREFIX=(ov)@+")
+                .param("PREFIX=(qaohv)~&@%+")
                 .param("SAFELIST");
             write!(msg.raw_param(), "CHANNELLEN={}", self.channellen).unwrap();
             write!(msg.raw_param(), "KICKLEN={}", self.kicklen).unwrap();

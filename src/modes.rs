@@ -11,10 +11,10 @@ pub const SIMPLE_CHAN_MODES: &str = "imnst";
 
 /// Channel modes that require a parameter and are supported by ellidri.  Advertised in welcome
 /// messages.
-pub const EXTENDED_CHAN_MODES: &str = "beIklov";
+pub const EXTENDED_CHAN_MODES: &str = "beIkl";
 
 /// CHANMODES feature advertised in RPL_ISUPPORT.
-pub const CHANMODES: &str = "CHANMODES=beI,k,l,aimnpqst";
+pub const CHANMODES: &str = "CHANMODES=beI,k,l,imnpqst";
 
 /// Iterator over the modes of a string.
 struct SimpleQuery<'a> {
@@ -133,6 +133,7 @@ pub enum ChannelModeChange<'a> {
     ChangeException(bool, &'a str),
     ChangeInvitation(bool, &'a str),
     ChangeOperator(bool, &'a str),
+    ChangeHalfop(bool, &'a str),
     ChangeVoice(bool, &'a str),
 }
 
@@ -151,6 +152,7 @@ impl ChannelModeChange<'_> {
             ChangeException(v, _) |
             ChangeInvitation(v, _) |
             ChangeOperator(v, _) |
+            ChangeHalfop(v, _) |
             ChangeVoice(v, _) => *v,
             UserLimit(l) => l.is_some(),
             _ => false,
@@ -172,6 +174,7 @@ impl ChannelModeChange<'_> {
             ChangeException(_, _) => Some('e'),
             ChangeInvitation(_, _) => Some('I'),
             ChangeOperator(_, _) => Some('o'),
+            ChangeHalfop(_, _) => Some('h'),
             ChangeVoice(_, _) => Some('v'),
             _ => None,
         }
@@ -182,7 +185,7 @@ impl ChannelModeChange<'_> {
         use ChannelModeChange::*;
         match self {
             Key(_, p) | ChangeBan(_, p) | ChangeException(_, p) | ChangeInvitation(_, p)
-                | ChangeOperator(_, p) | ChangeVoice(_, p) => Some(p),
+                | ChangeOperator(_, p) | ChangeHalfop(_, p) | ChangeVoice(_, p) => Some(p),
             UserLimit(l) => *l,
             _ => None,
         }
@@ -253,6 +256,11 @@ where
             } else {
                 Err(Error::MissingModeParam)
             },
+            b'h' => if let Some(param) = params.next().filter(|p| !p.is_empty()) {
+                Ok(ChannelModeChange::ChangeHalfop(value, param))
+            } else {
+                Err(Error::MissingModeParam)
+            },
             b'v' => if let Some(param) = params.next().filter(|p| !p.is_empty()) {
                 Ok(ChannelModeChange::ChangeVoice(value, param))
             } else {
@@ -281,21 +289,4 @@ pub fn simple_channel_query(modes: &str) -> impl Iterator<Item=Result<ChannelMod
 /// ```
 pub fn is_channel_mode_string(s: &str) -> bool {
     simple_channel_query(s).all(|r| r.is_ok())
-}
-
-/// Whether the channel MODE query needs chanop priviledges.
-///
-/// # Example
-///
-/// ```rust
-/// # use ellidri::modes;
-/// assert!(modes::needs_chanop("+o"));
-/// assert!(!modes::needs_chanop("+b"));
-/// ```
-pub fn needs_chanop(modes: &str) -> bool {
-    simple_channel_query(modes).any(|mode| match mode {
-        Ok(ChannelModeChange::GetBans) | Ok(ChannelModeChange::GetExceptions)
-            | Ok(ChannelModeChange::GetInvitations) => false,
-        _ => true,
-    })
 }

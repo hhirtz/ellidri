@@ -276,7 +276,7 @@ impl super::StateInner {
             }
         };
         let member_modes = find_member(ctx.addr, ctx.rb, channel, target)?;
-        if modes::needs_chanop(modes) && !member_modes.operator {
+        if !member_modes.can_change(modes) {
             log::debug!("{}:     not operator", ctx.addr);
             ctx.rb.reply(rpl::ERR_CHANOPRIVSNEEDED)
                 .param(target)
