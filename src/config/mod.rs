@@ -61,6 +61,7 @@ pub struct State {
 
     pub channellen: usize,
     pub kicklen: usize,
+    pub namelen: usize,
     pub nicklen: usize,
     pub topiclen: usize,
     pub userlen: usize,
@@ -127,6 +128,7 @@ impl State {
             org_mail: "contact@ellidri.localdomain".to_owned(),
             channellen: 50,
             kicklen: 300,
+            namelen: 64,
             nicklen: 32,
             topiclen: 300,
             userlen: 64,
@@ -173,6 +175,7 @@ impl Config {
             .unique_setting("password",          false, |value| res.state.password = Some(value))?
             .unique_setting("channellen",        false, |value| res.state.channellen = value)?
             .unique_setting("kicklen",           false, |value| res.state.kicklen = value)?
+            .unique_setting("namelen",           false, |value| res.state.namelen = value)?
             .unique_setting("nicklen",           false, |value| res.state.nicklen = value)?
             .unique_setting("topiclen",          false, |value| res.state.topiclen = value)?
             .unique_setting("userlen",           false, |value| res.state.userlen = value)?
@@ -202,6 +205,7 @@ impl Config {
         }
         if self.state.channellen == 0 { self.state.channellen = def.state.channellen; }
         if self.state.kicklen == 0 { self.state.kicklen = def.state.kicklen; }
+        if self.state.namelen == 0 { self.state.namelen = def.state.namelen; }
         if self.state.nicklen == 0 { self.state.nicklen = def.state.nicklen; }
         if self.state.topiclen == 0 { self.state.topiclen = def.state.topiclen; }
         if self.state.userlen == 0 { self.state.userlen = def.state.userlen; }

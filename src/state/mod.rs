@@ -25,6 +25,7 @@ mod capabilities;
 mod message_tags;
 mod rfc2812;
 mod sasl;
+mod setname;
 #[cfg(test)]
 mod test;
 
@@ -197,6 +198,7 @@ pub(crate) struct StateInner {
 
     channellen: usize,
     kicklen: usize,
+    namelen: usize,
     nicklen: usize,
     topiclen: usize,
     userlen: usize,
@@ -229,6 +231,7 @@ impl StateInner {
             opers: config.opers,
             channellen: config.channellen,
             kicklen: config.kicklen,
+            namelen: config.namelen,
             nicklen: config.nicklen,
             topiclen: config.topiclen,
             userlen: config.userlen,
@@ -294,6 +297,12 @@ impl StateInner {
         };
         let mut rb = ReplyBuffer::new(&self.domain, client.nick());
 
+        if MAX_TAG_DATA_LENGTH < msg.tags.len() {
+            rb.reply(rpl::ERR_INPUTTOOLONG).trailing_param(lines::INPUT_TOO_LONG);
+            client.send(rb);
+            return Ok(());
+        }
+
         let command = match msg.command {
             Ok(cmd) => cmd,
             Err(unknown) => {
@@ -309,9 +318,7 @@ impl StateInner {
             }
         };
 
-        if MAX_TAG_DATA_LENGTH < msg.tags.len() {
-            rb.reply(rpl::ERR_INPUTTOOLONG).trailing_param(lines::INPUT_TOO_LONG);
-            client.send(rb);
+        if !client.is_capable_of(command) {
             return Ok(());
         }
 
@@ -378,6 +385,7 @@ impl StateInner {
             Command::Pong => Ok(()),
             Command::PrivMsg => self.cmd_privmsg(ctx, ps[0], ps[1]),
             Command::Quit => self.cmd_quit(ctx, ps[0]),
+            Command::SetName => self.cmd_setname(ctx, ps[0]),
             Command::TagMsg => self.cmd_tagmsg(ctx, ps[0]),
             Command::Time => self.cmd_time(ctx),
             Command::Topic => self.cmd_topic(ctx, ps[0], if n == 1 {None} else {Some(ps[1])}),
@@ -498,15 +506,16 @@ impl StateInner {
                 .param("HOSTLEN=39")  // max size of an IPv6 address
                 .param("INVEX")
                 .param("MODES")
-                .param("PREFIX=(qaohv)~&@%+")
-                .param("SAFELIST");
+                .param("PREFIX=(qaohv)~&@%+");
             write!(msg.raw_param(), "CHANNELLEN={}", self.channellen).unwrap();
             write!(msg.raw_param(), "KICKLEN={}", self.kicklen).unwrap();
+            write!(msg.raw_param(), "NAMELEN={}", self.namelen).unwrap();
             write!(msg.raw_param(), "NICKLEN={}", self.nicklen).unwrap();
             msg.trailing_param(lines::I_SUPPORT);
         }
         {
             let mut msg = rb.reply(rpl::ISUPPORT)
+                .param("SAFELIST")
                 .param("TARGMAX=JOIN:,KICK:1,LIST:,NAMES:,NOTICE:1,PART:,PRIVMSG:1,WHOIS:1");
             write!(msg.raw_param(), "TOPICLEN={}", self.topiclen).unwrap();
             msg.trailing_param(lines::I_SUPPORT);

@@ -147,6 +147,7 @@ pub mod cap {
     pub const MULTI_PREFIX: &str = "multi-prefix";
     pub const SASL: &str         = "sasl";
     pub const SERVER_TIME: &str  = "server-time";
+    pub const SETNAME: &str      = "setname";
     pub const USERHOST_IN_NAMES: &str = "userhost-in-names";
 
     // TODO replace with const fn
@@ -158,12 +159,13 @@ pub mod cap {
             , MESSAGE_TAGS
             , SASL
             , SERVER_TIME
+            , SETNAME
             , USERHOST_IN_NAMES
             ].iter().cloned().collect();
     }
 
     pub const LS_COMMON: &str =
-        "cap-notify echo-message message-tags multi-prefix server-time userhost-in-names";
+        "cap-notify echo-message message-tags multi-prefix server-time setname userhost-in-names";
 
     pub fn are_supported(capabilities: &str) -> bool {
         query(capabilities).all(|(cap,  _)| ALL.contains(cap))
@@ -192,6 +194,7 @@ pub struct Capabilities {
     pub multi_prefix: bool,
     pub sasl: bool,
     pub server_time: bool,
+    pub setname: bool,
     pub userhost_in_names: bool,
 }
 
@@ -286,6 +289,7 @@ impl Client {
                 cap::MULTI_PREFIX => self.capabilities.multi_prefix = enable,
                 cap::SASL => self.capabilities.sasl = enable,
                 cap::SERVER_TIME => self.capabilities.server_time = enable,
+                cap::SETNAME => self.capabilities.setname = enable,
                 cap::USERHOST_IN_NAMES => self.capabilities.userhost_in_names = enable,
                 _ => {}
             }
@@ -328,6 +332,10 @@ impl Client {
             trailing.push_str(cap::SERVER_TIME);
             trailing.push(' ');
         }
+        if self.capabilities.setname {
+            trailing.push_str(cap::SETNAME);
+            trailing.push(' ');
+        }
         if self.capabilities.userhost_in_names {
             trailing.push_str(cap::USERHOST_IN_NAMES);
             trailing.push(' ');
@@ -353,6 +361,16 @@ impl Client {
     /// This function does not change the connection state.
     pub fn can_issue_command(&self, command: Command, sub_command: &str) -> bool {
         self.state.apply(command, sub_command).is_ok()
+    }
+
+    /// Whether the client has negociated the capability necessary to issue the given command.
+    pub fn is_capable_of(&self, command: Command) -> bool {
+        match command {
+            Command::Authenticate => self.capabilities.sasl,
+            Command::SetName => self.capabilities.setname,
+            Command::TagMsg => self.capabilities.has_message_tags(),
+            _ => true,
+        }
     }
 
     pub fn is_registered(&self) -> bool {
@@ -443,23 +461,27 @@ impl Client {
         &self.user
     }
 
+    /// Change the username of the client.
+    pub fn set_user(&mut self, user: &str) {
+        self.user.clear();
+        self.user.push_str(user);
+        self.update_full_name();
+    }
+
     /// The realname of the client
     pub fn real(&self) -> &str {
         &self.real
     }
 
+    /// Change the realname of the client.
+    pub fn set_real(&mut self, real: &str) {
+        self.real.clear();
+        self.real.push_str(real);
+    }
+
     /// The host of the client
     pub fn host(&self) -> &str {
         &self.host
-    }
-
-    /// Change the username and the realname of the client.
-    ///
-    /// This function does not change the connection state.
-    pub fn set_user_real(&mut self, user: &str, real: &str) {
-        self.user.push_str(user);
-        self.real.push_str(real);
-        self.update_full_name();
     }
 
     pub fn identity(&self) -> Option<&str> {

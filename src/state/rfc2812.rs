@@ -708,7 +708,8 @@ impl super::StateInner {
             ctx.rb.reply(rpl::ERR_PASSWDMISMATCH).trailing_param(lines::PASSWORD_MISMATCH);
             return Err(());
         }
-        client.set_user_real(&user[..user.len().min(self.userlen)], real);
+        client.set_user(&user[..user.len().min(self.userlen)]);
+        client.set_real(&real[..real.len().min(self.namelen)]);
 
         Ok(())
     }

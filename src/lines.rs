@@ -187,3 +187,8 @@ pub fn logged_in(mut r: MessageBuffer<'_>, user: &str) {
     trailing.push_str("okaeri ");
     trailing.push_str(user);
 }
+
+// Setname
+
+pub const INVALID_REALNAME: &str =
+"Meh, this is obviously a bad realname...";

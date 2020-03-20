@@ -7,10 +7,6 @@ use super::{CommandContext, HandlerResult as Result};
 impl super::StateInner {
     pub fn cmd_authenticate(&mut self, ctx: CommandContext<'_>, payload: &str) -> Result {
         let client = self.clients.get_mut(ctx.addr).unwrap();
-        if !client.capabilities.sasl {
-            log::debug!("{}:     hasn't negociated sasl", ctx.addr);
-            return Err(());
-        }
         if client.identity().is_some() {
             log::debug!("{}:     is already logged in", ctx.addr);
             ctx.rb.reply(rpl::ERR_SASLALREADY).trailing_param(lines::SASL_ALREADY);
