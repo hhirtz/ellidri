@@ -550,18 +550,23 @@ impl StateInner {
             return;
         }
         if !channel.members.is_empty() {
-            let multi_prefix = self.clients[addr].capabilities.multi_prefix;
+            let client_caps = self.clients[addr].capabilities.clone();
+
             let mut message = rb.reply(rpl::NAMREPLY)
                 .param(channel.symbol())
                 .param(channel_name);
             let trailing = message.raw_trailing_param();
             for (member, modes) in &channel.members {
-                if multi_prefix {
+                if client_caps.multi_prefix {
                     modes.all_symbols(trailing);
                 } else if let Some(s) = modes.symbol() {
                     trailing.push(s);
                 }
-                trailing.push_str(self.clients[member].nick());
+                if client_caps.userhost_in_names {
+                    trailing.push_str(self.clients[member].full_name());
+                } else {
+                    trailing.push_str(self.clients[member].nick());
+                }
                 trailing.push(' ');
             }
             trailing.pop();  // Remove last space, not ':' since !channel.members.is_empty()

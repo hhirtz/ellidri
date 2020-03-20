@@ -147,6 +147,7 @@ pub mod cap {
     pub const MULTI_PREFIX: &str = "multi-prefix";
     pub const SASL: &str         = "sasl";
     pub const SERVER_TIME: &str  = "server-time";
+    pub const USERHOST_IN_NAMES: &str = "userhost-in-names";
 
     // TODO replace with const fn
     lazy_static::lazy_static! {
@@ -157,10 +158,12 @@ pub mod cap {
             , MESSAGE_TAGS
             , SASL
             , SERVER_TIME
+            , USERHOST_IN_NAMES
             ].iter().cloned().collect();
     }
 
-    pub const LS_COMMON: &str = "cap-notify echo-message message-tags multi-prefix server-time";
+    pub const LS_COMMON: &str =
+        "cap-notify echo-message message-tags multi-prefix server-time userhost-in-names";
 
     pub fn are_supported(capabilities: &str) -> bool {
         query(capabilities).all(|(cap,  _)| ALL.contains(cap))
@@ -180,7 +183,7 @@ pub mod cap {
 pub const AUTHENTICATE_CHUNK_LEN: usize = 400;
 pub const AUTHENTICATE_WHOLE_LEN: usize = 1024;
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub struct Capabilities {
     pub v302: bool,
     pub cap_notify: bool,
@@ -189,6 +192,7 @@ pub struct Capabilities {
     pub multi_prefix: bool,
     pub sasl: bool,
     pub server_time: bool,
+    pub userhost_in_names: bool,
 }
 
 impl Capabilities {
@@ -282,6 +286,7 @@ impl Client {
                 cap::MULTI_PREFIX => self.capabilities.multi_prefix = enable,
                 cap::SASL => self.capabilities.sasl = enable,
                 cap::SERVER_TIME => self.capabilities.server_time = enable,
+                cap::USERHOST_IN_NAMES => self.capabilities.userhost_in_names = enable,
                 _ => {}
             }
         }
@@ -321,6 +326,10 @@ impl Client {
         }
         if self.capabilities.server_time {
             trailing.push_str(cap::SERVER_TIME);
+            trailing.push(' ');
+        }
+        if self.capabilities.userhost_in_names {
+            trailing.push_str(cap::USERHOST_IN_NAMES);
             trailing.push(' ');
         }
         if len < trailing.len() {

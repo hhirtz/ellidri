@@ -31,6 +31,7 @@ Supported capabilities:
 - [multi-prefix](https://ircv3.net/specs/extensions/multi-prefix-3.1)
 - [sasl](https://ircv3.net/specs/extensions/sasl-3.1)
 - [server-time](https://ircv3.net/specs/extensions/server-time-3.2.html)
+- [userhost-in-names](https://ircv3.net/specs/extensions/userhost-in-names-3.2)
 
 ellidri doesn't support any server-to-server (S2S) protocol.  As such, it is
 impossible to make several instances of ellidri manage the same IRC network.
