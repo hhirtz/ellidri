@@ -14,6 +14,11 @@ pub struct MemberModes {
 }
 
 impl MemberModes {
+    pub fn all_symbols(self, out: &mut String) {
+        if self.operator { out.push('@'); }
+        if self.voice { out.push('+'); }
+    }
+
     pub fn symbol(self) -> Option<char> {
         if self.operator {
             Some('@')

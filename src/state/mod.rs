@@ -542,22 +542,31 @@ impl StateInner {
 
     /// Sends the list of nicknames in the channel `channel_name` to the given client.
     fn write_names(&self, addr: &net::SocketAddr, rb: &mut ReplyBuffer, channel_name: &str) {
-        if let Some(channel) = self.channels.get(<&UniCase<str>>::from(channel_name)) {
-            if channel.secret && !channel.members.contains_key(&addr) { return; }
-            if !channel.members.is_empty() {
-                let mut message = rb.reply(rpl::NAMREPLY)
-                    .param(channel.symbol())
-                    .param(channel_name);
-                let trailing = message.raw_trailing_param();
-                for (member, modes) in &channel.members {
-                    if let Some(s) = modes.symbol() { trailing.push(s); }
-                    trailing.push_str(self.clients[member].nick());
-                    trailing.push(' ');
-                }
-                trailing.pop();  // Remove last space
-            }
-            rb.reply(rpl::ENDOFNAMES).param(channel_name).trailing_param(lines::END_OF_NAMES);
+        let channel = match self.channels.get(<&UniCase<str>>::from(channel_name)) {
+            Some(channel) => channel,
+            None => return,
+        };
+        if channel.secret && !channel.members.contains_key(&addr) {
+            return;
         }
+        if !channel.members.is_empty() {
+            let multi_prefix = self.clients[addr].capabilities.multi_prefix;
+            let mut message = rb.reply(rpl::NAMREPLY)
+                .param(channel.symbol())
+                .param(channel_name);
+            let trailing = message.raw_trailing_param();
+            for (member, modes) in &channel.members {
+                if multi_prefix {
+                    modes.all_symbols(trailing);
+                } else if let Some(s) = modes.symbol() {
+                    trailing.push(s);
+                }
+                trailing.push_str(self.clients[member].nick());
+                trailing.push(' ');
+            }
+            trailing.pop();  // Remove last space, not ':' since !channel.members.is_empty()
+        }
+        rb.reply(rpl::ENDOFNAMES).param(channel_name).trailing_param(lines::END_OF_NAMES);
     }
 
     /// Sends the topic of the channel `channel_name` to the given client.

@@ -28,6 +28,7 @@ Supported capabilities:
 - [echo-message](https://ircv3.net/specs/extensions/echo-message-3.2)
 - [message-ids](https://ircv3.net/specs/extensions/message-ids)
 - [message-tags](https://ircv3.net/specs/extensions/message-tags)
+- [multi-prefix]https://ircv3.net/specs/extensions/multi-prefix-3.1)
 - [sasl](https://ircv3.net/specs/extensions/sasl-3.1)
 - [server-time](https://ircv3.net/specs/extensions/server-time-3.2.html)
 
