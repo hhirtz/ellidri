@@ -1,6 +1,7 @@
 use crate::lines;
 use crate::message::Message;
 use crate::state::State;
+use futures::future;
 use std::{fs, path, process, str};
 use std::collections::HashMap;
 use std::net::SocketAddr;
@@ -121,8 +122,11 @@ async fn handle<S>(conn: S, peer_addr: SocketAddr, shared: State)
             // - kill clients that send 1-byte (or so) reads every time
             reader.read_line(&mut buf).await?;
             log::trace!("{} >> {}", peer_addr, buf.trim());
-            handle_buffer(&peer_addr, &buf, &shared).await?;
+            if handle_buffer(&peer_addr, &buf, &shared).await? {
+                break;
+            }
         }
+        Ok(())
     };
 
     let outgoing = async {
@@ -134,21 +138,26 @@ async fn handle<S>(conn: S, peer_addr: SocketAddr, shared: State)
         Ok(())
     };
 
-    let (i, o): (io::Result<()>, io::Result<()>) = futures::future::join(incoming, outgoing).await;
-    shared.peer_quit(&peer_addr, i.err().or_else(|| o.err())).await;
+    let res = future::try_join(incoming, outgoing).await;
+    shared.peer_quit(&peer_addr, res.err()).await;
 }
 
-async fn handle_buffer(peer_addr: &SocketAddr, buf: &str, shared: &State) -> io::Result<()> {
+/// Handle a line from the client.
+///
+/// Returns `Err(_)` if the buffer is empty, `Ok(true)` if the connection is scheduled to be
+/// closed, `Ok(false)` otherwise.
+async fn handle_buffer(peer_addr: &SocketAddr, buf: &str, shared: &State) -> io::Result<bool> {
     if buf.is_empty() {
         return Err(io::Error::new(io::ErrorKind::UnexpectedEof, lines::CONNECTION_RESET));
     }
 
     if let Some(msg) = Message::parse(buf) {
-        shared.handle_message(peer_addr, msg).await
-            .map_err(|_| io::Error::from(io::ErrorKind::Other))?;
+        if let Err(()) = shared.handle_message(peer_addr, msg).await {
+            return Ok(true);
+        }
     }
 
-    Ok(())
+    Ok(false)
 }
 
 async fn login_timeout(peer_addr: SocketAddr, shared: State) {
