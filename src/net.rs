@@ -5,7 +5,7 @@ use std::{fs, path, process, str};
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
-use tokio::{io, net, sync};
+use tokio::{io, net, sync, time};
 use tokio_tls::TlsAcceptor;
 
 /// `TlsAcceptor` cache, to avoid reading the same identity file several times.
@@ -105,8 +105,9 @@ async fn handle<S>(conn: S, peer_addr: SocketAddr, shared: State)
     let (reader, mut writer) = io::split(conn);
     let mut reader = io::BufReader::new(reader);
     let (msg_queue, mut outgoing_msgs) = sync::mpsc::unbounded_channel();
+
     shared.peer_joined(peer_addr, msg_queue).await;
-    // TODO spawn task that kill the client if it's not registered after a delay
+    tokio::spawn(login_timeout(peer_addr, shared.clone()));
 
     let incoming = async {
         use io::AsyncBufReadExt as _;
@@ -133,8 +134,8 @@ async fn handle<S>(conn: S, peer_addr: SocketAddr, shared: State)
         Ok(())
     };
 
-    let res: (io::Result<()>, io::Result<()>) = futures::future::join(incoming, outgoing).await;
-    shared.peer_quit(&peer_addr, res.0.err().or(res.1.err())).await;
+    let (i, o): (io::Result<()>, io::Result<()>) = futures::future::join(incoming, outgoing).await;
+    shared.peer_quit(&peer_addr, i.err().or_else(|| o.err())).await;
 }
 
 async fn handle_buffer(peer_addr: &SocketAddr, buf: &str, shared: &State) -> io::Result<()> {
@@ -148,4 +149,10 @@ async fn handle_buffer(peer_addr: &SocketAddr, buf: &str, shared: &State) -> io:
     }
 
     Ok(())
+}
+
+async fn login_timeout(peer_addr: SocketAddr, shared: State) {
+    let timeout = shared.login_timeout().await;
+    time::delay_for(time::Duration::from_millis(timeout)).await;
+    shared.remove_if_unregistered(&peer_addr).await;
 }

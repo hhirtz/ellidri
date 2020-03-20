@@ -64,6 +64,8 @@ pub struct State {
     pub nicklen: usize,
     pub topiclen: usize,
     pub userlen: usize,
+
+    pub login_timeout: u64,
 }
 
 /// Listening address + port + optional TLS settings.
@@ -128,6 +130,7 @@ impl State {
             nicklen: 32,
             topiclen: 300,
             userlen: 64,
+            login_timeout: 60000,
         }
     }
 }
@@ -173,6 +176,7 @@ impl Config {
             .unique_setting("nicklen",           false, |value| res.state.nicklen = value)?
             .unique_setting("topiclen",          false, |value| res.state.topiclen = value)?
             .unique_setting("userlen",           false, |value| res.state.userlen = value)?
+            .unique_setting("login_timeout",     false, |value| res.state.login_timeout = value)?
             .unique_setting("sasl_backend",      false, |value| res.sasl_backend = value)?;
 
         let db_needed = res.sasl_backend == SaslBackend::Database;
@@ -201,6 +205,7 @@ impl Config {
         if self.state.nicklen == 0 { self.state.nicklen = def.state.nicklen; }
         if self.state.topiclen == 0 { self.state.topiclen = def.state.topiclen; }
         if self.state.userlen == 0 { self.state.userlen = def.state.userlen; }
+        if self.state.login_timeout == 0 { self.state.login_timeout = def.state.login_timeout; }
         Ok(())
     }
 }

@@ -115,6 +115,10 @@ impl State {
         Self(Arc::new(Mutex::new(inner)))
     }
 
+    pub async fn login_timeout(&self) -> u64 {
+        self.0.lock().await.login_timeout
+    }
+
     /// Adds a new connection to the state.
     ///
     /// Each connection is identified by its address.  The queue is used to push messages back to
@@ -136,6 +140,10 @@ impl State {
     /// Updates the state according to the given message from the given client.
     pub async fn handle_message(&self, addr: &net::SocketAddr, msg: Message<'_>) -> HandlerResult {
         self.0.lock().await.handle_message(addr, msg)
+    }
+
+    pub async fn remove_if_unregistered(&self, addr: &net::SocketAddr) {
+        self.0.lock().await.remove_if_unregistered(addr);
     }
 }
 
@@ -193,6 +201,8 @@ pub(crate) struct StateInner {
     topiclen: usize,
     userlen: usize,
 
+    login_timeout: u64,
+
     auth_provider: Box<dyn auth::Provider>,
 }
 
@@ -222,6 +232,7 @@ impl StateInner {
             nicklen: config.nicklen,
             topiclen: config.topiclen,
             userlen: config.userlen,
+            login_timeout: config.login_timeout,
             auth_provider,
         }
     }
@@ -397,6 +408,14 @@ impl StateInner {
         }
 
         Ok(())
+    }
+
+    pub fn remove_if_unregistered(&mut self, addr: &net::SocketAddr) {
+        if let Some(client) = self.clients.get(addr) {
+            if !client.is_registered() {
+                self.clients.remove(addr);
+            }
+        }
     }
 }
 

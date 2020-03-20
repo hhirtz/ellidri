@@ -22,8 +22,14 @@ impl TypeName for bool {
     fn type_name() -> String { "\"true\" or \"false\"".to_owned() }
 }
 
+impl TypeName for u64 {
+    fn type_name() -> String { format!("a positive integer (and lower than {})", u64::max_value()) }
+}
+
 impl TypeName for usize {
-    fn type_name() -> String { "a positive integer".to_owned() }
+    fn type_name() -> String {
+        format!("a positive integer (and lower than {})", usize::max_value())
+    }
 }
 
 impl TypeName for String {
