@@ -3,8 +3,6 @@
 
 # kawaii
 
-ellidri, your kawaii IRC server.
-
 ellidri is an [IRC server][ircd] (or IRCd, for short), that aims to be simple to
 setup, widely compatible, feature complete and scalable.
 
@@ -18,9 +16,9 @@ Join the IRC channel: [#ellidri on freenode][irc]!
 ## Features
 
 - RFC [1459][r1] and [2812][r2] compliance (almost! see [#1][i1])
-- TLS support
+- IRCv3 support
+- TLS connections
 - Multiple listening ports
-- Capabilities (version 302)
 - SASL support with SQLite and PostgreSQL
 - kawaii messages
 
