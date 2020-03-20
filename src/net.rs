@@ -5,13 +5,8 @@ use std::{fs, path, process, str};
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
-use tokio::{io, net, sync, time};
+use tokio::{io, net, sync};
 use tokio_tls::TlsAcceptor;
-
-// Timeouts, in milliseconds.
-// TODO: make them configurable.
-const READ_TIMEOUT: u64 = 5_000;
-const REGISTRATION_TIMEOUT: u64 = 60_000;
 
 /// `TlsAcceptor` cache, to avoid reading the same identity file several times.
 #[derive(Default)]
@@ -135,13 +130,11 @@ async fn handle<S>(conn: S, peer_addr: SocketAddr, shared: State)
         while let Some(msg) = outgoing_msgs.recv().await {
             writer.write_all(msg.as_ref()).await?;
         }
-        // The client is not in `shared` anymore.  Let it read for a bit, then close the connection.
-        time::delay_for(time::Duration::from_millis(READ_TIMEOUT)).await;
-        Err(io::ErrorKind::TimedOut.into())
+        Ok(())
     };
 
-    let res: io::Result<((), ())> = futures::future::try_join(incoming, outgoing).await;
-    shared.peer_quit(&peer_addr, res.err()).await;
+    let res: (io::Result<()>, io::Result<()>) = futures::future::join(incoming, outgoing).await;
+    shared.peer_quit(&peer_addr, res.0.err().or(res.1.err())).await;
 }
 
 async fn handle_buffer(peer_addr: &SocketAddr, buf: &str, shared: &State) -> io::Result<()> {
