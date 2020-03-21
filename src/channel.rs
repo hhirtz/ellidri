@@ -148,6 +148,18 @@ impl Channel {
         }
     }
 
+    pub fn can_invite(&self, addr: &SocketAddr) -> bool {
+        let member = match self.members.get(&addr) {
+            Some(member) => member,
+            None => return false,
+        };
+        if self.invite_only {
+            member.is_at_least_halfop()
+        } else {
+            true
+        }
+    }
+
     pub fn modes(&self, mut out: MessageBuffer<'_>, full_info: bool) {
         let modes = out.raw_param();
         modes.push('+');

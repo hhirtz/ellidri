@@ -51,8 +51,7 @@ impl super::StateInner {
                 return Err(());
             },
         };
-        let member_modes = find_member(ctx.addr, ctx.rb, channel, target)?;
-        if channel.invite_only && !member_modes.operator {
+        if !channel.can_invite(ctx.addr) {
             log::debug!("{}:     not operator", ctx.addr);
             ctx.rb.reply(rpl::ERR_CHANOPRIVSNEEDED)
                 .param(target)
@@ -72,12 +71,20 @@ impl super::StateInner {
             return Err(());
         }
 
-        let mut invite = Buffer::new();
         ctx.rb.reply(rpl::INVITING).param(nick).param(target);
+
+        let mut invite = Buffer::new();
         invite.message(self.clients[ctx.addr].full_name(), Command::Invite)
             .param(nick)
             .param(target);
-        self.clients[&target_addr].send(invite);
+        let invite = MessageQueueItem::from(invite);
+        self.clients[&target_addr].send(invite.clone());
+        for member in channel.members.keys().filter(|a| *a != ctx.addr) {
+            let c = &self.clients[member];
+            if c.capabilities.invite_notify && channel.can_invite(member) {
+                c.send(invite.clone());
+            }
+        }
 
         Ok(())
     }

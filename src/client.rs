@@ -144,6 +144,7 @@ pub mod cap {
     pub const CAP_NOTIFY: &str    = "cap-notify";
     pub const ECHO_MESSAGE: &str  = "echo-message";
     pub const EXTENDED_JOIN: &str = "extended-join";
+    pub const INVITE_NOTIFY: &str = "invite-notify";
     pub const MESSAGE_TAGS: &str  = "message-tags";
     pub const MULTI_PREFIX: &str  = "multi-prefix";
     pub const SASL: &str          = "sasl";
@@ -157,6 +158,7 @@ pub mod cap {
             [ CAP_NOTIFY
             , ECHO_MESSAGE
             , EXTENDED_JOIN
+            , INVITE_NOTIFY
             , MULTI_PREFIX
             , MESSAGE_TAGS
             , SASL
@@ -167,7 +169,7 @@ pub mod cap {
     }
 
     pub const LS_COMMON: &str =
-"cap-notify echo-message extended-join message-tags multi-prefix server-time setname \
+"cap-notify echo-message extended-join invite-notify message-tags multi-prefix server-time setname \
 userhost-in-names";
 
     pub fn are_supported(capabilities: &str) -> bool {
@@ -194,6 +196,7 @@ pub struct Capabilities {
     pub cap_notify: bool,
     pub echo_message: bool,
     pub extended_join: bool,
+    pub invite_notify: bool,
     pub message_tags: bool,
     pub multi_prefix: bool,
     pub sasl: bool,
@@ -290,6 +293,7 @@ impl Client {
                 cap::CAP_NOTIFY => self.capabilities.cap_notify = enable,
                 cap::ECHO_MESSAGE => self.capabilities.echo_message = enable,
                 cap::EXTENDED_JOIN => self.capabilities.extended_join = enable,
+                cap::INVITE_NOTIFY => self.capabilities.invite_notify = enable,
                 cap::MESSAGE_TAGS => self.capabilities.message_tags = enable,
                 cap::MULTI_PREFIX => self.capabilities.multi_prefix = enable,
                 cap::SASL => self.capabilities.sasl = enable,
@@ -323,6 +327,10 @@ impl Client {
         }
         if self.capabilities.extended_join {
             trailing.push_str(cap::EXTENDED_JOIN);
+            trailing.push(' ');
+        }
+        if self.capabilities.invite_notify {
+            trailing.push_str(cap::INVITE_NOTIFY);
             trailing.push(' ');
         }
         if self.capabilities.message_tags {
