@@ -39,7 +39,7 @@ Supported extensions:
 ellidri doesn't support any server-to-server (S2S) protocol.  As such, it is
 impossible to make several instances of ellidri manage the same IRC network.
 
-ellidri only supports the UTF-8 encoding for messages, though for now it only
+ellidri will just support the UTF-8 encoding for messages, and for now it only
 supports the `ascii` casemapping.
 
 [r1]: https://tools.ietf.org/html/rfc1459
