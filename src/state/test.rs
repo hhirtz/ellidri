@@ -22,31 +22,31 @@ pub(crate) fn simple_state() -> StateInner {
     StateInner::new(config, auth::choose_provider(config::SaslBackend::None, None).unwrap())
 }
 
-pub(crate) fn add_client(s: &mut StateInner) -> (SocketAddr, Queue) {
+pub(crate) fn add_client(s: &mut StateInner) -> (usize, Queue) {
     let port = s.clients.len() as u16;
-    let res = SocketAddr::from(([127, 0, 0, 1], port));
+    let addr = SocketAddr::from(([127, 0, 0, 1], port));
     let (msg_queue, outgoing_msgs) = mpsc::unbounded_channel();
-    s.peer_joined(res, msg_queue);
+    let res = s.peer_joined(addr, msg_queue);
     (res, outgoing_msgs)
 }
 
-pub(crate) fn add_registered_client(s: &mut StateInner, nickname: &str) -> (SocketAddr, Queue) {
-    let (addr, queue) = add_client(s);
+pub(crate) fn add_registered_client(s: &mut StateInner, nickname: &str) -> (usize, Queue) {
+    let (id, queue) = add_client(s);
     NICKBUF.with(|buf| {
         let mut buf = buf.borrow_mut();
         buf.truncate(NICKBUF_START.len());
         buf.push_str(nickname);
         let nick = Message::parse(&buf).unwrap();
         let user = Message::parse("USER X X X X").unwrap();
-        let _ = s.handle_message(&addr, nick);
-        let _ = s.handle_message(&addr, user);
+        let _ = s.handle_message(id, nick);
+        let _ = s.handle_message(id, user);
     });
-    (addr, queue)
+    (id, queue)
 }
 
-pub(crate) fn handle_message(state: &mut StateInner, addr: &SocketAddr, message: &str) {
+pub(crate) fn handle_message(state: &mut StateInner, id: usize, message: &str) {
     let message = Message::parse(message).unwrap();
-    let _ = state.handle_message(addr, message);
+    let _ = state.handle_message(id, message);
 }
 
 pub fn flush(queue: &mut Queue) {

@@ -16,6 +16,7 @@ use crate::message::{Buffer, Command, Message, ReplyBuffer, rpl};
 use crate::modes;
 use crate::util::time_str;
 use ellidri_unicase::UniCase;
+use slab::Slab;
 use std::{cmp, fs, io, net};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -40,11 +41,11 @@ const SERVER_INFO: &str = include_str!("info.txt");
 const MAX_TAG_DATA_LENGTH: usize = 4094;
 
 type ChannelMap = HashMap<UniCase<String>, Channel>;
-type ClientMap = HashMap<net::SocketAddr, Client>;
+type ClientMap = Slab<Client>;
 type HandlerResult = Result<(), ()>;
 
 pub struct CommandContext<'a> {
-    addr: &'a net::SocketAddr,
+    id: usize,
     rb: &'a mut ReplyBuffer,
     client_tags: &'a str,
 }
@@ -76,19 +77,21 @@ pub struct CommandContext<'a> {
 ///     ..config::State::sample()
 /// }, sasl_backend);
 ///
-/// // Each client is identified by its address.
+/// // The IP address of the client, to build the host string.
 /// let client_addr = std::net::SocketAddr::from(([127, 0, 0, 1], 12345));
 ///
 /// // The state uses a MPSC queue and pushes the messages meant to be sent
 /// // to the client onto the queue.
 /// let (msg_queue, mut outgoing_msgs) = tokio::sync::mpsc::unbounded_channel();
-/// state.peer_joined(client_addr, msg_queue).await;
+///
+/// // Each client is identified by an integer.
+/// let client_id = state.peer_joined(client_addr, msg_queue).await;
 ///
 /// // `handle_message` is used to pass messages from the client to the state.
 /// let nick = Message::parse("NICK ser\r\n").unwrap();
 /// let user = Message::parse("USER ser 0 * :ser\r\n").unwrap();
-/// state.handle_message(&client_addr, nick).await;
-/// state.handle_message(&client_addr, user).await;
+/// state.handle_message(client_id, nick).await;
+/// state.handle_message(client_id, user).await;
 ///
 /// // The user has registered, so the state should have pushed
 /// // the welcome message, the motd, etc. onto the queue.
@@ -124,27 +127,27 @@ impl State {
     ///
     /// Each connection is identified by its address.  The queue is used to push messages back to
     /// the peer.
-    pub async fn peer_joined(&self, addr: net::SocketAddr, queue: MessageQueue) {
-        self.0.lock().await.peer_joined(addr, queue);
+    pub async fn peer_joined(&self, addr: net::SocketAddr, queue: MessageQueue) -> usize {
+        self.0.lock().await.peer_joined(addr, queue)
     }
 
     /// Removes the given connection from the state, with an optional error.
     ///
     /// If the peer has quit unexpctedly, `err` should be set to `Some` and reflect the cause of
     /// the quit, so that other peers can be correctly informed.
-    pub async fn peer_quit(&self, addr: &net::SocketAddr, err: Option<io::Error>) {
+    pub async fn peer_quit(&self, id: usize, err: Option<io::Error>) {
         // TODO remove `addr` and instead make it return a usize to identify the client
         // then clients can be a Slab
-        self.0.lock().await.peer_quit(addr, err);
+        self.0.lock().await.peer_quit(id, err);
     }
 
     /// Updates the state according to the given message from the given client.
-    pub async fn handle_message(&self, addr: &net::SocketAddr, msg: Message<'_>) -> HandlerResult {
-        self.0.lock().await.handle_message(addr, msg)
+    pub async fn handle_message(&self, id: usize, msg: Message<'_>) -> HandlerResult {
+        self.0.lock().await.handle_message(id, msg)
     }
 
-    pub async fn remove_if_unregistered(&self, addr: &net::SocketAddr) {
-        self.0.lock().await.remove_if_unregistered(addr);
+    pub async fn remove_if_unregistered(&self, id: usize) {
+        self.0.lock().await.remove_if_unregistered(id);
     }
 }
 
@@ -222,7 +225,7 @@ impl StateInner {
             org_name: config.org_name,
             org_location: config.org_location,
             org_mail: config.org_mail,
-            clients: HashMap::new(),
+            clients: Slab::new(),
             channels: HashMap::new(),
             created_at: time_str(),
             motd,
@@ -240,20 +243,22 @@ impl StateInner {
         }
     }
 
-    pub fn peer_joined(&mut self, addr: net::SocketAddr, queue: MessageQueue) {
+    pub fn peer_joined(&mut self, addr: net::SocketAddr, queue: MessageQueue) -> usize {
         log::debug!("{}: Connected", addr);
-        self.clients.insert(addr, Client::new(queue, addr.ip().to_string()));
+        self.clients.insert(Client::new(queue, addr.ip().to_string()))
     }
 
-    pub fn peer_quit(&mut self, addr: &net::SocketAddr, err: Option<io::Error>) {
-        log::debug!("{}: Disconnected", addr);
-        if let Some(client) = self.clients.remove(addr) {
-            if let Some(err) = err {
-                let s = err.to_string();
-                self.remove_client(addr, client, Some(s.as_ref()));
-            } else {
-                self.remove_client(addr, client, None);
-            }
+    pub fn peer_quit(&mut self, id: usize, err: Option<io::Error>) {
+        log::debug!("{}: Disconnected", id);
+        if !self.clients.contains(id) {
+            return;
+        }
+        let client = self.clients.remove(id);
+        if let Some(err) = err {
+            let err = err.to_string();
+            self.remove_client(id, client, Some(&err));
+        } else {
+            self.remove_client(id, client, None);
         }
     }
 
@@ -266,7 +271,7 @@ impl StateInner {
     /// - TODO: remove the client from channel invites (TODO: store invites in client instead of
     ///   channel),
     /// - remove empty channels
-    fn remove_client(&mut self, addr: &net::SocketAddr, client: Client, reason: Option<&str>) {
+    fn remove_client(&mut self, id: usize, client: Client, reason: Option<&str>) {
         let mut response = Buffer::new();
         {
             let msg = response.message(client.full_name(), Command::Quit);
@@ -277,21 +282,21 @@ impl StateInner {
         let msg = MessageQueueItem::from(response);
 
         for channel in self.channels.values() {
-            if channel.members.contains_key(addr) {
+            if channel.members.contains_key(&id) {
                 for member in channel.members.keys() {
-                    self.send(member, msg.clone());
+                    self.send(*member, msg.clone());
                 }
             }
         }
 
         self.channels.retain(|_, channel| {
-            channel.members.remove(addr);
+            channel.members.remove(&id);
             !channel.members.is_empty()
         });
     }
 
-    pub fn handle_message(&mut self, addr: &net::SocketAddr, msg: Message<'_>) -> HandlerResult {
-        let client = match self.clients.get(addr) {
+    pub fn handle_message(&mut self, id: usize, msg: Message<'_>) -> HandlerResult {
+        let client = match self.clients.get(id) {
             Some(client) => client,
             None => return Err(()),
         };
@@ -357,12 +362,12 @@ impl StateInner {
         let ps = msg.params;
         let n = msg.num_params;
         let ctx = CommandContext {
-            addr,
+            id,
             rb: &mut rb,
             client_tags: msg.tags,
         };
 
-        log::debug!("{}: {} {:?}", addr, command, &ps[..n]);
+        log::debug!("{}: {} {:?}", id, command, &ps[..n]);
         let cmd_result = match command {
             Command::Admin => self.cmd_admin(ctx),
             Command::Authenticate => self.cmd_authenticate(ctx, ps[0]),
@@ -396,32 +401,30 @@ impl StateInner {
             Command::Reply(_) => Ok(()),
         };
 
-        if !rb.is_empty() {
-            self.send(addr, MessageQueueItem::from(rb));
+        if !self.clients.contains(id) {
+            return Err(());
         }
         if cmd_result.is_ok() {
-            if let Some(client) = self.clients.get_mut(addr) {
-                let old_state = client.state();
-                let new_state = client.apply_command(command, msg.params[0]);
-                if new_state.is_registered() && !old_state.is_registered() {
-                    let client = &self.clients[addr];
-                    let mut rb = ReplyBuffer::new(&self.domain, client.nick());
-                    self.write_welcome(&mut rb, client.full_name());
-                    client.send(rb);
-                }
-                log::debug!("{}: {:?} + {:?} == {:?}", addr, old_state, command, new_state);
-            } else {
-                return Err(());
+            let client = self.clients.get_mut(id).unwrap();
+            let old_state = client.state();
+            let new_state = client.apply_command(command, msg.params[0]);
+            if new_state.is_registered() && !old_state.is_registered() {
+                self.write_welcome(&mut rb, id);
+            } else if !old_state.is_registered() {
+                log::debug!("{}: {:?} + {:?} == {:?}", id, old_state, command, new_state);
             }
+        }
+        if !rb.is_empty() {
+            self.send(id, MessageQueueItem::from(rb));
         }
 
         Ok(())
     }
 
-    pub fn remove_if_unregistered(&mut self, addr: &net::SocketAddr) {
-        if let Some(client) = self.clients.get(addr) {
+    pub fn remove_if_unregistered(&mut self, id: usize) {
+        if let Some(client) = self.clients.get(id) {
             if !client.is_registered() {
-                self.clients.remove(addr);
+                self.clients.remove(id);
             }
         }
     }
@@ -429,13 +432,13 @@ impl StateInner {
 
 /// Returns `Ok(channel)` when `name` is an existing channel name.  Otherwise returns `Err(())` and
 /// send an error to the client.
-fn find_channel<'a>(addr: &net::SocketAddr, rb: &mut ReplyBuffer, channels: &'a ChannelMap,
+fn find_channel<'a>(id: usize, rb: &mut ReplyBuffer, channels: &'a ChannelMap,
                     name: &str) -> Result<&'a Channel, ()>
 {
     match channels.get(<&UniCase<str>>::from(name)) {
         Some(channel) => Ok(channel),
         None => {
-            log::debug!("{}:         no such channel", addr);
+            log::debug!("{}:         no such channel", id);
             rb.reply(rpl::ERR_NOSUCHCHANNEL).param(name).trailing_param(lines::NO_SUCH_CHANNEL);
             Err(())
         }
@@ -446,13 +449,13 @@ fn find_channel<'a>(addr: &net::SocketAddr, rb: &mut ReplyBuffer, channels: &'a 
 /// Otherwise returns `Err(())` and send an error to the client.
 ///
 /// `channel_name` is needed for the error reply.
-fn find_member(addr: &net::SocketAddr, rb: &mut ReplyBuffer, channel: &Channel,
+fn find_member(id: usize, rb: &mut ReplyBuffer, channel: &Channel,
                channel_name: &str) -> Result<crate::channel::MemberModes, ()>
 {
-    match channel.members.get(addr) {
+    match channel.members.get(&id) {
         Some(modes) => Ok(*modes),
         None => {
-            log::debug!("{}:         not on channel", addr);
+            log::debug!("{}:         not on channel", id);
             rb.reply(rpl::ERR_NOTONCHANNEL)
                 .param(channel_name)
                 .trailing_param(lines::NOT_ON_CHANNEL);
@@ -463,13 +466,13 @@ fn find_member(addr: &net::SocketAddr, rb: &mut ReplyBuffer, channel: &Channel,
 
 /// Returns `Ok((address, client))` when the client identified by the nickname `nick` is connected
 /// and registered.  Otherwise returns `Err(())` and send an error to the client.
-fn find_nick<'a>(addr: &net::SocketAddr, rb: &mut ReplyBuffer, clients: &'a ClientMap,
-                 nick: &str) -> Result<(net::SocketAddr, &'a Client), ()>
+fn find_nick<'a>(id: usize, rb: &mut ReplyBuffer, clients: &'a ClientMap,
+                 nick: &str) -> Result<(usize, &'a Client), ()>
 {
     match clients.iter().find(|(_, c)| c.nick().eq_ignore_ascii_case(nick) && c.is_registered()) {
-        Some((addr, client)) => Ok((*addr, client)),
+        Some((addr, client)) => Ok((addr, client)),
         None => {
-            log::debug!("{}:         nick doesn't exist", addr);
+            log::debug!("{}:         nick doesn't exist", id);
             rb.reply(rpl::ERR_NOSUCHNICK).param(nick).trailing_param(lines::NO_SUCH_NICK);
             Err(())
         }
@@ -479,8 +482,8 @@ fn find_nick<'a>(addr: &net::SocketAddr, rb: &mut ReplyBuffer, clients: &'a Clie
 // Send utilities
 impl StateInner {
     /// Sends the given message to the given client.
-    fn send(&self, addr: &net::SocketAddr, msg: MessageQueueItem) {
-        if let Some(client) = self.clients.get(addr) {
+    fn send(&self, id: usize, msg: MessageQueueItem) {
+        if let Some(client) = self.clients.get(id) {
             client.send(msg);
         }
     }
@@ -489,7 +492,7 @@ impl StateInner {
     fn broadcast(&self, target: &str, msg: &MessageQueueItem) {
         let channel = &self.channels[<&UniCase<str>>::from(target)];
         for member in channel.members.keys() {
-            self.send(member, msg.clone());
+            self.send(*member, msg.clone());
         }
     }
 
@@ -549,16 +552,16 @@ impl StateInner {
     }
 
     /// Sends the list of nicknames in the channel `channel_name` to the given client.
-    fn write_names(&self, addr: &net::SocketAddr, rb: &mut ReplyBuffer, channel_name: &str) {
+    fn write_names(&self, id: usize, rb: &mut ReplyBuffer, channel_name: &str) {
         let channel = match self.channels.get(<&UniCase<str>>::from(channel_name)) {
             Some(channel) => channel,
             None => return,
         };
-        if channel.secret && !channel.members.contains_key(&addr) {
+        if channel.secret && !channel.members.contains_key(&id) {
             return;
         }
         if !channel.members.is_empty() {
-            let client_caps = self.clients[addr].capabilities.clone();
+            let client_caps = self.clients[id].capabilities.clone();
 
             let mut message = rb.reply(rpl::NAMREPLY)
                 .param(channel.symbol())
@@ -571,9 +574,9 @@ impl StateInner {
                     trailing.push(s);
                 }
                 if client_caps.userhost_in_names {
-                    trailing.push_str(self.clients[member].full_name());
+                    trailing.push_str(self.clients[*member].full_name());
                 } else {
-                    trailing.push_str(self.clients[member].nick());
+                    trailing.push_str(self.clients[*member].nick());
                 }
                 trailing.push(' ');
             }
@@ -593,8 +596,8 @@ impl StateInner {
     }
 
     /// Sends welcome messages. Called when a client has completed its registration.
-    fn write_welcome(&self, rb: &mut ReplyBuffer, name: &str) {
-        lines::welcome(rb.reply(rpl::WELCOME), name);
+    fn write_welcome(&self, rb: &mut ReplyBuffer, id: usize) {
+        lines::welcome(rb.reply(rpl::WELCOME), self.clients[id].full_name());
         rb.reply(rpl::YOURHOST).trailing_param(lines::YOUR_HOST);
         lines::created(rb.reply(rpl::CREATED), &self.created_at);
         rb.reply(rpl::MYINFO)

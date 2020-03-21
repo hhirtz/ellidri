@@ -73,7 +73,9 @@ pub async fn listen(addr: SocketAddr, shared: State) -> io::Result<()> {
 }
 
 /// Returns a future that listens, accepts and handles incoming TLS connections.
-pub async fn listen_tls(addr: SocketAddr, shared: State, acceptor: Arc<TlsAcceptor>) -> io::Result<()> {
+pub async fn listen_tls(addr: SocketAddr, shared: State, acceptor: Arc<TlsAcceptor>)
+    -> io::Result<()>
+{
     let mut ln = net::TcpListener::bind(&addr).await.unwrap_or_else(|err| {
         log::error!("Failed to listen to {}: {}", addr, err);
         process::exit(1);
@@ -106,9 +108,8 @@ async fn handle<S>(conn: S, peer_addr: SocketAddr, shared: State)
     let (reader, mut writer) = io::split(conn);
     let mut reader = io::BufReader::new(reader);
     let (msg_queue, mut outgoing_msgs) = sync::mpsc::unbounded_channel();
-
-    shared.peer_joined(peer_addr, msg_queue).await;
-    tokio::spawn(login_timeout(peer_addr, shared.clone()));
+    let peer_id = shared.peer_joined(peer_addr, msg_queue).await;
+    tokio::spawn(login_timeout(peer_id, shared.clone()));
 
     let incoming = async {
         use io::AsyncBufReadExt as _;
@@ -122,7 +123,7 @@ async fn handle<S>(conn: S, peer_addr: SocketAddr, shared: State)
             // - kill clients that send 1-byte (or so) reads every time
             reader.read_line(&mut buf).await?;
             log::trace!("{} >> {}", peer_addr, buf.trim());
-            if handle_buffer(&peer_addr, &buf, &shared).await? {
+            if handle_buffer(peer_id, &buf, &shared).await? {
                 break;
             }
         }
@@ -139,20 +140,20 @@ async fn handle<S>(conn: S, peer_addr: SocketAddr, shared: State)
     };
 
     let res = future::try_join(incoming, outgoing).await;
-    shared.peer_quit(&peer_addr, res.err()).await;
+    shared.peer_quit(peer_id, res.err()).await;
 }
 
 /// Handle a line from the client.
 ///
 /// Returns `Err(_)` if the buffer is empty, `Ok(true)` if the connection is scheduled to be
 /// closed, `Ok(false)` otherwise.
-async fn handle_buffer(peer_addr: &SocketAddr, buf: &str, shared: &State) -> io::Result<bool> {
+async fn handle_buffer(peer_id: usize, buf: &str, shared: &State) -> io::Result<bool> {
     if buf.is_empty() {
         return Err(io::Error::new(io::ErrorKind::UnexpectedEof, lines::CONNECTION_RESET));
     }
 
     if let Some(msg) = Message::parse(buf) {
-        if let Err(()) = shared.handle_message(peer_addr, msg).await {
+        if let Err(()) = shared.handle_message(peer_id, msg).await {
             return Ok(true);
         }
     }
@@ -160,8 +161,8 @@ async fn handle_buffer(peer_addr: &SocketAddr, buf: &str, shared: &State) -> io:
     Ok(false)
 }
 
-async fn login_timeout(peer_addr: SocketAddr, shared: State) {
+async fn login_timeout(peer_id: usize, shared: State) {
     let timeout = shared.login_timeout().await;
     time::delay_for(time::Duration::from_millis(timeout)).await;
-    shared.remove_if_unregistered(&peer_addr).await;
+    shared.remove_if_unregistered(peer_id).await;
 }

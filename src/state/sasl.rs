@@ -6,9 +6,9 @@ use super::{CommandContext, HandlerResult as Result};
 
 impl super::StateInner {
     pub fn cmd_authenticate(&mut self, ctx: CommandContext<'_>, payload: &str) -> Result {
-        let client = self.clients.get_mut(ctx.addr).unwrap();
+        let client = self.clients.get_mut(ctx.id).unwrap();
         if client.identity().is_some() {
-            log::debug!("{}:     is already logged in", ctx.addr);
+            log::debug!("{}:     is already logged in", ctx.id);
             ctx.rb.reply(rpl::ERR_SASLALREADY).trailing_param(lines::SASL_ALREADY);
             client.auth_reset();
             return Err(());
@@ -24,7 +24,7 @@ impl super::StateInner {
                     let decoded = match client.auth_buffer_decode() {
                         Ok(decoded) => decoded,
                         Err(err) => {
-                            log::debug!("{}:     bad base64: {}", ctx.addr, err);
+                            log::debug!("{}:     bad base64: {}", ctx.id, err);
                             ctx.rb.reply(rpl::ERR_SASLFAIL).trailing_param(lines::SASL_FAILED);
                             client.auth_reset();
                             return Err(());
@@ -33,7 +33,7 @@ impl super::StateInner {
                     let mut challenge = Vec::new();
                     match self.auth_provider.next_challenge(id, &decoded, &mut challenge) {
                         Ok(Some(user)) => {
-                            log::debug!("{}:     now authenticated", ctx.addr);
+                            log::debug!("{}:     now authenticated", ctx.id);
                             let msg = ctx.rb.reply(rpl::LOGGEDIN)
                                 .param(client.nick())
                                 .param(client.full_name())
@@ -47,7 +47,7 @@ impl super::StateInner {
                             auth::write_buffer(ctx.rb, &challenge);
                         }
                         Err(err) => {
-                            log::debug!("{}:     bad response: {:?}", ctx.addr, err);
+                            log::debug!("{}:     bad response: {:?}", ctx.id, err);
                             ctx.rb.reply(rpl::ERR_SASLFAIL).trailing_param(lines::SASL_FAILED);
                             client.auth_reset();
                             return Err(());
@@ -57,7 +57,7 @@ impl super::StateInner {
                 Ok(false) => {}
                 Err(()) => {
                     ctx.rb.reply(rpl::ERR_SASLTOOLONG).trailing_param(lines::SASL_TOO_LONG);
-                    log::debug!("{}:     sasl too long", ctx.addr);
+                    log::debug!("{}:     sasl too long", ctx.id);
                     return Err(());
                 }
             }
@@ -66,12 +66,12 @@ impl super::StateInner {
             let id = match self.auth_provider.start_auth(payload, &mut challenge) {
                 Ok(id) => id,
                 Err(auth::Error::ProviderUnavailable) => {
-                    log::debug!("{}:     sasl unavailable for {:?}", ctx.addr, payload);
+                    log::debug!("{}:     sasl unavailable for {:?}", ctx.id, payload);
                     ctx.rb.reply(rpl::ERR_SASLFAIL).trailing_param(lines::SASL_FAILED);
                     return Err(());
                 }
                 Err(_) => {
-                    log::debug!("{}:     unknown mechanism {:?}", ctx.addr, payload);
+                    log::debug!("{}:     unknown mechanism {:?}", ctx.id, payload);
                     let mut msg = ctx.rb.reply(rpl::SASLMECHS);
                     self.auth_provider.write_mechanisms(msg.raw_param());
                     msg.trailing_param(lines::SASL_MECHS);

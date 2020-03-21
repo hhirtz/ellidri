@@ -1,7 +1,6 @@
 use crate::message::{MessageBuffer, Reply, rpl};
 use crate::modes;
 use std::collections::{HashMap, HashSet};
-use std::net::SocketAddr;
 
 /// Modes applied to clients on a per-channel basis.
 ///
@@ -72,10 +71,10 @@ impl MemberModes {
 pub struct Channel {
     /// Set of channel members, identified by their socket address, and associated with their
     /// channel mode.
-    pub members: HashMap<SocketAddr, MemberModes>,
+    pub members: HashMap<usize, MemberModes>,
 
     /// Set of invited clients (via INVITE).
-    pub invites: HashSet<SocketAddr>,
+    pub invites: HashSet<usize>,
 
     /// The topic.
     pub topic: Option<String>,
@@ -109,7 +108,7 @@ impl Channel {
     }
 
     /// Adds a member with the default mode.
-    pub fn add_member(&mut self, addr: SocketAddr) {
+    pub fn add_member(&mut self, id: usize) {
         let modes = if self.members.is_empty() {
             MemberModes {
                 founder: false,
@@ -121,8 +120,8 @@ impl Channel {
         } else {
             MemberModes::default()
         };
-        self.members.insert(addr, modes);
-        self.invites.remove(&addr);
+        self.members.insert(id, modes);
+        self.invites.remove(&id);
     }
 
     pub fn list_entry(&self, msg: MessageBuffer<'_>) {
@@ -136,20 +135,20 @@ impl Channel {
             && !self.invitation_mask.contains(nick)
     }
 
-    pub fn is_invited(&self, addr: &SocketAddr, nick: &str) -> bool {
-        !self.invite_only || self.invites.contains(&addr) || self.invitation_mask.contains(nick)
+    pub fn is_invited(&self, id: usize, nick: &str) -> bool {
+        !self.invite_only || self.invites.contains(&id) || self.invitation_mask.contains(nick)
     }
 
-    pub fn can_talk(&self, addr: &SocketAddr) -> bool {
+    pub fn can_talk(&self, id: usize) -> bool {
         if self.moderated {
-            self.members.get(&addr).map_or(false, |m| m.has_voice())
+            self.members.get(&id).map_or(false, |m| m.has_voice())
         } else {
-            !self.no_privmsg_from_outside || self.members.contains_key(&addr)
+            !self.no_privmsg_from_outside || self.members.contains_key(&id)
         }
     }
 
-    pub fn can_invite(&self, addr: &SocketAddr) -> bool {
-        let member = match self.members.get(&addr) {
+    pub fn can_invite(&self, id: usize) -> bool {
+        let member = match self.members.get(&id) {
             Some(member) => member,
             None => return false,
         };
@@ -184,7 +183,7 @@ impl Channel {
     // TODO use MessageBuffer
     pub fn apply_mode_change<'a, F>(&mut self, change: modes::ChannelModeChange<'_>,
                                     nick_of: F) -> Result<bool, Reply>
-        where F: Fn(&SocketAddr) -> &'a str
+        where F: Fn(&usize) -> &'a str
     {
         use modes::ChannelModeChange::*;
         let mut applied = false;
