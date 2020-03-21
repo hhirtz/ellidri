@@ -22,10 +22,11 @@ Join the IRC channel: [#ellidri on freenode][irc]!
 - SASL support with SQLite and PostgreSQL
 - kawaii messages
 
-Supported capabilities:
+Supported extensions:
 
 - [cap-notify](https://ircv3.net/specs/core/capability-negotiation#cap-notify)
 - [echo-message](https://ircv3.net/specs/extensions/echo-message-3.2)
+- [extended-join](https://ircv3.net/specs/extensions/extended-join-3.1)
 - [message-ids](https://ircv3.net/specs/extensions/message-ids)
 - [message-tags](https://ircv3.net/specs/extensions/message-tags)
 - [multi-prefix](https://ircv3.net/specs/extensions/multi-prefix-3.1)

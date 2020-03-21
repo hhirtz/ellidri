@@ -141,13 +141,14 @@ impl ConnectionState {
 pub mod cap {
     use std::collections::HashSet;
 
-    pub const CAP_NOTIFY: &str   = "cap-notify";
-    pub const ECHO_MESSAGE: &str = "echo-message";
-    pub const MESSAGE_TAGS: &str = "message-tags";
-    pub const MULTI_PREFIX: &str = "multi-prefix";
-    pub const SASL: &str         = "sasl";
-    pub const SERVER_TIME: &str  = "server-time";
-    pub const SETNAME: &str      = "setname";
+    pub const CAP_NOTIFY: &str    = "cap-notify";
+    pub const ECHO_MESSAGE: &str  = "echo-message";
+    pub const EXTENDED_JOIN: &str = "extended-join";
+    pub const MESSAGE_TAGS: &str  = "message-tags";
+    pub const MULTI_PREFIX: &str  = "multi-prefix";
+    pub const SASL: &str          = "sasl";
+    pub const SERVER_TIME: &str   = "server-time";
+    pub const SETNAME: &str       = "setname";
     pub const USERHOST_IN_NAMES: &str = "userhost-in-names";
 
     // TODO replace with const fn
@@ -155,6 +156,7 @@ pub mod cap {
         pub static ref ALL: HashSet<&'static str> =
             [ CAP_NOTIFY
             , ECHO_MESSAGE
+            , EXTENDED_JOIN
             , MULTI_PREFIX
             , MESSAGE_TAGS
             , SASL
@@ -165,7 +167,8 @@ pub mod cap {
     }
 
     pub const LS_COMMON: &str =
-        "cap-notify echo-message message-tags multi-prefix server-time setname userhost-in-names";
+"cap-notify echo-message extended-join message-tags multi-prefix server-time setname \
+userhost-in-names";
 
     pub fn are_supported(capabilities: &str) -> bool {
         query(capabilities).all(|(cap,  _)| ALL.contains(cap))
@@ -190,6 +193,7 @@ pub struct Capabilities {
     pub v302: bool,
     pub cap_notify: bool,
     pub echo_message: bool,
+    pub extended_join: bool,
     pub message_tags: bool,
     pub multi_prefix: bool,
     pub sasl: bool,
@@ -285,6 +289,7 @@ impl Client {
             match capability {
                 cap::CAP_NOTIFY => self.capabilities.cap_notify = enable,
                 cap::ECHO_MESSAGE => self.capabilities.echo_message = enable,
+                cap::EXTENDED_JOIN => self.capabilities.extended_join = enable,
                 cap::MESSAGE_TAGS => self.capabilities.message_tags = enable,
                 cap::MULTI_PREFIX => self.capabilities.multi_prefix = enable,
                 cap::SASL => self.capabilities.sasl = enable,
@@ -314,6 +319,10 @@ impl Client {
         }
         if self.capabilities.echo_message {
             trailing.push_str(cap::ECHO_MESSAGE);
+            trailing.push(' ');
+        }
+        if self.capabilities.extended_join {
+            trailing.push_str(cap::EXTENDED_JOIN);
             trailing.push(' ');
         }
         if self.capabilities.message_tags {

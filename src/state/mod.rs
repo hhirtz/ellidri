@@ -496,27 +496,26 @@ impl StateInner {
     fn write_i_support(&self, rb: &mut ReplyBuffer) {
         use std::fmt::Write as _;
 
+        rb.reply(rpl::ISUPPORT)
+            .param("CASEMAPPING=ascii")
+            .param("CHANLIMIT=#:,&:")
+            .param("CHANTYPES=#&")
+            .param(modes::CHANMODES)
+            .param("EXCEPTS")
+            .param("HOSTLEN=39")  // max size of an IPv6 address
+            .param("INVEX")
+            .param("MODES")
+            .param("PREFIX=(qaohv)~&@%+")
+            .param("SAFELIST")
+            .param("TARGMAX=JOIN:,KICK:1,LIST:,NAMES:,NOTICE:1,PART:,PRIVMSG:1,WHOIS:1")
+            .trailing_param(lines::I_SUPPORT);
+
         {
-            let mut msg = rb.reply(rpl::ISUPPORT)
-                .param("CASEMAPPING=ascii")
-                .param("CHANLIMIT=#:,&:")
-                .param("CHANTYPES=#&")
-                .param(modes::CHANMODES)
-                .param("EXCEPTS")
-                .param("HOSTLEN=39")  // max size of an IPv6 address
-                .param("INVEX")
-                .param("MODES")
-                .param("PREFIX=(qaohv)~&@%+");
+            let mut msg = rb.reply(rpl::ISUPPORT);
             write!(msg.raw_param(), "CHANNELLEN={}", self.channellen).unwrap();
             write!(msg.raw_param(), "KICKLEN={}", self.kicklen).unwrap();
             write!(msg.raw_param(), "NAMELEN={}", self.namelen).unwrap();
             write!(msg.raw_param(), "NICKLEN={}", self.nicklen).unwrap();
-            msg.trailing_param(lines::I_SUPPORT);
-        }
-        {
-            let mut msg = rb.reply(rpl::ISUPPORT)
-                .param("SAFELIST")
-                .param("TARGMAX=JOIN:,KICK:1,LIST:,NAMES:,NOTICE:1,PART:,PRIVMSG:1,WHOIS:1");
             write!(msg.raw_param(), "TOPICLEN={}", self.topiclen).unwrap();
             msg.trailing_param(lines::I_SUPPORT);
         }

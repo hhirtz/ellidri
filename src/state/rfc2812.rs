@@ -128,6 +128,29 @@ impl super::StateInner {
             .filter(|(chan, _)| !chan.is_empty())
     }
 
+    fn send_join(&self, target: &str, client: &Client) {
+        let mut join = Buffer::new();
+        join.message(client.full_name(), Command::Join).param(target);
+        let join = MessageQueueItem::from(join);
+
+        let mut extended_join = Buffer::new();
+        extended_join.message(client.full_name(), Command::Join)
+            .param(target)
+            .param(client.identity().unwrap_or("*"))
+            .trailing_param(client.real());
+        let extended_join = MessageQueueItem::from(extended_join);
+
+        let channel = &self.channels[<&UniCase<str>>::from(target)];
+        for member in channel.members.keys() {
+            let member = &self.clients[member];
+            if member.capabilities.extended_join {
+                member.send(extended_join.clone());
+            } else {
+                member.send(join.clone());
+            }
+        }
+    }
+
     pub fn cmd_join(&mut self, mut ctx: CommandContext<'_>, targets: &str, keys: &str) -> Result {
         let client = &self.clients[ctx.addr];
 
@@ -152,9 +175,7 @@ impl super::StateInner {
                     .or_insert_with(|| Channel::new(&default_chan_mode));
                 channel.add_member(*ctx.addr);
 
-                let mut join_response = Buffer::new();
-                join_response.message(client.full_name(), Command::Join).param(target);
-                self.broadcast(target, &MessageQueueItem::from(join_response));
+                self.send_join(target, client);
                 self.write_topic(ctx.rb, target);
                 self.write_names(ctx.addr, ctx.rb, target);
                 update_idle = true;
