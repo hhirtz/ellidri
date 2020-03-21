@@ -1,39 +1,43 @@
+//! Authentication primitives and providers.
+//!
+//! ellidri supports multiple ways to use SASL, for example with a SQL database.  Each way is
+//! implemented through a provider, a type that implements the `Provider` trait.  Each provider may
+//! support multiple authentication mechanisms.
+
 use crate::client::AUTHENTICATE_CHUNK_LEN;
 use crate::config::{db, SaslBackend};
 use crate::message::{Command, ReplyBuffer};
 use std::str;
 
-pub enum State {
-    Unauthenticated,
-    ChosePlain,
-    Authenticated,
-}
-
-impl Default for State {
-    fn default() -> Self {
-        State::Unauthenticated
-    }
-}
-
+/// Provider errors, used by the `Provider` trait.
 #[derive(Debug)]
 pub enum Error {
+    /// Challenge response is not valid base64.
     BadBase64,
+
+    /// Challenge response does not follow the mechanism's format.
     BadFormat,
+
+    /// Challenge response is well-formed, but incorrect.
     InvalidCredentials,
+
+    /// The provider cannot perform the authentication.
     ProviderUnavailable,
+
+    /// Choosen mechanism is unsupported by the provider.
     UnsupportedMechanism,
 }
 
-// TODO make an Error type instead of ()
+/// Trait implemented by SASL authentication providers.
 pub trait Provider: Send + Sync {
     /// Whether the SASL backend is available.
     ///
-    /// If not, `start_auth` and `next_challenge` will always return `Err(())`.
+    /// If not, `start_auth` and `next_challenge` will return `Err(Error::ProviderUnavailable)`.
     fn is_available(&self) -> bool;
 
-    /// Write the SASL mechanisms this provider supports, separated by commas (,).
+    /// Write the SASL mechanisms this provider supports, separated by commas (`,`).
     ///
-    /// Example:  PLAIN,EXTERNAL
+    /// Example: `PLAIN,EXTERNAL`
     ///
     /// Used for capability advertisment.
     fn write_mechanisms(&self, buf: &mut String);
@@ -53,6 +57,7 @@ pub trait Provider: Send + Sync {
         -> Result<Option<String>, Error>;
 }
 
+/// A provider that doesn't do anything.
 pub struct DummyProvider;
 
 impl Provider for DummyProvider {
@@ -66,6 +71,7 @@ impl Provider for DummyProvider {
     }
 }
 
+// TODO better name
 pub trait Plain {
     fn plain(&self, user: &str, pass: &str) -> Result<(), Error>;
 }
@@ -102,6 +108,7 @@ impl<T> Plain for r2d2::Pool<r2d2_postgres::PostgresConnectionManager<T>>
     }
 }
 
+/// A provider that matches SASL challenges against data in a SQL database.
 #[cfg(any(feature = "postgres", feature = "sqlite"))]
 pub struct DbProvider<M: r2d2::ManageConnection> {
     pool: r2d2::Pool<M>,
@@ -185,6 +192,7 @@ fn choose_db_provider(url: db::Url) -> Result<Box<dyn Provider>, Box<dyn std::er
     }
 }
 
+/// Returns the first available provider given the `backend` type and the database URL `db_url`.
 pub fn choose_provider(backend: SaslBackend, db_url: Option<db::Url>)
     -> Result<Box<dyn Provider>, Box<dyn std::error::Error>>
 {
@@ -194,6 +202,8 @@ pub fn choose_provider(backend: SaslBackend, db_url: Option<db::Url>)
     }
 }
 
+/// Encode `buf` in the base64 format, and split it in 400-byte chunks to append to AUTHENTICATE
+/// messages.
 pub fn write_buffer<T>(rb: &mut ReplyBuffer, buf: T)
     where T: AsRef<[u8]>
 {
