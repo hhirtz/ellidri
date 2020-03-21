@@ -756,20 +756,64 @@ impl super::StateInner {
     {
         let mask = if mask.is_empty() {"*"} else {mask};
         let o = o == "o";  // best line
-        for client in self.clients.values() {
-            if (o && !client.operator) || client.invisible ||
-                !client.is_registered() || client.nick() != mask
-            {
-                continue;
+
+        if let Some(channel) = self.channels.get(<&UniCase<str>>::from(mask)) {
+            let client = &self.clients[ctx.addr];
+            let in_channel = channel.members.contains_key(ctx.addr);
+            if !channel.secret || in_channel {
+                for (member, modes) in &channel.members {
+                    let c = &self.clients[member];
+                    if (o && !c.operator) || (c.invisible && !in_channel && member != ctx.addr) {
+                        continue;
+                    }
+                    let mut msg = ctx.rb.reply(rpl::WHOREPLY)
+                        .param(mask)
+                        .param(c.user())
+                        .param(c.host())
+                        .param(&self.domain)
+                        .param(c.nick());
+                    let param = msg.raw_param();
+                    param.push('H');  // TODO /away H==Here G==Gone
+                    if client.capabilities.multi_prefix {
+                        modes.all_symbols(param);
+                    } else if let Some(symbol) = modes.symbol() {
+                        param.push(symbol);
+                    }
+                    msg.trailing_param(c.real());
+                }
             }
-            ctx.rb.reply(rpl::WHOREPLY)
-                .param("*")
-                .param(client.user())
-                .param(client.host())
-                .param(&self.domain)
-                .param(client.nick())
-                .param("H")
-                .trailing_param(client.real());
+        } else if let Some((a, c)) = self.clients.iter().find(|(_, c)| c.nick() == mask) {
+            if (!o || c.operator) && c.is_registered() {
+                let mut channel_name = None;
+                let mut member = Default::default();
+                for (name, ch) in &self.channels {
+                    if let Some(member_modes) = ch.members.get(a) {
+                        if !c.invisible || ch.members.contains_key(ctx.addr) {
+                            channel_name = Some(name.as_ref());
+                            member = *member_modes;
+                            break;
+                        }
+                    }
+                }
+                if !c.invisible || a == ctx.addr || channel_name.is_some() {
+                    let client = &self.clients[ctx.addr];
+                    let channel_name = channel_name.unwrap_or("*");
+                    let mut msg = ctx.rb.reply(rpl::WHOREPLY)
+                        .param(channel_name)
+                        .param(c.user())
+                        .param(c.host())
+                        .param(&self.domain)
+                        .param(c.nick());
+                    let param = msg.raw_param();
+                    param.push('H');  // TODO /away H==Here G==Gone
+                    if client.capabilities.multi_prefix {
+                        member.all_symbols(param);
+                    } else if let Some(symbol) = member.symbol() {
+                        param.push(symbol);
+                    }
+                    msg.trailing_param(c.real());
+                }
+            }
         }
         ctx.rb.reply(rpl::ENDOFWHO).param(mask).trailing_param(lines::END_OF_WHO);
 
