@@ -9,6 +9,8 @@ use std::sync::Arc;
 use tokio::{io, net, sync, time};
 use tokio_tls::TlsAcceptor;
 
+const KEEPALIVE_SECS: u64 = 75;
+
 /// `TlsAcceptor` cache, to avoid reading the same identity file several times.
 #[derive(Default)]
 pub struct TlsIdentityStore {
@@ -66,10 +68,18 @@ pub async fn listen(addr: SocketAddr, shared: State) -> io::Result<()> {
 
     loop {
         match ln.accept().await {
-            Ok((conn, peer_addr)) => { tokio::spawn(handle(conn, peer_addr, shared.clone())); }
-            Err(err) => { log::warn!("Failed to accept connection: {}", err); }
+            Ok((conn, peer_addr)) => handle_tcp(conn, peer_addr, shared.clone()),
+            Err(err) => log::warn!("Failed to accept connection: {}", err),
         }
     }
+}
+
+fn handle_tcp(conn: net::TcpStream, peer_addr: SocketAddr, shared: State) {
+    if let Err(err) = conn.set_keepalive(Some(time::Duration::from_secs(KEEPALIVE_SECS))) {
+        log::warn!("Failed to set TCP keepalive: {}", err);
+        return;
+    }
+    tokio::spawn(handle(conn, peer_addr, shared));
 }
 
 /// Returns a future that listens, accepts and handles incoming TLS connections.
@@ -84,21 +94,24 @@ pub async fn listen_tls(addr: SocketAddr, shared: State, acceptor: Arc<TlsAccept
     log::info!("Listening on {} for tls connections...", addr);
 
     loop { match ln.accept().await {
-        Ok((conn, peer_addr)) => {
-            let shared = shared.clone();
-            let acceptor = acceptor.clone();
-            tokio::spawn(async move {
-                let tls_conn = match acceptor.accept(conn)
-                    .await
-                    .map_err(|err| {
-                        log::warn!("TLS handshake failed: {}", err);
-                    })
-                { Ok(tls_conn) => tls_conn, Err(_) => return, };
-                handle(tls_conn, peer_addr, shared).await;
-            });
-        }
+        Ok((conn, peer_addr)) => handle_tls(conn, peer_addr, shared.clone(), acceptor.clone()),
         Err(err) => log::warn!("Failed to accept connection: {}", err),
     }}
+}
+
+fn handle_tls(conn: net::TcpStream, peer_addr: SocketAddr, shared: State,
+              acceptor: Arc<TlsAcceptor>)
+{
+    if let Err(err) = conn.set_keepalive(Some(time::Duration::from_secs(KEEPALIVE_SECS))) {
+        log::warn!("Failed to set TCP keepalive for {}: {}", peer_addr, err);
+        return;
+    }
+    tokio::spawn(async move {
+        match acceptor.accept(conn).await {
+            Ok(tls_conn) => handle(tls_conn, peer_addr, shared).await,
+            Err(err) => log::warn!("TLS handshake with {} failed: {}", peer_addr, err),
+        }
+    });
 }
 
 /// Returns a future that handles an IRC connection.
