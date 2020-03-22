@@ -10,6 +10,7 @@ use tokio::{io, net, sync, time};
 use tokio_tls::TlsAcceptor;
 
 const KEEPALIVE_SECS: u64 = 75;
+const TLS_TIMEOUT_SECS: u64 = 30;
 
 /// `TlsAcceptor` cache, to avoid reading the same identity file several times.
 #[derive(Default)]
@@ -107,9 +108,12 @@ fn handle_tls(conn: net::TcpStream, peer_addr: SocketAddr, shared: State,
         return;
     }
     tokio::spawn(async move {
-        match acceptor.accept(conn).await {
-            Ok(tls_conn) => handle(tls_conn, peer_addr, shared).await,
-            Err(err) => log::warn!("TLS handshake with {} failed: {}", peer_addr, err),
+        let tls_handshake_timeout = time::Duration::from_secs(TLS_TIMEOUT_SECS);
+        let tls_handshake = time::timeout(tls_handshake_timeout, acceptor.accept(conn));
+        match tls_handshake.await {
+            Ok(Ok(tls_conn)) => handle(tls_conn, peer_addr, shared).await,
+            Ok(Err(err)) => log::warn!("TLS handshake with {} failed: {}", peer_addr, err),
+            Err(_) => log::warn!("TLS handshake with {} timed out", peer_addr),
         }
     });
 }
