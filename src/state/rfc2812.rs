@@ -40,7 +40,7 @@ impl super::StateInner {
     // INVITE
 
     pub fn cmd_invite(&mut self, ctx: CommandContext<'_>, nick: &str, target: &str) -> Result {
-        let (invited, _) = find_nick(ctx.id, ctx.rb, &self.clients, nick)?;
+        let (invited, _) = find_nick(ctx.id, ctx.rb, &self.clients, &self.nicks, nick)?;
         let channel = match self.channels.get_mut(u(target)) {
             Some(channel) => channel,
             None => {
@@ -476,13 +476,15 @@ impl super::StateInner {
                 .trailing_param(lines::ERRONEOUS_NICNAME);
             return Err(());
         }
-        if self.clients.iter().any(|(_, c)| c.nick().eq_ignore_ascii_case(nick)) {
+        if self.nicks.contains_key(u(nick)) {
             log::debug!("{}:     Already in use", ctx.id);
             ctx.rb.reply(rpl::ERR_NICKNAMEINUSE).param(nick).trailing_param(lines::NICKNAME_IN_USE);
             return Err(());
         }
 
         let client = self.clients.get_mut(ctx.id).unwrap();
+        self.nicks.remove(u(client.nick()));
+        self.nicks.insert(UniCase(nick.to_owned()), ctx.id);
 
         if !client.is_registered() {
             log::debug!("{}:     Is not registered", ctx.id);
@@ -545,7 +547,7 @@ impl super::StateInner {
                 .filter(|a| client.capabilities.echo_message || **a != ctx.id)
                 .for_each(|member| self.send(*member, msg.clone()));
         } else {
-            let (_, target_client) = find_nick(ctx.id, ctx.rb, &self.clients, target)?;
+            let (_, target_client) = find_nick(ctx.id, ctx.rb, &self.clients, &self.nicks, target)?;
             let client = &self.clients[ctx.id];
             let mut client_tags_len = 0;
             let mut response = Buffer::new();
@@ -781,7 +783,8 @@ impl super::StateInner {
                     msg.trailing_param(c.real());
                 }
             }
-        } else if let Some((a, c)) = self.clients.iter().find(|(_, c)| c.nick() == mask) {
+        } else if let Some(&a) = self.nicks.get(u(mask)) {
+            let c = &self.clients[a];
             if (!o || c.operator) && c.is_registered() {
                 let mut channel_name = None;
                 let mut member = Default::default();
@@ -822,7 +825,7 @@ impl super::StateInner {
     // WHOIS
 
     pub fn cmd_whois(&self, ctx: CommandContext<'_>, nick: &str) -> Result {
-        let (_, target_client) = find_nick(ctx.id, ctx.rb, &self.clients, nick)?;
+        let (_, target_client) = find_nick(ctx.id, ctx.rb, &self.clients, &self.nicks, nick)?;
 
         ctx.rb.reply(rpl::WHOISUSER)
             .param(target_client.nick())

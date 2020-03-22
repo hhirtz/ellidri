@@ -41,7 +41,7 @@ impl super::StateInner {
                 })
                 .for_each(|member| self.send(*member, msg.clone()));
         } else {
-            let (_, target_client) = find_nick(ctx.id, ctx.rb, &self.clients, target)?;
+            let (_, target_client) = find_nick(ctx.id, ctx.rb, &self.clients, &self.nicks, target)?;
             if !target_client.capabilities.has_message_tags() {
                 return Err(());
             }

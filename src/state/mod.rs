@@ -42,6 +42,7 @@ const MAX_TAG_DATA_LENGTH: usize = 4094;
 
 type ChannelMap = HashMap<UniCase<String>, Channel>;
 type ClientMap = Slab<Client>;
+type NicksMap = HashMap<UniCase<String>, usize>;
 type HandlerResult = Result<(), ()>;
 
 pub struct CommandContext<'a> {
@@ -180,6 +181,9 @@ pub(crate) struct StateInner {
     /// HashMap to associate a socket address to each client.
     clients: ClientMap,
 
+    // TODO WHOWAS: make it point to nick history
+    nicks: NicksMap,
+
     /// HashMap to associate the name of each channel with their metadata.
     channels: ChannelMap,
 
@@ -226,6 +230,7 @@ impl StateInner {
             org_location: config.org_location,
             org_mail: config.org_mail,
             clients: Slab::new(),
+            nicks: HashMap::new(),
             channels: HashMap::new(),
             created_at: time_str(),
             motd,
@@ -293,6 +298,8 @@ impl StateInner {
             channel.members.remove(&id);
             !channel.members.is_empty()
         });
+
+        self.nicks.remove(u(client.nick()));
     }
 
     pub fn handle_message(&mut self, id: usize, msg: Message<'_>) -> HandlerResult {
@@ -466,17 +473,16 @@ fn find_member(id: usize, rb: &mut ReplyBuffer, channel: &Channel,
 
 /// Returns `Ok((address, client))` when the client identified by the nickname `nick` is connected
 /// and registered.  Otherwise returns `Err(())` and send an error to the client.
-fn find_nick<'a>(id: usize, rb: &mut ReplyBuffer, clients: &'a ClientMap,
+fn find_nick<'a>(id: usize, rb: &mut ReplyBuffer, clients: &'a ClientMap, nicks: &'a NicksMap,
                  nick: &str) -> Result<(usize, &'a Client), ()>
 {
-    match clients.iter().find(|(_, c)| c.nick().eq_ignore_ascii_case(nick) && c.is_registered()) {
-        Some((addr, client)) => Ok((addr, client)),
-        None => {
+    nicks.get(u(nick))
+        .map(|id| (*id, &clients[*id]))
+        .filter(|(_, c)| c.is_registered())
+        .ok_or_else(|| {
             log::debug!("{}:         nick doesn't exist", id);
             rb.reply(rpl::ERR_NOSUCHNICK).param(nick).trailing_param(lines::NO_SUCH_NICK);
-            Err(())
-        }
-    }
+        })
 }
 
 // Send utilities
