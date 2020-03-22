@@ -846,14 +846,11 @@ impl ReplyBuffer {
             s.clear();
             s.push_str(domain);
         });
-        NICKNAME.with(|n| {
-            let mut n = n.borrow_mut();
-            n.clear();
-            n.push_str(nickname);
-        });
-        Self {
+        let mut res = Self {
             buf: Buffer::new(),
-        }
+        };
+        res.set_nick(nickname);
+        res
     }
 
     /// Whether the buffer has messages in it or not.
@@ -872,6 +869,14 @@ impl ReplyBuffer {
     /// ```
     pub fn is_empty(&self) -> bool {
         self.buf.is_empty()
+    }
+
+    pub fn set_nick(&mut self, nickname: &str) {
+        NICKNAME.with(|n| {
+            let mut n = n.borrow_mut();
+            n.clear();
+            n.push_str(nickname);
+        });
     }
 
     /// Appends a reply to the buffer.

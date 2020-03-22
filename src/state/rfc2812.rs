@@ -501,6 +501,7 @@ impl super::StateInner {
         let client = self.clients.get_mut(ctx.id).unwrap();
         self.nicks.remove(u(client.nick()));
         self.nicks.insert(UniCase(nick.to_owned()), ctx.id);
+        ctx.rb.set_nick(nick);
 
         if !client.is_registered() {
             log::debug!("{}:     Is not registered", ctx.id);
