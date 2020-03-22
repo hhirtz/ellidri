@@ -246,7 +246,7 @@ pub struct Client {
     pub has_given_password: bool,
 
     // Modes: https://tools.ietf.org/html/rfc2812.html#section-3.1.5
-    pub away: bool,
+    pub away_message: Option<String>,
     pub invisible: bool,
     pub registered: bool,
     pub operator: bool,
@@ -275,7 +275,7 @@ impl Client {
             signon_time: now,
             last_action_time: now,
             has_given_password: false,
-            away: false,
+            away_message: None,
             invisible: false,
             registered: false,
             operator: false,
@@ -521,10 +521,22 @@ impl Client {
         self.last_action_time = time();
     }
 
+    pub fn away_message(&self) -> Option<&str> {
+        self.away_message.as_ref().map(|s| s.as_ref())
+    }
+
+    pub fn set_away(&mut self, reason: &str) {
+        self.away_message = Some(reason.to_owned());
+    }
+
+    pub fn reset_away(&mut self) {
+        self.away_message = None;
+    }
+
     pub fn write_modes(&self, mut out: MessageBuffer<'_>) {
         let modes = out.raw_param();
         modes.push('+');
-        if self.away { modes.push('a'); }
+        if self.away_message.is_some() { modes.push('a'); }
         if self.invisible { modes.push('i'); }
         if self.operator { modes.push('o'); }
     }

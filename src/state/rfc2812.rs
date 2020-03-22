@@ -26,6 +26,19 @@ impl super::StateInner {
         Ok(())
     }
 
+    // AWAY
+
+    pub fn cmd_away(&mut self, ctx: CommandContext<'_>, reason: &str) -> Result {
+        if reason.is_empty() {
+            self.clients[ctx.id].reset_away();
+            ctx.rb.reply(rpl::UNAWAY).trailing_param(lines::UN_AWAY);
+        } else {
+            self.clients[ctx.id].set_away(&reason[..reason.len().min(self.awaylen)]);
+            ctx.rb.reply(rpl::NOWAWAY).trailing_param(lines::NOW_AWAY);
+        }
+        Ok(())
+    }
+
     // INFO
 
     pub fn cmd_info(&self, ctx: CommandContext<'_>) -> Result {
@@ -40,7 +53,7 @@ impl super::StateInner {
     // INVITE
 
     pub fn cmd_invite(&mut self, ctx: CommandContext<'_>, nick: &str, target: &str) -> Result {
-        let (invited, _) = find_nick(ctx.id, ctx.rb, &self.clients, &self.nicks, nick)?;
+        let (invited, invited_cli) = find_nick(ctx.id, ctx.rb, &self.clients, &self.nicks, nick)?;
         let channel = match self.channels.get_mut(u(target)) {
             Some(channel) => channel,
             None => {
@@ -72,6 +85,9 @@ impl super::StateInner {
         }
 
         ctx.rb.reply(rpl::INVITING).param(nick).param(target);
+        if let Some(away_msg) = invited_cli.away_message() {
+            ctx.rb.reply(rpl::AWAY).param(nick).trailing_param(away_msg);
+        }
 
         let mut invite = Buffer::new();
         invite.message(self.clients[ctx.id].full_name(), Command::Invite)
@@ -564,6 +580,10 @@ impl super::StateInner {
                 client.send(msg.clone());
             }
             target_client.send(msg);
+
+            if let Some(away_msg) = target_client.away_message() {
+                ctx.rb.reply(rpl::AWAY).param(target).trailing_param(away_msg);
+            }
         }
         self.clients.get_mut(ctx.id).unwrap().update_idle_time();
 
@@ -774,7 +794,7 @@ impl super::StateInner {
                         .param(&self.domain)
                         .param(c.nick());
                     let param = msg.raw_param();
-                    param.push('H');  // TODO /away H==Here G==Gone
+                    param.push(if c.away_message().is_some() { 'G' } else { 'H' });
                     if client.capabilities.multi_prefix {
                         modes.all_symbols(param);
                     } else if let Some(symbol) = modes.symbol() {
@@ -807,7 +827,7 @@ impl super::StateInner {
                         .param(&self.domain)
                         .param(c.nick());
                     let param = msg.raw_param();
-                    param.push('H');  // TODO /away H==Here G==Gone
+                    param.push(if c.away_message().is_some() { 'G' } else { 'H' });
                     if client.capabilities.multi_prefix {
                         member.all_symbols(param);
                     } else if let Some(symbol) = member.symbol() {
@@ -842,6 +862,9 @@ impl super::StateInner {
             .param(&target_client.idle_time().to_string())
             .param(&target_client.signon_time().to_string())
             .trailing_param(lines::WHOIS_IDLE);
+        if let Some(away_msg) = target_client.away_message() {
+            ctx.rb.reply(rpl::AWAY).param(target_client.nick()).trailing_param(away_msg);
+        }
         ctx.rb.reply(rpl::ENDOFWHOIS)
             .param(target_client.nick())
             .trailing_param(lines::END_OF_WHOIS);

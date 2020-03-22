@@ -60,6 +60,10 @@ impl super::StateInner {
                 client.send(msg.clone());
             }
             target_client.send(msg);
+
+            if let Some(away_msg) = target_client.away_message() {
+                ctx.rb.reply(rpl::AWAY).param(target).trailing_param(away_msg);
+            }
         }
         self.clients.get_mut(ctx.id).unwrap().update_idle_time();
 

@@ -59,6 +59,7 @@ pub struct State {
     pub org_location: String,
     pub org_mail: String,
 
+    pub awaylen: usize,
     pub channellen: usize,
     pub kicklen: usize,
     pub namelen: usize,
@@ -126,6 +127,7 @@ impl State {
             org_name: "Ellidri server showcase".to_owned(),
             org_location: "Somewhere on Earth".to_owned(),
             org_mail: "contact@ellidri.localdomain".to_owned(),
+            awaylen: 300,
             channellen: 50,
             kicklen: 300,
             namelen: 64,
@@ -173,6 +175,7 @@ impl Config {
             .unique_setting("default_chan_mode", false, |value| default_chan_mode = value)?
             .unique_setting("motd_file",         false, |value| res.state.motd_file = Some(value))?
             .unique_setting("password",          false, |value| res.state.password = Some(value))?
+            .unique_setting("awaylen",           false, |value| res.state.awaylen = value)?
             .unique_setting("channellen",        false, |value| res.state.channellen = value)?
             .unique_setting("kicklen",           false, |value| res.state.kicklen = value)?
             .unique_setting("namelen",           false, |value| res.state.namelen = value)?
@@ -203,6 +206,7 @@ impl Config {
         if self.state.default_chan_mode.is_empty() {
             self.state.default_chan_mode = def.state.default_chan_mode;
         }
+        if self.state.awaylen == 0 { self.state.awaylen = def.state.awaylen; }
         if self.state.channellen == 0 { self.state.channellen = def.state.channellen; }
         if self.state.kicklen == 0 { self.state.kicklen = def.state.kicklen; }
         if self.state.namelen == 0 { self.state.namelen = def.state.namelen; }

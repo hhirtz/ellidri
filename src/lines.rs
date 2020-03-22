@@ -13,6 +13,12 @@ pub const ADMIN_ME: &str =
 pub const ALREADY_REGISTERED: &str =
 "You can't reregister dummy!";
 
+pub const NOW_AWAY: &str =
+"See you later!";
+
+pub const UN_AWAY: &str =
+"Welcome back!";
+
 pub const BAD_CHAN_KEY: &str =
 "Woops, guess you've entered the wrong channel key :s";
 

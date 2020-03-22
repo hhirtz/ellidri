@@ -203,6 +203,7 @@ pub(crate) struct StateInner {
     /// A list of (name, password) that are valid OPER parameters.
     opers: Vec<(String, String)>,
 
+    awaylen: usize,
     channellen: usize,
     kicklen: usize,
     namelen: usize,
@@ -237,6 +238,7 @@ impl StateInner {
             password: config.password,
             default_chan_mode: config.default_chan_mode,
             opers: config.opers,
+            awaylen: config.awaylen,
             channellen: config.channellen,
             kicklen: config.kicklen,
             namelen: config.namelen,
@@ -378,6 +380,7 @@ impl StateInner {
         let cmd_result = match command {
             Command::Admin => self.cmd_admin(ctx),
             Command::Authenticate => self.cmd_authenticate(ctx, ps[0]),
+            Command::Away => self.cmd_away(ctx, ps[0]),
             Command::Cap => self.cmd_cap(ctx, &ps[..n]),
             Command::Info => self.cmd_info(ctx),
             Command::Invite => self.cmd_invite(ctx, ps[0], ps[1]),
@@ -521,6 +524,7 @@ impl StateInner {
 
         {
             let mut msg = rb.reply(rpl::ISUPPORT);
+            write!(msg.raw_param(), "AWAYLEN={}", self.awaylen).unwrap();
             write!(msg.raw_param(), "CHANNELLEN={}", self.channellen).unwrap();
             write!(msg.raw_param(), "KICKLEN={}", self.kicklen).unwrap();
             write!(msg.raw_param(), "NAMELEN={}", self.namelen).unwrap();

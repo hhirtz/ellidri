@@ -38,6 +38,9 @@ pub mod rpl {
     pub const ADMINLOC2: Reply     = "258";  // :<info>
     pub const ADMINMAIL: Reply     = "259";  // :<info>
 
+    pub const AWAY: Reply            = "301";  // <nick> :<away message>
+    pub const UNAWAY: Reply          = "305";  // :You are no longer marked as being away
+    pub const NOWAWAY: Reply         = "306";  // :You have been marked as being away
     pub const WHOISUSER: Reply       = "311";  // <nick> <user> <host> * :<realname>
     pub const WHOISSERVER: Reply     = "312";  // <nick> <server> :<server info>
     pub const WHOISOPERATOR: Reply   = "313";  // <nick> :is an IRC operator
@@ -302,6 +305,7 @@ commands! {
 //  Ident.   String     Minimum # of params
     Admin    "ADMIN"    0
     Authenticate "AUTHENTICATE" 1
+    Away     "AWAY"     0
     Cap      "CAP"      1
     Info     "INFO"     0
     Invite   "INVITE"   2
