@@ -22,6 +22,10 @@ impl<'a> From<&'a str> for &'a UniCase<str> {
     }
 }
 
+pub fn u(s: &str) -> &UniCase<str> {
+    s.into()
+}
+
 impl<S> AsRef<str> for UniCase<S>
     where S: AsRef<str>,
 {

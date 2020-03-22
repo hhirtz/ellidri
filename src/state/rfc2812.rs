@@ -8,7 +8,7 @@ use crate::lines;
 use crate::message::{Buffer, Command, ReplyBuffer, rpl};
 use crate::modes;
 use crate::util::{new_message_id, time_precise, time_str};
-use ellidri_unicase::UniCase;
+use ellidri_unicase::{u, UniCase};
 use std::collections::HashSet;
 use std::iter;
 use super::{CommandContext, HandlerResult as Result, find_channel, find_member, find_nick};
@@ -41,7 +41,7 @@ impl super::StateInner {
 
     pub fn cmd_invite(&mut self, ctx: CommandContext<'_>, nick: &str, target: &str) -> Result {
         let (invited, _) = find_nick(ctx.id, ctx.rb, &self.clients, nick)?;
-        let channel = match self.channels.get_mut(<&UniCase<str>>::from(target)) {
+        let channel = match self.channels.get_mut(u(target)) {
             Some(channel) => channel,
             None => {
                 log::debug!("{}:     no such channel", ctx.id);
@@ -147,7 +147,7 @@ impl super::StateInner {
             .trailing_param(client.real());
         let extended_join = MessageQueueItem::from(extended_join);
 
-        let channel = &self.channels[<&UniCase<str>>::from(target)];
+        let channel = &self.channels[u(target)];
         for member in channel.members.keys() {
             let member = &self.clients[*member];
             if member.capabilities.extended_join {
@@ -170,7 +170,7 @@ impl super::StateInner {
                     .trailing_param(lines::NO_SUCH_CHANNEL);
                 return Err(());
             }
-            let ok = self.channels.get(<&UniCase<str>>::from(target))
+            let ok = self.channels.get(u(target))
                 .map_or(Ok(()), |channel| {
                     super::StateInner::check_join(client, channel, target, key, &mut ctx)
                 })
@@ -236,7 +236,7 @@ impl super::StateInner {
             }
         }
         let msg = MessageQueueItem::from(kick_response);
-        let channel = self.channels.get_mut(<&UniCase<str>>::from(target)).unwrap();
+        let channel = self.channels.get_mut(u(target)).unwrap();
         for member in channel.members.keys() {
             self.clients[*member].send(msg.clone());
         }
@@ -258,7 +258,7 @@ impl super::StateInner {
             }
         } else {
             for name in targets.split(',') {
-                if let Some(channel) = self.channels.get(<&UniCase<str>>::from(name)) {
+                if let Some(channel) = self.channels.get(u(name)) {
                     if channel.secret && !channel.members.contains_key(&ctx.id) {
                         continue;
                     }
@@ -293,7 +293,7 @@ impl super::StateInner {
     fn cmd_mode_chan_set(&mut self, ctx: CommandContext<'_>, target: &str,
                                modes: &str, modeparams: &[&str]) -> Result
     {
-        let channel = match self.channels.get_mut(<&UniCase<str>>::from(target)) {
+        let channel = match self.channels.get_mut(u(target)) {
             Some(channel) => channel,
             None => {
                 log::debug!("{}:     no such channel", ctx.id);
@@ -596,7 +596,7 @@ impl super::StateInner {
         let client = &self.clients[ctx.id];
 
         for target in targets.split(',').filter(|s| !s.is_empty()) {
-            let channel = match self.channels.get_mut(<&UniCase<str>>::from(target)) {
+            let channel = match self.channels.get_mut(u(target)) {
                 Some(channel) => channel,
                 None => {
                     log::debug!("{}:     Not on channel", ctx.id);
@@ -621,7 +621,7 @@ impl super::StateInner {
 
             let msg = MessageQueueItem::from(response);
             if channel.members.is_empty() {
-                self.channels.remove(<&UniCase<str>>::from(target));
+                self.channels.remove(u(target));
             } else {
                 self.broadcast(target, &msg);
             }
@@ -677,7 +677,7 @@ impl super::StateInner {
     // TOPIC
 
     fn cmd_topic_set(&mut self, ctx: CommandContext<'_>, target: &str, topic: &str) -> Result {
-        let channel = match self.channels.get_mut(<&UniCase<str>>::from(target)) {
+        let channel = match self.channels.get_mut(u(target)) {
             Some(channel) => channel,
             None => {
                 log::debug!("{}:     no such channel", ctx.id);
@@ -756,7 +756,7 @@ impl super::StateInner {
         let mask = if mask.is_empty() {"*"} else {mask};
         let o = o == "o";  // best line
 
-        if let Some(channel) = self.channels.get(<&UniCase<str>>::from(mask)) {
+        if let Some(channel) = self.channels.get(u(mask)) {
             let client = &self.clients[ctx.id];
             let in_channel = channel.members.contains_key(&ctx.id);
             if !channel.secret || in_channel {
@@ -887,8 +887,8 @@ mod tests {
             (Some(test::DOMAIN), Err(rpl::NAMREPLY), &["c1", "=", "#channel", "@c1"]),
             (Some(test::DOMAIN), Err(rpl::ENDOFNAMES), &["c1", "#channel", lines::END_OF_NAMES]),
         ]);
-        assert_eq!(state.channels[<&UniCase<str>>::from("#chAnnel")].members.len(), 1);
-        assert!(state.channels[<&UniCase<str>>::from("#chAnnel")].members[&a1].operator);
+        assert_eq!(state.channels[u("#chAnnel")].members.len(), 1);
+        assert!(state.channels[u("#chAnnel")].members[&c1].operator);
 
         // c1 c2 c3 all registered
         test::handle_message(&mut state, c1, "INVITE c2 #channel");
@@ -1026,8 +1026,8 @@ mod tests {
             (Some(test::DOMAIN), Err(rpl::NAMREPLY), &["c1", "=", "#channel", "@c1"]),
             (Some(test::DOMAIN), Err(rpl::ENDOFNAMES), &["c1", "#channel", lines::END_OF_NAMES]),
         ]);
-        assert!(state.channels.get(<&UniCase<str>>::from("#channel")).is_some());
-        assert!(state.channels[<&UniCase<str>>::from("#channel")].members.contains_key(&a1));
+        assert!(state.channels.get(u("#channel")).is_some());
+        assert!(state.channels[u("#channel")].members.contains_key(&c1));
 
         // c2 all registered - c1 on #channel
         test::handle_message(&mut state, c1, "JOIN #channel");
@@ -1044,7 +1044,7 @@ mod tests {
         test::assert_msgs(&buf, &[
             (Some("c1!X@127.0.0.1"), Ok(Command::Mode), &["#channel", "+k", "key"]),
         ]);
-        assert!(state.channels[<&UniCase<str>>::from("#channel")].key.as_ref().unwrap() == "key");
+        assert!(state.channels[u("#channel")].key.as_ref().unwrap() == "key");
 
         // c2 all registered - c1 on #channel+kkey
         test::handle_message(&mut state, c2, "JOIN #channel,#home");
@@ -1058,8 +1058,8 @@ mod tests {
             (Some(test::DOMAIN), Err(rpl::NAMREPLY), &["c2", "=", "#home", "@c2"]),
             (Some(test::DOMAIN), Err(rpl::ENDOFNAMES), &["c2", "#home", lines::END_OF_NAMES]),
         ]);
-        assert!(state.channels.get(<&UniCase<str>>::from("#home")).is_some());
-        assert!(state.channels[<&UniCase<str>>::from("#home")].members.contains_key(&a2));
+        assert!(state.channels.get(u("#home")).is_some());
+        assert!(state.channels[u("#home")].members.contains_key(&c2));
         // TODO continue
     }
 }  // mod tests

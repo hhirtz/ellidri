@@ -15,7 +15,7 @@ use crate::client::{Client, MessageQueue, MessageQueueItem};
 use crate::message::{Buffer, Command, Message, ReplyBuffer, rpl};
 use crate::modes;
 use crate::util::time_str;
-use ellidri_unicase::UniCase;
+use ellidri_unicase::{u, UniCase};
 use slab::Slab;
 use std::{cmp, fs, io, net};
 use std::collections::HashMap;
@@ -435,7 +435,7 @@ impl StateInner {
 fn find_channel<'a>(id: usize, rb: &mut ReplyBuffer, channels: &'a ChannelMap,
                     name: &str) -> Result<&'a Channel, ()>
 {
-    match channels.get(<&UniCase<str>>::from(name)) {
+    match channels.get(u(name)) {
         Some(channel) => Ok(channel),
         None => {
             log::debug!("{}:         no such channel", id);
@@ -490,7 +490,7 @@ impl StateInner {
 
     /// Sends the given message to all users in the given channel.
     fn broadcast(&self, target: &str, msg: &MessageQueueItem) {
-        let channel = &self.channels[<&UniCase<str>>::from(target)];
+        let channel = &self.channels[u(target)];
         for member in channel.members.keys() {
             self.send(*member, msg.clone());
         }
@@ -553,7 +553,7 @@ impl StateInner {
 
     /// Sends the list of nicknames in the channel `channel_name` to the given client.
     fn write_names(&self, id: usize, rb: &mut ReplyBuffer, channel_name: &str) {
-        let channel = match self.channels.get(<&UniCase<str>>::from(channel_name)) {
+        let channel = match self.channels.get(u(channel_name)) {
             Some(channel) => channel,
             None => return,
         };
@@ -587,7 +587,7 @@ impl StateInner {
 
     /// Sends the topic of the channel `channel_name` to the given client.
     fn write_topic(&self, rb: &mut ReplyBuffer, channel_name: &str) {
-        let channel = &self.channels[<&UniCase<str>>::from(channel_name)];
+        let channel = &self.channels[u(channel_name)];
         if let Some(ref topic) = channel.topic {
             rb.reply(rpl::TOPIC).param(channel_name).trailing_param(topic);
         } else {
