@@ -1,10 +1,80 @@
+use ellidri_unicase::u;
 use rand::SeedableRng as _;
 use rand_chacha::ChaChaRng;
-use std::time;
+use regex as re;
+use std::{iter, time};
 use std::cell::RefCell;
 
 thread_local! {
     static RNG: RefCell<ChaChaRng> = RefCell::new(ChaChaRng::from_entropy());
+    static REGEX: RefCell<String> = RefCell::new(String::new());
+}
+
+const REGEX_SIZE: usize = 4096;
+
+fn build_regexset(mut b: re::RegexSetBuilder) -> re::RegexSet {
+    b.case_insensitive(true)
+        .size_limit(REGEX_SIZE)
+        .dfa_size_limit(REGEX_SIZE)
+        .build()
+        .unwrap()
+}
+
+fn build_regex(mut b: re::RegexBuilder) -> re::Regex {
+    b.case_insensitive(true)
+        .size_limit(REGEX_SIZE)
+        .dfa_size_limit(REGEX_SIZE)
+        .build()
+        .unwrap()
+}
+
+fn convert_mask(dest: &mut String, mask: &str) {
+    dest.reserve(mask.len());
+    for c in mask.chars() {
+        match c {
+            '*' | '?' => dest.push('.'),
+            c if regex_syntax::is_meta_character(c) => dest.push('\\'),
+            _ => {},
+        }
+        dest.push(c);
+    }
+}
+
+pub fn mask_to_regex(mask: &str) -> re::Regex {
+    REGEX.with(|s| {
+        let mut s = s.borrow_mut();
+        s.clear();
+        convert_mask(&mut s, mask);
+        build_regex(re::RegexBuilder::new(&s))
+    })
+}
+
+#[allow(clippy::into_iter_on_ref)]
+pub fn regexset_add(set: &mut re::RegexSet, mask: &str) {
+    REGEX.with(|s| {
+        let mut s = s.borrow_mut();
+        s.clear();
+        convert_mask(&mut s, mask);
+        let new_patterns = set.patterns().into_iter()
+            .map(AsRef::as_ref)
+            .chain(iter::once(s.as_str()));
+        let new_set = build_regexset(re::RegexSetBuilder::new(new_patterns));
+        *set = new_set;
+    });
+}
+
+pub fn regexset_remove(set: &mut re::RegexSet, mask: &str) {
+    REGEX.with(|s| {
+        let mut s = s.borrow_mut();
+        s.clear();
+        convert_mask(&mut s, mask);
+        let s = u(s.as_str());
+        let new_patterns = set.patterns().into_iter()
+            .map(AsRef::as_ref)
+            .filter(|p| u(p) != s);
+        let new_set = build_regexset(re::RegexSetBuilder::new(new_patterns));
+        *set = new_set;
+    });
 }
 
 pub fn new_message_id() -> String {

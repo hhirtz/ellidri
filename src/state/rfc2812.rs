@@ -133,7 +133,7 @@ impl super::StateInner {
                 .trailing_param(lines::INVITE_ONLY_CHAN);
             return Err(());
         }
-        if channel.is_banned(client.nick()) {
+        if channel.is_banned(client.nick()) || channel.is_banned(client.full_name()) {
             log::debug!("{}:     Banned", ctx.id);
             ctx.rb.reply(rpl::ERR_BANNEDFROMCHAN)
                 .param(target)
@@ -330,29 +330,29 @@ impl super::StateInner {
             return Err(());
         }
 
-        let reply_list = |rb: &mut ReplyBuffer, item, end, line, it: &HashSet<String>| {
+        let reply_list = |rb: &mut ReplyBuffer, item, end, line, it: &[String]| {
             for i in it {
                 rb.reply(item).param(target).param(i);
             }
-            rb.reply(end).trailing_param(line);
+            rb.reply(end).param(target).trailing_param(line);
         };
 
         let clients = &self.clients;
 
         let mut applied_modes = String::new();
         let mut applied_modeparams = Vec::new();
-        for maybe_change in modes::channel_query(modes, modeparams.iter().cloned()) { match maybe_change {
+        for maybe_change in modes::channel_query(modes, modeparams) { match maybe_change {
             Ok(modes::ChannelModeChange::GetBans) => {
                 reply_list(ctx.rb, rpl::BANLIST, rpl::ENDOFBANLIST, lines::END_OF_BAN_LIST,
-                           &channel.ban_mask);
+                           channel.ban_mask.patterns());
             }
             Ok(modes::ChannelModeChange::GetExceptions) => {
                 reply_list(ctx.rb, rpl::EXCEPTLIST, rpl::ENDOFEXCEPTLIST, lines::END_OF_EXCEPT_LIST,
-                           &channel.exception_mask);
+                           channel.exception_mask.patterns());
             }
             Ok(modes::ChannelModeChange::GetInvitations) => {
                 reply_list(ctx.rb, rpl::INVITELIST, rpl::ENDOFINVITELIST, lines::END_OF_INVITE_LIST,
-                           &channel.exception_mask);
+                           channel.exception_mask.patterns());
             }
             Ok(change) => match channel.apply_mode_change(change, |a| clients[*a].nick()) {
                 Ok(true) => {

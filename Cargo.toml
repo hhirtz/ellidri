@@ -48,6 +48,10 @@ log = { version = "0.4", default-features = false, features = ["max_level_trace"
 # Time string generation (@time message tag and RPL_TIME reply)
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 
+# Masks implementation
+regex = { version = "1", default-features = false, features = ["std", "perf", "unicode-case"] }
+regex-syntax = { version = "0.6", default-features = false, features = ["unicode-case"] }
+
 # Initialization of the HashSet of capabilities
 lazy_static = { version = "1", default-features = false }
 

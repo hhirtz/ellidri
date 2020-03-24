@@ -1,5 +1,6 @@
+use crate::{modes, util};
 use crate::message::{MessageBuffer, Reply, rpl};
-use crate::modes;
+use regex as re;
 use std::collections::{HashMap, HashSet};
 
 /// Modes applied to clients on a per-channel basis.
@@ -69,7 +70,6 @@ impl MemberModes {
 }
 
 /// Channel data.
-#[derive(Default)]
 pub struct Channel {
     /// Set of channel members, identified by their socket address, and associated with their
     /// channel mode.
@@ -84,12 +84,10 @@ pub struct Channel {
     pub user_limit: Option<usize>,
     pub key: Option<String>,
 
-    // TODO test performance with BTreeSet instead of HashSet
-
     // https://tools.ietf.org/html/rfc2811.html#section-4.3
-    pub ban_mask: HashSet<String>,
-    pub exception_mask: HashSet<String>,
-    pub invitation_mask: HashSet<String>,
+    pub ban_mask: re::RegexSet,
+    pub exception_mask: re::RegexSet,
+    pub invitation_mask: re::RegexSet,
 
     // Modes: https://tools.ietf.org/html/rfc2811.html#section-4.2
     pub invite_only: bool,
@@ -102,7 +100,21 @@ pub struct Channel {
 impl Channel {
     /// Creates a channel with the given modes set.
     pub fn new(modes: &str) -> Self {
-        let mut channel = Self::default();
+        let mut channel = Channel {
+            members: HashMap::new(),
+            invites: HashSet::new(),
+            topic: None,
+            user_limit: None,
+            key: None,
+            ban_mask: re::RegexSet::new::<_, &String>(&[]).unwrap(),
+            exception_mask: re::RegexSet::new::<_, &String>(&[]).unwrap(),
+            invitation_mask: re::RegexSet::new::<_, &String>(&[]).unwrap(),
+            invite_only: false,
+            moderated: false,
+            no_privmsg_from_outside: false,
+            secret: false,
+            topic_restricted: false,
+        };
         for change in modes::simple_channel_query(modes).filter_map(Result::ok) {
             channel.apply_mode_change(change, |_| "").unwrap();
         }
@@ -127,18 +139,18 @@ impl Channel {
     }
 
     pub fn list_entry(&self, msg: MessageBuffer<'_>) {
-        msg.param(&self.members.len().to_string())
+        msg.fmt_param(self.members.len())
             .trailing_param(self.topic.as_ref().map_or("", |s| s.as_ref()));
     }
 
     pub fn is_banned(&self, nick: &str) -> bool {
-        self.ban_mask.contains(nick)
-            && !self.exception_mask.contains(nick)
-            && !self.invitation_mask.contains(nick)
+        self.ban_mask.is_match(nick)
+            && !self.exception_mask.is_match(nick)
+            && !self.invitation_mask.is_match(nick)
     }
 
     pub fn is_invited(&self, id: usize, nick: &str) -> bool {
-        !self.invite_only || self.invites.contains(&id) || self.invitation_mask.contains(nick)
+        !self.invite_only || self.invites.contains(&id) || self.invitation_mask.is_match(nick)
     }
 
     pub fn can_talk(&self, id: usize) -> bool {
@@ -218,11 +230,9 @@ impl Channel {
                     applied = true;
                     self.key = Some(key.to_owned());
                 }
-            } else if let Some(ref chan_key) = self.key {
-                if key == chan_key {
-                    applied = true;
-                    self.key = None;
-                }
+            } else if self.key.is_some() {
+                applied = true;
+                self.key = None;
             },
             UserLimit(Some(s)) => if let Ok(limit) = s.parse() {
                 applied = self.user_limit.map_or(true, |chan_limit| chan_limit != limit);
@@ -233,25 +243,28 @@ impl Channel {
                 self.user_limit = None;
             },
             ChangeBan(value, param) => {
-                applied = if value {
-                    self.ban_mask.insert(param.to_owned())
+                if value {
+                    util::regexset_add(&mut self.ban_mask, param);
                 } else {
-                    self.ban_mask.remove(param)
-                };
+                    util::regexset_remove(&mut self.ban_mask, param);
+                }
+                applied = true;
             },
             ChangeException(value, param) => {
-                applied = if value {
-                    self.exception_mask.insert(param.to_owned())
+                if value {
+                    util::regexset_add(&mut self.exception_mask, param);
                 } else {
-                    self.exception_mask.remove(param)
-                };
+                    util::regexset_remove(&mut self.exception_mask, param);
+                }
+                applied = true;
             },
             ChangeInvitation(value, param) => {
-                applied = if value {
-                    self.invitation_mask.insert(param.to_owned())
+                if value {
+                    util::regexset_add(&mut self.invitation_mask, param);
                 } else {
-                    self.invitation_mask.remove(param)
-                };
+                    util::regexset_remove(&mut self.invitation_mask, param);
+                }
+                applied = true;
             },
             ChangeOperator(value, param) => {
                 let mut has_it = false;
