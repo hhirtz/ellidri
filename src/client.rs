@@ -549,6 +549,10 @@ impl Client {
                 applied = self.invisible != value;
                 self.invisible = value;
             },
+            DeOperator => {
+                applied = self.operator;
+                self.operator = false;
+            }
         }
         applied
     }

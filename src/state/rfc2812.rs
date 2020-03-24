@@ -264,9 +264,10 @@ impl super::StateInner {
     // LIST
 
     pub fn cmd_list(&self, ctx: CommandContext<'_>, targets: &str) -> Result {
+        let client = &self.clients[ctx.id];
         if targets.is_empty() {
             for (name, channel) in &self.channels {
-                if channel.secret && !channel.members.contains_key(&ctx.id) {
+                if channel.secret && !client.operator && !channel.members.contains_key(&ctx.id) {
                     continue;
                 }
                 let msg = ctx.rb.reply(rpl::LIST).param(name.as_ref());
@@ -275,7 +276,7 @@ impl super::StateInner {
         } else {
             for name in targets.split(',') {
                 if let Some(channel) = self.channels.get(u(name)) {
-                    if channel.secret && !channel.members.contains_key(&ctx.id) {
+                    if channel.secret && !client.operator && !channel.members.contains_key(&ctx.id) {
                         continue;
                     }
                     let msg = ctx.rb.reply(rpl::LIST).param(name);
@@ -301,7 +302,7 @@ impl super::StateInner {
     fn cmd_mode_chan_get(&self, ctx: CommandContext<'_>, target: &str) -> Result {
         let channel = find_channel(ctx.id, ctx.rb, &self.channels, target)?;
         let msg = ctx.rb.reply(rpl::CHANNELMODEIS).param(target);
-        channel.modes(msg, channel.members.contains_key(&ctx.id));
+        channel.modes(msg, channel.members.contains_key(&ctx.id) || self.clients[ctx.id].operator);
 
         Ok(())
     }
@@ -319,8 +320,9 @@ impl super::StateInner {
                 return Err(());
             }
         };
+        let client = &self.clients[ctx.id];
         let member_modes = find_member(ctx.id, ctx.rb, channel, target)?;
-        if !member_modes.can_change(modes) {
+        if !client.operator && !member_modes.can_change(modes) {
             log::debug!("{}:     not operator", ctx.id);
             ctx.rb.reply(rpl::ERR_CHANOPRIVSNEEDED)
                 .param(target)
@@ -777,14 +779,16 @@ impl super::StateInner {
     {
         let mask = if mask.is_empty() {"*"} else {mask};
         let o = o == "o";  // best line
+        let client = &self.clients[ctx.id];
 
         if let Some(channel) = self.channels.get(u(mask)) {
-            let client = &self.clients[ctx.id];
             let in_channel = channel.members.contains_key(&ctx.id);
-            if !channel.secret || in_channel {
+            if !channel.secret || in_channel || client.operator {
                 for (member, modes) in &channel.members {
                     let c = &self.clients[*member];
-                    if (o && !c.operator) || (c.invisible && !in_channel && *member != ctx.id) {
+                    if (o && !c.operator) ||
+                        (!client.operator && c.invisible && !in_channel && *member != ctx.id)
+                    {
                         continue;
                     }
                     let mut msg = ctx.rb.reply(rpl::WHOREPLY)
@@ -817,7 +821,7 @@ impl super::StateInner {
                         }
                     }
                 }
-                if !c.invisible || a == ctx.id || channel_name.is_some() {
+                if !c.invisible || a == ctx.id || channel_name.is_some() || client.operator {
                     let client = &self.clients[ctx.id];
                     let channel_name = channel_name.unwrap_or("*");
                     let mut msg = ctx.rb.reply(rpl::WHOREPLY)
