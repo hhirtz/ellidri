@@ -435,6 +435,8 @@ impl StateInner {
     pub fn remove_if_unregistered(&mut self, id: usize) {
         if let Some(client) = self.clients.get(id) {
             if !client.is_registered() {
+                // TODO centralized way of removing clients
+                self.nicks.remove(u(client.nick()));
                 self.clients.remove(id);
             }
         }
