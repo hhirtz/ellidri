@@ -1,6 +1,7 @@
 use crate::{modes, util};
 use crate::message::{MessageBuffer, Reply, rpl};
 use regex as re;
+use std::borrow::Borrow;
 use std::collections::{HashMap, HashSet};
 
 /// Modes applied to clients on a per-channel basis.
@@ -54,10 +55,13 @@ impl MemberModes {
         self.voice || self.halfop || self.operator || self.protected || self.founder
     }
 
-    pub fn can_change(self, modes: &str) -> bool {
+    pub fn can_change<'a, I, S>(self, modes: &'a str, params: I) -> bool
+        where I: IntoIterator<Item=&'a S> +'a,
+              S: Borrow<str> + 'a,
+    {
         use modes::ChannelModeChange::*;
 
-        modes::simple_channel_query(modes).all(|mode| match mode {
+        modes::channel_query(modes, params).all(|mode| match mode {
             Err(_) => true,
             Ok(GetBans) | Ok(GetExceptions) | Ok(GetInvitations) => true,
             Ok(Moderated(_)) | Ok(TopicRestricted(_)) | Ok(UserLimit(_)) |
@@ -322,3 +326,54 @@ impl Channel {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const OPERATOR: MemberModes = MemberModes {
+        founder: false,
+        protected: false,
+        operator: true,
+        halfop: true,
+        voice: false,
+    };
+    const HALFOP: MemberModes = MemberModes {
+        founder: false,
+        protected: false,
+        operator: false,
+        halfop: true,
+        voice: false,
+    };
+    const VOICE: MemberModes = MemberModes {
+        founder: false,
+        protected: false,
+        operator: false,
+        halfop: false,
+        voice: true,
+    };
+
+    fn params() -> impl Iterator<Item=&'static &'static str> {  // TODO lol what
+        std::iter::repeat(&"beer")
+    }
+
+    #[test]
+    fn test_member_modes_is_at_least() {
+        assert!(OPERATOR.has_voice());
+        assert!(OPERATOR.is_at_least_halfop());
+        assert!(OPERATOR.is_at_least_op());
+        assert!(HALFOP.has_voice());
+        assert!(HALFOP.is_at_least_halfop());
+        assert!(!HALFOP.is_at_least_op());
+        assert!(VOICE.has_voice());
+        assert!(!VOICE.is_at_least_halfop());
+        assert!(!VOICE.is_at_least_op());
+    }
+
+    #[test]
+    fn test_member_modes_can_change() {
+        assert!(OPERATOR.can_change("+oinskh", params()));
+        assert!(HALFOP.can_change("+beIv", params()));
+        assert!(!HALFOP.can_change("+obeIv", params()));
+    }
+}  // mod tests

@@ -322,7 +322,7 @@ impl super::StateInner {
         };
         let client = &self.clients[ctx.id];
         let member_modes = find_member(ctx.id, ctx.rb, channel, target)?;
-        if !client.operator && !member_modes.can_change(modes) {
+        if !client.operator && !member_modes.can_change(modes, modeparams) {
             log::debug!("{}:     not operator", ctx.id);
             ctx.rb.reply(rpl::ERR_CHANOPRIVSNEEDED)
                 .param(target)
