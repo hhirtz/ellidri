@@ -15,6 +15,7 @@ pub struct MemberModes {
 }
 
 impl MemberModes {
+    /// Pushes all the modes' symbols to the given string, in decreasing order of rank.
     pub fn all_symbols(self, out: &mut String) {
         if self.founder { out.push('~'); }
         if self.protected { out.push('&'); }
@@ -23,6 +24,7 @@ impl MemberModes {
         if self.voice { out.push('+'); }
     }
 
+    /// Returns the highest enabled mode.
     pub fn symbol(self) -> Option<char> {
         if self.founder {
             Some('~')
@@ -172,10 +174,10 @@ impl Channel {
 
         if full_info {
             if let Some(user_limit) = self.user_limit {
-                out = out.param(&user_limit.to_string());
+                out = out.fmt_param(user_limit);
             }
             if let Some(ref key) = self.key {
-                out.param(&key.to_owned());
+                out.param(&key);
             }
         }
     }
@@ -186,6 +188,7 @@ impl Channel {
         where F: Fn(&usize) -> &'a str
     {
         use modes::ChannelModeChange::*;
+
         let mut applied = false;
         match change {
             InviteOnly(value) => {

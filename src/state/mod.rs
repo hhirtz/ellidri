@@ -19,6 +19,7 @@ use ellidri_unicase::{u, UniCase};
 use slab::Slab;
 use std::{cmp, fs, io, net};
 use std::collections::HashMap;
+use std::fmt::Write as _;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
@@ -506,8 +507,6 @@ impl StateInner {
     }
 
     fn write_i_support(&self, rb: &mut ReplyBuffer) {
-        use std::fmt::Write as _;
-
         rb.reply(rpl::ISUPPORT)
             .param("CASEMAPPING=ascii")
             .param("CHANLIMIT=#:,&:")
@@ -524,24 +523,38 @@ impl StateInner {
 
         {
             let mut msg = rb.reply(rpl::ISUPPORT);
-            write!(msg.raw_param(), "AWAYLEN={}", self.awaylen).unwrap();
-            write!(msg.raw_param(), "CHANNELLEN={}", self.channellen).unwrap();
-            write!(msg.raw_param(), "KICKLEN={}", self.kicklen).unwrap();
-            write!(msg.raw_param(), "NAMELEN={}", self.namelen).unwrap();
-            write!(msg.raw_param(), "NICKLEN={}", self.nicklen).unwrap();
-            write!(msg.raw_param(), "TOPICLEN={}", self.topiclen).unwrap();
+            let _ = write!(msg.raw_param(), "AWAYLEN={}", self.awaylen);
+            let _ = write!(msg.raw_param(), "CHANNELLEN={}", self.channellen);
+            let _ = write!(msg.raw_param(), "KICKLEN={}", self.kicklen);
+            let _ = write!(msg.raw_param(), "NAMELEN={}", self.namelen);
+            let _ = write!(msg.raw_param(), "NICKLEN={}", self.nicklen);
+            let _ = write!(msg.raw_param(), "TOPICLEN={}", self.topiclen);
             msg.trailing_param(lines::I_SUPPORT);
         }
     }
 
     fn write_lusers(&self, rb: &mut ReplyBuffer) {
         lines::luser_client(rb.reply(rpl::LUSERCLIENT), self.clients.len());
-        // TODO LUSEROP  store the count of operators to avoid going through `clients` every time?
-        // TODO LUSERUNKNOWN
+
+        // TODO store the count to avoid .iter()
+        let (op, unknown) = self.clients.iter().fold((0, 0), |(op, unknown), (_, client)| {
+            if !client.is_registered() {
+                (op, unknown + 1)
+            } else if client.operator {
+                (op + 1, unknown)
+            } else {
+                (op, unknown)
+            }
+        });
+        if 0 < op {
+            rb.reply(rpl::LUSEROP).fmt_param(op).trailing_param(lines::LUSER_OP);
+        }
+        if 0 < unknown {
+            rb.reply(rpl::LUSERUNKNOWN).fmt_param(unknown).trailing_param(lines::LUSER_UNKNOWN);
+        }
         if !self.channels.is_empty() {
-            rb.reply(rpl::LUSERCHANNELS)
-                .param(&self.channels.values().filter(|c| !c.secret).count().to_string())
-                .trailing_param(lines::LUSER_CHANNELS);
+            let n = self.channels.values().filter(|c| !c.secret).count();
+            rb.reply(rpl::LUSERCHANNELS).fmt_param(n).trailing_param(lines::LUSER_CHANNELS);
         }
         lines::luser_me(rb.reply(rpl::LUSERME), self.clients.len());
     }

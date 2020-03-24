@@ -1,4 +1,5 @@
 use crate::message::MessageBuffer;
+use std::fmt::Write;
 
 // Network messages
 
@@ -76,9 +77,6 @@ pub const INVITE_ONLY_CHAN: &str =
 pub const KEY_SET: &str =
 "The channel key is already here, senpai!";
 
-pub const LUSER_CHANNELS: &str =
-"channels created";
-
 pub const NEED_MORE_PARAMS: &str =
 "You are not telling me everything, are you?";
 
@@ -141,19 +139,24 @@ pub fn created(mut r: MessageBuffer<'_>, since: &str) {
     trailing.push_str(since);
 }
 
+pub const LUSER_CHANNELS: &str =
+"channels created";
+
 pub fn luser_client(mut r: MessageBuffer<'_>, num_clients: usize) {
     let trailing = r.raw_trailing_param();
-    trailing.push_str("There are ");
-    trailing.push_str(&num_clients.to_string());
-    trailing.push_str(" senpais on 1 server");
+    let _ = write!(trailing, "There are {} senpai(s) on 1 server", num_clients);
 }
 
 pub fn luser_me(mut r: MessageBuffer<'_>, num_clients: usize) {
     let trailing = r.raw_trailing_param();
-    trailing.push_str("I have ");
-    trailing.push_str(&num_clients.to_string());
-    trailing.push_str(" senpais and 0 servers");
+    let _ = write!(trailing, "I have {} senpai(s) and 0 servers", num_clients);
 }
+
+pub const LUSER_OP: &str =
+"operator(s) online";
+
+pub const LUSER_UNKNOWN: &str =
+"unknown connection(s)";
 
 pub fn motd_start(mut r: MessageBuffer<'_>, domain: &str) {
     let trailing = r.raw_trailing_param();

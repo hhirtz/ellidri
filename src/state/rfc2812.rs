@@ -375,9 +375,9 @@ impl super::StateInner {
                 Err(_) => { unreachable!(); }
             }
             Err(modes::Error::UnknownMode(mode)) => {
-                ctx.rb.reply(rpl::ERR_UNKNOWNMODE)
-                    .param(&mode.to_string())
-                    .trailing_param(lines::UNKNOWN_MODE);
+                let mut msg = ctx.rb.reply(rpl::ERR_UNKNOWNMODE);
+                msg.raw_param().push(mode);
+                msg.trailing_param(lines::UNKNOWN_MODE);
             },
             Err(_) => {},
         } }
@@ -420,9 +420,9 @@ impl super::StateInner {
                 applied_modes.push(change.symbol());
             }
             Err(modes::Error::UnknownMode(mode)) => {
-                ctx.rb.reply(rpl::ERR_UMODEUNKNOWNFLAG)
-                    .param(&mode.to_string())
-                    .trailing_param(lines::UNKNOWN_MODE);
+                let mut msg = ctx.rb.reply(rpl::ERR_UMODEUNKNOWNFLAG);
+                msg.raw_param().push(mode);
+                msg.trailing_param(lines::UNKNOWN_MODE);
             }
             Err(_) => {}
         } }
@@ -443,7 +443,7 @@ impl super::StateInner {
     }
 
     pub fn cmd_mode(&mut self, mut ctx: CommandContext<'_>, target: &str,
-                modes: &str, modeparams: &[&str]) -> Result
+                    modes: &str, modeparams: &[&str]) -> Result
     {
         if super::is_valid_channel_name(target, self.channellen) {
             if modes.is_empty() {
@@ -680,7 +680,6 @@ impl super::StateInner {
 
     // QUIT
 
-    // TODO append "Quit: " in front of the user supplied message
     pub fn cmd_quit(&mut self, ctx: CommandContext<'_>, reason: &str) -> Result {
         let mut response = Buffer::new();
         let client = self.clients.remove(ctx.id);
@@ -860,8 +859,8 @@ impl super::StateInner {
             .trailing_param(&self.org_name);
         ctx.rb.reply(rpl::WHOISIDLE)
             .param(target_client.nick())
-            .param(&target_client.idle_time().to_string())
-            .param(&target_client.signon_time().to_string())
+            .fmt_param(target_client.idle_time())
+            .fmt_param(target_client.signon_time())
             .trailing_param(lines::WHOIS_IDLE);
         if let Some(away_msg) = target_client.away_message() {
             ctx.rb.reply(rpl::AWAY).param(target_client.nick()).trailing_param(away_msg);

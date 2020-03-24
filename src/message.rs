@@ -1,8 +1,8 @@
 //! Message parsing and building.
 
 pub use rpl::Reply;
-use std::fmt;
 use std::cell::RefCell;
+use std::fmt;
 
 /// The recommended length of a message.
 ///
@@ -535,14 +535,43 @@ impl<'a> MessageBuffer<'a> {
     ///
     /// assert_eq!(&response.build(), ":nick!user@127.0.0.1 QUIT chiao\r\n");
     /// ```
-    pub fn param(self, param: &str) -> Self
-    {
+    pub fn param(self, param: &str) -> Self {
         let param = param.trim();
         if param.is_empty() {
             return self;
         }
         self.buf.push(' ');
         self.buf.push_str(param);
+        self
+    }
+
+    /// Formats, then appends a parameter to the message.
+    ///
+    /// The parameter is **NOT** trimmed before insertion, is appended even if it's empty.  Use
+    /// `Buffer::param` to append strings, especially untrusted ones.
+    ///
+    /// **Note**: It is up to the caller to make sure there is no remaning whitespace or newline in
+    /// the parameter.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// # use ellidri::message::{Command, Buffer};
+    /// let mut response = Buffer::new();
+    ///
+    /// response.message("", Command::PrivMsg)
+    ///     .fmt_param("  #space ")
+    ///     .fmt_param(42);
+    ///
+    /// assert_eq!(&response.build(), "PRIVMSG   #space  42\r\n");
+    /// ```
+    pub fn fmt_param<T>(self, param: T) -> Self
+        where T: fmt::Display
+    {
+        use std::fmt::Write as _;
+
+        self.buf.push(' ');
+        let _ = write!(self.buf, "{}", param);
         self
     }
 
@@ -564,8 +593,7 @@ impl<'a> MessageBuffer<'a> {
     ///
     /// assert_eq!(&response.build(), ":nick!user@127.0.0.1 QUIT :long quit message\r\n");
     /// ```
-    pub fn trailing_param(self, param: &str)
-    {
+    pub fn trailing_param(self, param: &str) {
         self.buf.push(' ');
         self.buf.push(':');
         self.buf.push_str(param);
