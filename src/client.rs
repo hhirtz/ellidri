@@ -31,12 +31,18 @@ impl From<ReplyBuffer> for MessageQueueItem {
 }
 
 impl AsRef<str> for MessageQueueItem {
+    /// # Panics
+    ///
+    /// This function panics when `self.start` is greater than the content's length.
     fn as_ref(&self) -> &str {
         &self.buf.as_ref()[self.start..]
     }
 }
 
 impl AsRef<[u8]> for MessageQueueItem {
+    /// # Panics
+    ///
+    /// This function panics when `self.start` is greater than the content's length.
     fn as_ref(&self) -> &[u8] {
         self.buf.as_ref()[self.start..].as_bytes()
     }
@@ -179,6 +185,7 @@ userhost-in-names";
     pub fn query(buf: &str) -> impl Iterator<Item=(&str, bool)> {
         buf.split_whitespace().map(|word| {
             if word.starts_with('-') {
+                // NOPANIC  word starts with '-', which is encoded on 1 byte in UTF-8
                 (&word[1..], false)
             } else {
                 (word, true)
@@ -218,7 +225,7 @@ pub struct Client {
     /// The queue of messages to be sent to the client.
     ///
     /// This is the write end of a mpsc channel of messages (similar to go channels). It is
-    /// currently unbounded, meaning sending messages to this channel do not block.
+    /// currently unbounded, meaning sending messages to this channel does not block.
     queue: MessageQueue,
 
     pub capabilities: Capabilities,

@@ -103,6 +103,10 @@ pub struct Channel {
 
 impl Channel {
     /// Creates a channel with the given modes set.
+    ///
+    /// # Panics
+    ///
+    /// This function panics when `modes` isn't a valid mode string
     pub fn new(modes: &str) -> Self {
         let mut channel = Channel {
             members: HashMap::new(),

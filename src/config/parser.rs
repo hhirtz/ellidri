@@ -3,6 +3,12 @@ use std::collections::{BTreeMap, HashMap};
 use std::ops::Range;
 use super::{Binding, db, Error, Result, SaslBackend};
 
+/// Reverse operator of str[x..y], returns the range for the given string slice.
+///
+/// # Panics
+///
+/// This function panics when `inner` comes before `outer` in memory.  `inner` must be a subset of
+/// `outer` for this function to work properly.
 fn rangestr(inner: &str, outer: &str) -> Range<usize> {
     let ilen = inner.len();
     let inner = inner.as_ptr() as usize;
@@ -11,9 +17,17 @@ fn rangestr(inner: &str, outer: &str) -> Range<usize> {
     offset..offset + ilen
 }
 
+/// A wrapper around `String` that provides a `FromStr` implementation that makes sure that it can
+/// be used in MODE.
 pub struct ModeString(pub String);
+
+/// A wrapper around `(String, String)` that provides a `FromStr` implementation that parses the
+/// two strings separated by spaces.
 pub struct Oper(pub String, pub String);
 
+/// A trait used to print what was expected when `FromStr` returns `Err(_)`.
+///
+/// `type_name` should fill the blank: "wrong value, expected this param to be ___"
 pub trait TypeName {
     fn type_name() -> String;
 }

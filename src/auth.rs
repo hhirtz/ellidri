@@ -24,7 +24,7 @@ pub enum Error {
     /// The provider cannot perform the authentication.
     ProviderUnavailable,
 
-    /// Choosen mechanism is unsupported by the provider.
+    /// Chosen mechanism is unsupported by the provider.
     UnsupportedMechanism,
 }
 
@@ -39,7 +39,7 @@ pub trait Provider: Send + Sync {
     ///
     /// Example: `PLAIN,EXTERNAL`
     ///
-    /// Used for capability advertisment.
+    /// Used for capability advertisement.
     fn write_mechanisms(&self, buf: &mut String);
 
     /// Start the authentication process of a client.
@@ -216,6 +216,9 @@ pub fn write_buffer<T>(rb: &mut ReplyBuffer, buf: T)
     let mut i = 0;
     while i < encoded.len() {
         let max = encoded.len().min(i + AUTHENTICATE_CHUNK_LEN);
+        // NOPANIC
+        // i < encoded.len() && (max == encoded.len() || max == i + x), x > 0  ==>  i < max
+        // max <= encoded.len()
         let chunk = &encoded[i..max];
         rb.message("", Command::Authenticate).param(chunk);
         i = max;

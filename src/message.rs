@@ -50,7 +50,7 @@ pub mod rpl {
     pub const WHOISCHANNELS: Reply   = "319";  // <nick> :*( (@/+) <channel> " " )
     pub const LIST: Reply            = "322";  // <channel> <# of visible members> <topic>
     pub const LISTEND: Reply         = "323";  // :End of list
-    pub const CHANNELMODEIS: Reply   = "324";  // <channel> <modes> <modeparams>
+    pub const CHANNELMODEIS: Reply   = "324";  // <channel> <modes> <mode params>
     pub const NOTOPIC: Reply         = "331";  // <channel> :No topic set
     pub const TOPIC: Reply           = "332";  // <channel> <topic>
     pub const INVITING: Reply        = "341";  // <nick> <channel>
@@ -59,7 +59,7 @@ pub mod rpl {
     pub const EXCEPTLIST: Reply      = "348";  // <channel> <exception mask>
     pub const ENDOFEXCEPTLIST: Reply = "349";  // <channel> :End of exception list
     pub const VERSION: Reply         = "351";  // <version> <servername> :<comments>
-    pub const WHOREPLY: Reply        = "352";  // <channel> <user> <host> <server> <nick> "H"/"G" ["*"] [("@"/"+")] :<hopcount> <nick>
+    pub const WHOREPLY: Reply        = "352";  // <channel> <user> <host> <server> <nick> "H"/"G" ["*"] [("@"/"+")] :<hop count> <nick>
     pub const NAMREPLY: Reply        = "353";  // <=/*/@> <channel> :1*(@/ /+user)
     pub const ENDOFNAMES: Reply      = "366";  // <channel> :End of names list
     pub const BANLIST: Reply         = "367";  // <channel> <ban mask>
@@ -226,7 +226,7 @@ macro_rules! commands {
             /// # use ellidri::message::Command;
             /// let join = Command::parse("join");
             /// let join2 = Command::parse("JOIN");
-            /// let not_join = Command::parse("jjoin");
+            /// let not_join = Command::parse("not_join");
             ///
             /// assert_eq!(join, Some(Command::Join));
             /// assert_eq!(join2, Some(Command::Join));
@@ -348,7 +348,7 @@ pub fn assert_msg(msg: &Message<'_>, prefix: Option<&str>, command: Result<Comma
     for (i, (actual, expected)) in msg.params.iter().zip(params.iter()).enumerate() {
         if expected.is_empty() {
             // Some parameters may be of different form every time they are generated (e.g.
-            // NAMREPLY params, since the order comes from HashMap::iter), so we skip them.
+            // NAMREPLY params, since the order comes from `HashMap::iter`), so we skip them.
             continue;
         }
         assert_eq!(actual, expected, "parameter #{} of {:?}", i, msg);
@@ -648,7 +648,7 @@ impl<'a> MessageBuffer<'a> {
 }
 
 impl Drop for MessageBuffer<'_> {
-    /// Automagically append "\r\n" when the `MessageBuffer` is dropped.
+    /// Auto-magically append "\r\n" when the `MessageBuffer` is dropped.
     fn drop(&mut self) {
         // TODO move this into Buffer (with checks for "\n" at the end of the buffer or something)
         self.buf.push('\r');
