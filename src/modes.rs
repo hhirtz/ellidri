@@ -104,8 +104,8 @@ impl UserModeChange {
 /// let mut query = modes::user_query("+io-oXa");
 ///
 /// assert_eq!(query.next(), Some(Ok(UserModeChange::Invisible(true))));
-/// assert_eq!(query.next(), Some(Ok(Error::UnchangeableMode)));
-/// assert_eq!(query.next(), Some(Ok(UserModeChange::Deoperator)));
+/// assert_eq!(query.next(), Some(Err(Error::UnchangeableMode)));
+/// assert_eq!(query.next(), Some(Ok(UserModeChange::DeOperator)));
 /// assert_eq!(query.next(), Some(Err(Error::UnknownMode('X'))));
 /// assert_eq!(query.next(), Some(Err(Error::UnchangeableMode)));
 /// assert_eq!(query.next(), None);
