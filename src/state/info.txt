@@ -1,6 +1,25 @@
-KAWAIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII
-DESUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUU
+Hello there!
+This is ellidri, the software this IRC server runs on!
 
-ellidri, your kawaii server.
+ellidri is just an IRC server, that comes bundled with features
+anyone would expect from a messaging service!  ellidri also
+tries to please its senpais the most.  Yes!  ellidri's talking
+about you, senpai.  If you have any questions about ellidri, you
+can ask them on freenode's #ellidri.  Please note that they
+won't answer questions about this IRC network specifically!
 
-Brought to you by senpai.
+     >> To contact the operator of this IRC network, <<
+     >>           start by typing  /admin            <<
+
+For those who are interested, ellidri is free and open-source
+software.  This is really cool, right?  That means you can see
+how ellidri works, show it to others, and even add features!
+
+   To see how the development is doing, head over there!
+             https://git.sr.ht/~taiite/ellidri
+
+To report a bug, or ask for a feature (please explain properly!)
+   - send a mail to      ~taiite/ellidri@todo.sr.ht
+   - submit a ticket on  https://todo.sr.ht/%7Etaiite/ellidri
+
+See you!

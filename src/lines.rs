@@ -12,7 +12,7 @@ pub const ADMIN_ME: &str =
 "Administrative info";
 
 pub const ALREADY_REGISTERED: &str =
-"You can't reregister dummy!";
+"You can't re-register, dummy!";
 
 pub const NOW_AWAY: &str =
 "See you later!";
@@ -21,7 +21,7 @@ pub const UN_AWAY: &str =
 "Welcome back!";
 
 pub const BAD_CHAN_KEY: &str =
-"Woops, guess you've entered the wrong channel key :s";
+"Whoops, guess you've entered the wrong channel key :s";
 
 pub const BANNED_FROM_CHAN: &str =
 "They don't want you in here senpai...";
@@ -42,7 +42,7 @@ pub const END_OF_BAN_LIST: &str =
 "End of ban list";
 
 pub const END_OF_EXCEPT_LIST: &str =
-"End of excect list";
+"End of except list";
 
 pub const END_OF_INFO: &str =
 "End of info";
@@ -65,7 +65,7 @@ pub const END_OF_WHO: &str =
 pub const END_OF_WHOIS: &str =
 "End of WHOIS list";
 
-pub const ERRONEOUS_NICNAME: &str =
+pub const ERRONEOUS_NICKNAME: &str =
 "Meh, this is obviously a bad nickname...";
 
 pub const INPUT_TOO_LONG: &str =
@@ -127,8 +127,14 @@ pub const WHOIS_IDLE: &str =
 
 // Welcome messages
 
-pub const YOUR_HOST: &str =
-concat!("Your host is ellidri, running version ", crate::server_version!());
+// TODO Your host is self.domain
+pub fn your_host(mut r: MessageBuffer<'_>, host: &str, version: &str) {
+    let trailing = r.raw_trailing_param();
+    trailing.push_str("Your host is ");
+    trailing.push_str(host);
+    trailing.push_str(" running version ");
+    trailing.push_str(version);
+}
 
 pub const I_SUPPORT: &str =
 "are allowed by ellidri";

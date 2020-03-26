@@ -4,12 +4,9 @@
 
 use crate::channel::Channel;
 use crate::client::{Client, MessageQueueItem};
-use crate::lines;
+use crate::{lines, modes, util};
 use crate::message::{Buffer, Command, ReplyBuffer, rpl};
-use crate::modes;
-use crate::util::{new_message_id, time_precise, time_str};
 use ellidri_unicase::{u, UniCase};
-use std::collections::HashSet;
 use std::iter;
 use super::{CommandContext, HandlerResult as Result, find_channel, find_member, find_nick};
 
@@ -29,13 +26,25 @@ impl super::StateInner {
     // AWAY
 
     pub fn cmd_away(&mut self, ctx: CommandContext<'_>, reason: &str) -> Result {
+        let client = &mut self.clients[ctx.id];
         if reason.is_empty() {
-            self.clients[ctx.id].reset_away();
+            client.away_message = None;
             ctx.rb.reply(rpl::UNAWAY).trailing_param(lines::UN_AWAY);
         } else {
-            self.clients[ctx.id].set_away(&reason[..reason.len().min(self.awaylen)]);
+            let away_message = reason[..reason.len().min(self.awaylen)].to_owned();
+            client.away_message = Some(away_message);
             ctx.rb.reply(rpl::NOWAWAY).trailing_param(lines::NOW_AWAY);
         }
+        let mut away_notify = Buffer::new();
+        {
+            let msg = away_notify.message(client.full_name(), Command::Away);
+            if let Some(ref away_message) = client.away_message {
+                msg.trailing_param(away_message);
+            }
+        }
+        self.send_notification(ctx.id, away_notify, |id, client| {
+            id != ctx.id && client.capabilities().away_notify
+        });
         Ok(())
     }
 
@@ -97,7 +106,7 @@ impl super::StateInner {
         self.clients[invited].send(invite.clone());
         for member in channel.members.keys().filter(|a| **a != ctx.id) {
             let c = &self.clients[*member];
-            if c.capabilities.invite_notify && channel.can_invite(*member) {
+            if c.capabilities().invite_notify && channel.can_invite(*member) {
                 c.send(invite.clone());
             }
         }
@@ -166,10 +175,23 @@ impl super::StateInner {
         let channel = &self.channels[u(target)];
         for member in channel.members.keys() {
             let member = &self.clients[*member];
-            if member.capabilities.extended_join {
+            if member.capabilities().extended_join {
                 member.send(extended_join.clone());
             } else {
                 member.send(join.clone());
+            }
+        }
+
+        if let Some(ref away_message) = client.away_message {
+            let mut away_notify = Buffer::new();
+            away_notify.message(client.full_name(), Command::Away).trailing_param(away_message);
+            let away_notify = MessageQueueItem::from(away_notify);
+
+            for member in channel.members.keys() {
+                let member = &self.clients[*member];
+                if member.capabilities().away_notify {
+                    member.send(away_notify.clone());
+                }
             }
         }
     }
@@ -341,6 +363,7 @@ impl super::StateInner {
 
         let mut applied_modes = String::new();
         let mut applied_modeparams = Vec::new();
+        let mut last_applied_value = true;
         for maybe_change in modes::channel_query(modes, modeparams) { match maybe_change {
             Ok(modes::ChannelModeChange::GetBans) => {
                 reply_list(ctx.rb, rpl::BANLIST, rpl::ENDOFBANLIST, lines::END_OF_BAN_LIST,
@@ -356,11 +379,13 @@ impl super::StateInner {
             }
             Ok(change) => match channel.apply_mode_change(change, |a| clients[*a].nick()) {
                 Ok(true) => {
-                    log::debug!("  - Applied {:?}", change);
-                    if let Some(symbol) = change.symbol() {
-                        applied_modes.push(if change.value() {'+'} else {'-'});
-                        applied_modes.push(symbol);
+                    log::debug!("    - Applied {:?}", change);
+                    let change_value = change.value();
+                    if last_applied_value != change_value || applied_modes.is_empty() {
+                        applied_modes.push(if change_value {'+'} else {'-'});
+                        last_applied_value = change_value;
                     }
+                    applied_modes.push(change.symbol());
                     if let Some(param) = change.param() {
                         applied_modeparams.push(param.to_owned());
                     }
@@ -491,7 +516,7 @@ impl super::StateInner {
             log::debug!("{}:     Bad nickname", ctx.id);
             ctx.rb.reply(rpl::ERR_ERRONEUSNICKNAME)
                 .param(nick)
-                .trailing_param(lines::ERRONEOUS_NICNAME);
+                .trailing_param(lines::ERRONEOUS_NICKNAME);
             return Err(());
         }
         if self.nicks.contains_key(u(nick)) {
@@ -512,89 +537,17 @@ impl super::StateInner {
         }
 
         let mut nick_response = Buffer::new();
-
         nick_response.message(client.full_name(), Command::Nick).param(nick);
-        let msg = MessageQueueItem::from(nick_response);
-
         client.set_nick(nick);
-
-        let mut noticed = self.channels.values()
-            .filter(|channel| channel.members.contains_key(&ctx.id))
-            .flat_map(|channel| channel.members.keys())
-            .collect::<HashSet<_>>();
-        noticed.insert(&ctx.id);
-        for addr in noticed {
-            self.send(*addr, msg.clone());
-        }
+        self.send_notification(ctx.id, nick_response, |_, _| true);
 
         Ok(())
     }
 
     // NOTICE
 
-    fn cmd_privnotice(&mut self, ctx: CommandContext<'_>, cmd: Command,
-                      target: &str, content: &str) -> Result
-    {
-        if content.is_empty() {
-            ctx.rb.reply(rpl::ERR_NOTEXTTOSEND).trailing_param(lines::NEED_MORE_PARAMS);
-            return Err(());
-        }
-        if super::is_valid_channel_name(target, self.channellen) {
-            let channel = find_channel(ctx.id, ctx.rb, &self.channels, target)?;
-            if !channel.can_talk(ctx.id) {
-                log::debug!("{}:     can't send to channel", ctx.id);
-                ctx.rb.reply(rpl::ERR_CANNOTSENDTOCHAN)
-                    .param(target)
-                    .trailing_param(lines::CANNOT_SEND_TO_CHAN);
-                return Err(());
-            }
-
-            let mut response = Buffer::new();
-
-            let client = &self.clients[ctx.id];
-            let mut client_tags_len = 0;
-            response.tagged_message(ctx.client_tags)
-                .tag("time", Some(&time_precise()))
-                .tag("msgid", Some(&new_message_id()))
-                .save_tags_len(&mut client_tags_len)
-                .prefixed_command(client.full_name(), cmd)
-                .param(target)
-                .trailing_param(content);
-            let mut msg = MessageQueueItem::from(response);
-            msg.start = client_tags_len;
-            channel.members.keys()
-                .filter(|a| client.capabilities.echo_message || **a != ctx.id)
-                .for_each(|member| self.send(*member, msg.clone()));
-        } else {
-            let (_, target_client) = find_nick(ctx.id, ctx.rb, &self.clients, &self.nicks, target)?;
-            let client = &self.clients[ctx.id];
-            let mut client_tags_len = 0;
-            let mut response = Buffer::new();
-            response.tagged_message(ctx.client_tags)
-                .tag("time", Some(&time_precise()))
-                .tag("msgid", Some(&new_message_id()))
-                .save_tags_len(&mut client_tags_len)
-                .prefixed_command(client.full_name(), cmd)
-                .param(target)
-                .trailing_param(content);
-            let mut msg = MessageQueueItem::from(response);
-            msg.start = client_tags_len;
-            if client.capabilities.echo_message {
-                client.send(msg.clone());
-            }
-            target_client.send(msg);
-
-            if let Some(away_msg) = target_client.away_message() {
-                ctx.rb.reply(rpl::AWAY).param(target).trailing_param(away_msg);
-            }
-        }
-        self.clients.get_mut(ctx.id).unwrap().update_idle_time();
-
-        Ok(())
-    }
-
     pub fn cmd_notice(&mut self, ctx: CommandContext<'_>, target: &str, content: &str) -> Result {
-        self.cmd_privnotice(ctx, Command::Notice, target, content)
+        self.send_query_or_channel_msg(ctx, Command::Notice, target, Some(content))
     }
 
     // OPER
@@ -677,7 +630,7 @@ impl super::StateInner {
     // PRIVMSG
 
     pub fn cmd_privmsg(&mut self, ctx: CommandContext<'_>, target: &str, content: &str) -> Result {
-        self.cmd_privnotice(ctx, Command::PrivMsg, target, content)
+        self.send_query_or_channel_msg(ctx, Command::PrivMsg, target, Some(content))
     }
 
     // QUIT
@@ -694,7 +647,7 @@ impl super::StateInner {
     // TIME
 
     pub fn cmd_time(&self, ctx: CommandContext<'_>) -> Result {
-        ctx.rb.reply(rpl::TIME).param(&self.domain).trailing_param(&time_str());
+        ctx.rb.reply(rpl::TIME).param(&self.domain).trailing_param(&util::time_str());
         Ok(())
     }
 
@@ -799,7 +752,7 @@ impl super::StateInner {
                         .param(c.nick());
                     let param = msg.raw_param();
                     param.push(if c.away_message().is_some() { 'G' } else { 'H' });
-                    if client.capabilities.multi_prefix {
+                    if client.capabilities().multi_prefix {
                         modes.all_symbols(param);
                     } else if let Some(symbol) = modes.symbol() {
                         param.push(symbol);
@@ -832,7 +785,7 @@ impl super::StateInner {
                         .param(c.nick());
                     let param = msg.raw_param();
                     param.push(if c.away_message().is_some() { 'G' } else { 'H' });
-                    if client.capabilities.multi_prefix {
+                    if client.capabilities().multi_prefix {
                         member.all_symbols(param);
                     } else if let Some(symbol) = member.symbol() {
                         param.push(symbol);

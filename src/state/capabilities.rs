@@ -23,7 +23,7 @@ impl super::StateInner {
         trailing.push_str(cap::LS_COMMON);
         if self.auth_provider.is_available() {
             trailing.push_str(" sasl");
-            if client.capabilities.v302 {
+            if client.capabilities().v302 {
                 trailing.push('=');
                 self.auth_provider.write_mechanisms(&mut trailing);
             }

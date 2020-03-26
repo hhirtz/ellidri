@@ -32,7 +32,7 @@ impl super::StateInner {
         noticed.insert(&ctx.id);
         for addr in noticed {
             let c = &self.clients[*addr];
-            if c.capabilities.setname {
+            if c.capabilities().setname {
                 c.send(msg.clone());
             }
         }

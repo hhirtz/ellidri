@@ -36,18 +36,19 @@ impl Iterator for SimpleQuery<'_> {
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {
-            if self.modes.is_empty() {
+            let (&c, rest) = if let Some(it) = self.modes.split_first() {
+                it
+            } else {
                 return None;
-            }
-            match self.modes[0] {
+            };
+            self.modes = rest;
+            match c {
                 b'+' => { self.value = true; },
                 b'-' => { self.value = false; },
                 c => {
-                    self.modes = &self.modes[1..];
                     return Some((self.value, c));
                 },
             }
-            self.modes = &self.modes[1..];
         }
     }
 }
@@ -61,8 +62,8 @@ pub enum Error {
     /// A mode is missing its required parameter.
     MissingModeParam,
 
-    /// This mode is supported by ellidri, but cannot be setted with the MODE command.
-    UnsettableMode
+    /// This mode is supported by ellidri, but cannot be changed with the MODE command.
+    UnchangeableMode
 }
 
 /// Alias to std's Result using this module's Error.
@@ -103,10 +104,10 @@ impl UserModeChange {
 /// let mut query = modes::user_query("+io-oXa");
 ///
 /// assert_eq!(query.next(), Some(Ok(UserModeChange::Invisible(true))));
-/// assert_eq!(query.next(), Some(Ok(Error::UnsettableMode)));
+/// assert_eq!(query.next(), Some(Ok(Error::UnchangeableMode)));
 /// assert_eq!(query.next(), Some(Ok(UserModeChange::Deoperator)));
 /// assert_eq!(query.next(), Some(Err(Error::UnknownMode('X'))));
-/// assert_eq!(query.next(), Some(Err(Error::UnsettableMode)));
+/// assert_eq!(query.next(), Some(Err(Error::UnchangeableMode)));
 /// assert_eq!(query.next(), None);
 /// ```
 pub fn user_query(modes: &str) -> impl Iterator<Item=Result<UserModeChange>> + '_ {
@@ -114,7 +115,7 @@ pub fn user_query(modes: &str) -> impl Iterator<Item=Result<UserModeChange>> + '
         match mode {
             b'i' => Ok(UserModeChange::Invisible(value)),
             b'o' if !value => Ok(UserModeChange::DeOperator),
-            other if USER_MODES.contains(other as char) => Err(Error::UnsettableMode),
+            other if USER_MODES.contains(other as char) => Err(Error::UnchangeableMode),
             other => Err(Error::UnknownMode(other as char)),
         }
     })
@@ -164,23 +165,22 @@ impl ChannelModeChange<'_> {
     }
 
     /// The letter of this mode change.
-    pub fn symbol(&self) -> Option<char> {
+    pub fn symbol(&self) -> char {
         use ChannelModeChange::*;
         match self {
-            InviteOnly(_) => Some('i'),
-            Moderated(_) => Some('m'),
-            NoPrivMsgFromOutside(_) => Some('n'),
-            Secret(_) => Some('s'),
-            TopicRestricted(_) => Some('t'),
-            Key(_, _) => Some('k'),
-            UserLimit(_) => Some('l'),
-            ChangeBan(_, _) => Some('b'),
-            ChangeException(_, _) => Some('e'),
-            ChangeInvitation(_, _) => Some('I'),
-            ChangeOperator(_, _) => Some('o'),
-            ChangeHalfop(_, _) => Some('h'),
-            ChangeVoice(_, _) => Some('v'),
-            _ => None,
+            InviteOnly(_) => 'i',
+            Moderated(_) => 'm',
+            NoPrivMsgFromOutside(_) => 'n',
+            Secret(_) => 's',
+            TopicRestricted(_) => 't',
+            Key(_, _) => 'k',
+            UserLimit(_) => 'l',
+            ChangeBan(_, _) | GetBans => 'b',
+            ChangeException(_, _) | GetExceptions => 'e',
+            ChangeInvitation(_, _) | GetInvitations => 'I',
+            ChangeOperator(_, _) => 'o',
+            ChangeHalfop(_, _) => 'h',
+            ChangeVoice(_, _) => 'v',
         }
     }
 

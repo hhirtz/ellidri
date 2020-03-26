@@ -147,6 +147,7 @@ impl ConnectionState {
 pub mod cap {
     use std::collections::HashSet;
 
+    pub const AWAY_NOTIFY: &str   = "away-notify";
     pub const CAP_NOTIFY: &str    = "cap-notify";
     pub const ECHO_MESSAGE: &str  = "echo-message";
     pub const EXTENDED_JOIN: &str = "extended-join";
@@ -161,7 +162,8 @@ pub mod cap {
     // TODO replace with const fn
     lazy_static::lazy_static! {
         pub static ref ALL: HashSet<&'static str> =
-            [ CAP_NOTIFY
+            [ AWAY_NOTIFY
+            , CAP_NOTIFY
             , ECHO_MESSAGE
             , EXTENDED_JOIN
             , INVITE_NOTIFY
@@ -175,8 +177,8 @@ pub mod cap {
     }
 
     pub const LS_COMMON: &str =
-"cap-notify echo-message extended-join invite-notify message-tags multi-prefix server-time setname \
-userhost-in-names";
+"away-notify cap-notify echo-message extended-join invite-notify message-tags multi-prefix \
+server-time setname userhost-in-names";
 
     pub fn are_supported(capabilities: &str) -> bool {
         query(capabilities).all(|(cap,  _)| ALL.contains(cap))
@@ -200,6 +202,7 @@ pub const AUTHENTICATE_WHOLE_LEN: usize = 1024;
 #[derive(Clone, Default)]
 pub struct Capabilities {
     pub v302: bool,
+    pub away_notify: bool,
     pub cap_notify: bool,
     pub echo_message: bool,
     pub extended_join: bool,
@@ -228,7 +231,7 @@ pub struct Client {
     /// currently unbounded, meaning sending messages to this channel does not block.
     queue: MessageQueue,
 
-    pub capabilities: Capabilities,
+    capabilities: Capabilities,
     state: ConnectionState,
     auth_buffer: String,
     auth_buffer_complete: bool,
@@ -293,10 +296,15 @@ impl Client {
         self.state
     }
 
+    pub fn capabilities(&self) -> &Capabilities {
+        &self.capabilities
+    }
+
     // TODO factorize this with a macro?
     pub fn update_capabilities(&mut self, capabilities: &str) {
         for (capability, enable) in cap::query(capabilities) {
             match capability {
+                cap::AWAY_NOTIFY => self.capabilities.away_notify = enable,
                 cap::CAP_NOTIFY => self.capabilities.cap_notify = enable,
                 cap::ECHO_MESSAGE => self.capabilities.echo_message = enable,
                 cap::EXTENDED_JOIN => self.capabilities.extended_join = enable,
@@ -324,6 +332,10 @@ impl Client {
         let mut msg = response.reply(Command::Cap).param("LIST");
         let trailing = msg.raw_trailing_param();
         let len = trailing.len();
+        if self.capabilities.away_notify {
+            trailing.push_str(cap::AWAY_NOTIFY);
+            trailing.push(' ');
+        }
         if self.capabilities.cap_notify {
             trailing.push_str(cap::CAP_NOTIFY);
             trailing.push(' ');
@@ -530,14 +542,6 @@ impl Client {
 
     pub fn away_message(&self) -> Option<&str> {
         self.away_message.as_ref().map(|s| s.as_ref())
-    }
-
-    pub fn set_away(&mut self, reason: &str) {
-        self.away_message = Some(reason.to_owned());
-    }
-
-    pub fn reset_away(&mut self) {
-        self.away_message = None;
     }
 
     pub fn write_modes(&self, mut out: MessageBuffer<'_>) {

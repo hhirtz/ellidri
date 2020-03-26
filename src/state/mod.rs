@@ -9,16 +9,14 @@
 
 #![allow(clippy::needless_pass_by_value)]
 
-use crate::{auth, config, lines};
+use crate::{auth, config, lines, modes, util};
 use crate::channel::Channel;
 use crate::client::{Client, MessageQueue, MessageQueueItem};
 use crate::message::{Buffer, Command, Message, ReplyBuffer, rpl};
-use crate::modes;
-use crate::util::time_str;
 use ellidri_unicase::{u, UniCase};
 use slab::Slab;
 use std::{cmp, fs, io, net};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt::Write as _;
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -234,7 +232,7 @@ impl StateInner {
             clients: Slab::new(),
             nicks: HashMap::new(),
             channels: HashMap::new(),
-            created_at: time_str(),
+            created_at: util::time_str(),
             motd,
             password: config.password,
             default_chan_mode: config.default_chan_mode,
@@ -508,6 +506,88 @@ impl StateInner {
         }
     }
 
+    fn build_message(&self, from: &Client, cmd: Command, target: &str, tags: &str,
+                     content: Option<&str>) -> MessageQueueItem
+    {
+        let mut buf = Buffer::new();
+        let mut tags_len = 0;
+        {
+            let msg_buf = buf.tagged_message(tags)
+                .tag("msgid", Some(&util::new_message_id()))
+                .tag("time", Some(&util::time_precise()))
+                .save_tags_len(&mut tags_len)
+                .prefixed_command(from.full_name(), cmd)
+                .param(target);
+            if let Some(content) = content {
+                msg_buf.trailing_param(content);
+            }
+        }
+        let mut msg = MessageQueueItem::from(buf);
+        msg.start = tags_len;
+        msg
+    }
+
+    fn send_query_or_channel_msg(&mut self, ctx: CommandContext<'_>, cmd: Command, target: &str,
+                                 content: Option<&str>) -> HandlerResult
+    {
+        if content == Some("") {
+            ctx.rb.reply(rpl::ERR_NOTEXTTOSEND).trailing_param(lines::NEED_MORE_PARAMS);
+            return Err(());
+        }
+
+        let client = &self.clients[ctx.id];
+
+        if is_valid_channel_name(target, self.channellen) {
+            let channel = find_channel(ctx.id, ctx.rb, &self.channels, target)?;
+            if !channel.can_talk(ctx.id) {
+                log::debug!("{}:     can't send to channel", ctx.id);
+                ctx.rb.reply(rpl::ERR_CANNOTSENDTOCHAN)
+                    .param(target)
+                    .trailing_param(lines::CANNOT_SEND_TO_CHAN);
+                return Err(());
+            }
+
+            let msg = self.build_message(client, cmd, target, ctx.client_tags, content);
+
+            if client.capabilities().echo_message {
+                client.send(msg.clone());
+            }
+            self.channels[u(target)].members.keys()
+                .filter(|&&id| id != ctx.id)
+                .for_each(|&id| self.send(id, msg.clone()));
+        } else {
+            let (_, target_client) = find_nick(ctx.id, ctx.rb, &self.clients, &self.nicks, target)?;
+            let msg = self.build_message(client, cmd, target, ctx.client_tags, content);
+
+            if client.capabilities().echo_message {
+                client.send(msg.clone());
+            }
+            target_client.send(msg);
+
+            if let Some(ref away_msg) = target_client.away_message {
+                ctx.rb.reply(rpl::AWAY).param(target).trailing_param(away_msg);
+            }
+        }
+        self.clients.get_mut(ctx.id).unwrap().update_idle_time();
+
+        Ok(())
+    }
+
+    fn send_notification<T, F>(&self, from: usize, msg: T, mut filter: F)
+        where T: Into<MessageQueueItem>,
+              F: FnMut(usize, &Client) -> bool,
+    {
+        let msg = msg.into();
+        let mut noticed = self.channels.values()
+            .filter(|channel| channel.members.contains_key(&from))
+            .flat_map(|channel| channel.members.keys().cloned())
+            .collect::<HashSet<_>>();
+        noticed.insert(from);
+        for id in noticed.into_iter().filter(|&id| filter(id, &self.clients[id])) {
+            self.send(id, msg.clone());
+        }
+    }
+
     fn write_i_support(&self, rb: &mut ReplyBuffer) {
         rb.reply(rpl::ISUPPORT)
             .param("CASEMAPPING=ascii")
@@ -586,7 +666,7 @@ impl StateInner {
             return;
         }
         if !channel.members.is_empty() {
-            let client_caps = self.clients[id].capabilities.clone();
+            let client_caps = self.clients[id].capabilities().clone();
 
             let mut message = rb.reply(rpl::NAMREPLY)
                 .param(channel.symbol())
@@ -623,7 +703,7 @@ impl StateInner {
     /// Sends welcome messages. Called when a client has completed its registration.
     fn write_welcome(&self, rb: &mut ReplyBuffer, id: usize) {
         lines::welcome(rb.reply(rpl::WELCOME), self.clients[id].full_name());
-        rb.reply(rpl::YOURHOST).trailing_param(lines::YOUR_HOST);
+        lines::your_host(rb.reply(rpl::YOURHOST), &self.domain, crate::server_version!());
         lines::created(rb.reply(rpl::CREATED), &self.created_at);
         rb.reply(rpl::MYINFO)
             .param(&self.domain)
