@@ -530,7 +530,7 @@ impl<'a> Message<'a> {
 
 /// Helper to build an IRC message.
 ///
-/// Created by `Buffer::message` and `Buffer::message`.
+/// Created by `Buffer::message` and `ReplyBuffer::message`.
 pub struct MessageBuffer<'a> {
     buf: &'a mut String,
 }
