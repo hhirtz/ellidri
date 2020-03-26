@@ -22,8 +22,8 @@ Join the IRC channel: [#ellidri on freenode][irc]!
 - SASL support with SQLite and PostgreSQL
 - kawaii messages
 
-[Supported extensions][ext]: `away-notify`, `cap-notify`, `echo-message`,
-`extended-join`, `invite-notify`, `message-ids`, `message-tags`,
+[Supported extensions][ext]: `account-notify`, `away-notify`, `cap-notify`,
+`echo-message`, `extended-join`, `invite-notify`, `message-ids`, `message-tags`,
 `multi-prefix`, `sasl`, `server-time`, `setname`, `userhost-in-names`
 
 ellidri doesn't support any server-to-server (S2S) protocol.  As such, it is
