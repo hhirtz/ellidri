@@ -160,12 +160,22 @@ fn parse_command(buf: &str) -> (Result<Command, &str>, &str) {
     (Command::parse(command_string).ok_or(command_string), rest)
 }
 
-// TODO tag_value_unescape
+pub fn tag_escape(c: char) -> char {
+    match c {
+        ':' => ';',
+        's' => ' ',
+        '\\' => '\\',
+        'r' => '\r',
+        'n' => '\n',
+        c => c,
+    }
+}
 
 /// A message tag.
 ///
 /// Message tagging is an addition of an IRCv3 specification.  Refer to the following page for
 /// more details on message tags: <https://ircv3.net/specs/extensions/message-tags>.
+#[derive(Debug, PartialEq)]
 pub struct Tag<'a> {
     /// The key of the tag.
     pub key: &'a str,
@@ -196,10 +206,36 @@ impl<'a> Tag<'a> {
             is_client,
         }
     }
+
+    pub fn unescape_value(&self) -> String {
+        let mut res = String::new();
+        self.unescape_value_into(&mut res);
+        res
+    }
+
+    pub fn unescape_value_into(&self, buf: &mut String) {
+        let value = match self.value {
+            Some(value) => value,
+            None => return,
+        };
+
+        buf.reserve(value.len());
+        let mut escape = false;
+        for c in value.chars() {
+            if c == '\\' && !escape {
+                escape = true;
+            } else {
+                buf.push(if escape {tag_escape(c)} else {c});
+                escape = false;
+            }
+        }
+    }
 }
 
 pub fn tags(s: &str) -> impl Iterator<Item=Tag<'_>> {
-    s.split(';').map(|item| Tag::parse(item))
+    s.split(';')
+        .filter(|item| !item.is_empty() && !item.starts_with('=') && !item.starts_with("+="))
+        .map(|item| Tag::parse(item))
 }
 
 macro_rules! commands {
@@ -813,7 +849,7 @@ impl Buffer {
     /// TODO example
     pub fn tagged_message(&mut self, client_tags: &str) -> TagBuffer<'_> {
         client_tags.split(';')
-            .filter(|s| s.starts_with('+'))
+            .filter(|s| s.starts_with('+') && !s.starts_with("+="))
             .fold(TagBuffer::new(&mut self.buf), |buf, tag| buf.raw_tag(tag))
     }
 
@@ -956,3 +992,60 @@ impl ReplyBuffer {
         self.buf.build()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Thank you oragono for the test cases! yum
+
+    #[test]
+    fn test_tag_parse() {
+        let mut ts = tags("");
+        assert_eq!(ts.next(), None);
+
+        let mut ts = tags("time=12732;re");
+        assert_eq!(ts.next(), Some(Tag { key: "time", value: Some("12732"), is_client: false }));
+        assert_eq!(ts.next(), Some(Tag { key: "re", value: None, is_client: false }));
+        assert_eq!(ts.next(), None);
+
+        let mut ts = tags("+time=12732;re=;+asdf=5678");
+        assert_eq!(ts.next(), Some(Tag { key: "time", value: Some("12732"), is_client: true }));
+        assert_eq!(ts.next(), Some(Tag { key: "re", value: None, is_client: false }));
+        assert_eq!(ts.next(), Some(Tag { key: "asdf", value: Some("5678"), is_client: true }));
+        assert_eq!(ts.next(), None);
+
+        let mut ts = tags("=these;time=12732;+=shouldbe;re=;asdf=5678;=ignored");
+        assert_eq!(ts.next(), Some(Tag { key: "time", value: Some("12732"), is_client: false }));
+        assert_eq!(ts.next(), Some(Tag { key: "re", value: None, is_client: false }));
+        assert_eq!(ts.next(), Some(Tag { key: "asdf", value: Some("5678"), is_client: false }));
+        assert_eq!(ts.next(), None);
+    }
+
+    #[test]
+    fn test_unescape() {
+        let tests = &[
+            ["te\\n\\kst", "te\nkst"],
+            ["te\\n\\kst\\", "te\nkst"],
+            ["te\\\\nst", "te\\nst"],
+            ["te😃st", "te😃st"],
+            ["te😃\\st", "te😃 t"],
+            ["0\\n1\\n2\\n3\\n4\\n5\\n6\\n\\", "0\n1\n2\n3\n4\n5\n6\n"],
+            ["test\\", "test"],
+            ["te\\:st\\", "te;st"],
+            ["te\\:\\st\\", "te; t"],
+            ["\\\\te\\:\\st", "\\te; t"],
+            ["test\\", "test"],
+            ["\\", ""],
+            ["", ""],
+        ];
+
+        let mut buf = String::new();
+        for [test, expected] in tests {
+            let tag = Tag { key: "", value: Some(test), is_client: false };
+            buf.clear();
+            tag.unescape_value_into(&mut buf);
+            assert_eq!(&buf, expected);
+        }
+    }
+}  // mod tests
