@@ -193,11 +193,7 @@ impl<'a> Tag<'a> {
         let key = split.next().unwrap();
         let value = match split.next() {
             Some("") | None => None,
-            Some(other) => if other.ends_with('\\') {
-                Some(&other[..other.len() - 1])
-            } else {
-                Some(other)
-            }
+            Some(value) => Some(value),
         };
         let is_client = key.starts_with('+');
         Self {
@@ -218,7 +214,6 @@ impl<'a> Tag<'a> {
             Some(value) => value,
             None => return,
         };
-
         buf.reserve(value.len());
         let mut escape = false;
         for c in value.chars() {
