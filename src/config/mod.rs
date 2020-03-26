@@ -124,9 +124,9 @@ impl State {
             motd_file: None,
             password: None,
             opers: vec![],
-            org_name: "Ellidri server showcase".to_owned(),
-            org_location: "Somewhere on Earth".to_owned(),
-            org_mail: "contact@ellidri.localdomain".to_owned(),
+            org_name: "--unspecified--".to_owned(),
+            org_location: "--unspecified--".to_owned(),
+            org_mail: "--unspecified--".to_owned(),
             awaylen: 300,
             channellen: 50,
             kicklen: 300,
@@ -159,7 +159,7 @@ impl Config {
     pub fn from_file<P>(path: P) -> Result<Self>
         where P: AsRef<path::Path>
     {
-        let mut res = Self::default();
+        let mut res = Self::sample();
         let mut default_chan_mode = ModeString(String::new());
         let mut opers = Vec::new();
         let parser = Parser::read(path)?;
@@ -169,9 +169,9 @@ impl Config {
             .setting("oper",    |values| opers = values)?
             .unique_setting("workers",           false, |value| res.workers = value)?
             .unique_setting("domain",            true,  |value| res.state.domain = value)?
-            .unique_setting("org_name",          true,  |value| res.state.org_name = value)?
-            .unique_setting("org_location",      true,  |value| res.state.org_location = value)?
-            .unique_setting("org_mail",          true,  |value| res.state.org_mail = value)?
+            .unique_setting("org_name",          false, |value| res.state.org_name = value)?
+            .unique_setting("org_location",      false, |value| res.state.org_location = value)?
+            .unique_setting("org_mail",          false, |value| res.state.org_mail = value)?
             .unique_setting("default_chan_mode", false, |value| default_chan_mode = value)?
             .unique_setting("motd_file",         false, |value| res.state.motd_file = Some(value))?
             .unique_setting("password",          false, |value| res.state.password = Some(value))?
@@ -196,24 +196,6 @@ impl Config {
             res.state.opers.push((name, pass));
         }
 
-        res.validate()?;
         Ok(res)
-    }
-
-    fn validate(&mut self) -> Result<()> {
-        let def = Self::sample();
-
-        if self.state.default_chan_mode.is_empty() {
-            self.state.default_chan_mode = def.state.default_chan_mode;
-        }
-        if self.state.awaylen == 0 { self.state.awaylen = def.state.awaylen; }
-        if self.state.channellen == 0 { self.state.channellen = def.state.channellen; }
-        if self.state.kicklen == 0 { self.state.kicklen = def.state.kicklen; }
-        if self.state.namelen == 0 { self.state.namelen = def.state.namelen; }
-        if self.state.nicklen == 0 { self.state.nicklen = def.state.nicklen; }
-        if self.state.topiclen == 0 { self.state.topiclen = def.state.topiclen; }
-        if self.state.userlen == 0 { self.state.userlen = def.state.userlen; }
-        if self.state.login_timeout == 0 { self.state.login_timeout = def.state.login_timeout; }
-        Ok(())
     }
 }

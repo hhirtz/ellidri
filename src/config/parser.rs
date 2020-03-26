@@ -68,15 +68,20 @@ impl TypeName for SaslBackend {
 
 impl TypeName for db::Driver {
     fn type_name() -> String {
-        if cfg!(all(feature = "sqlite", feature = "postgres")) {
-            "\"sqlite\" or \"postgres\"".to_owned()
-        } else if cfg!(feature = "sqlite") {
-            "\"sqlite\"".to_owned()
-        } else if cfg!(feature = "postgres") {
-            "\"postgres\"".to_owned()
-        } else {
-            "omitted, ellidri hasn't been built with database support".to_owned()
+        let mut res = String::with_capacity(60);
+        if cfg!(feature = "sqlite") {
+            res.push_str("\"sqlite\" or ");
         }
+        if cfg!(feature = "sqlite") {
+            res.push_str("\"postgres\" or ");
+        }
+        if res.is_empty() {
+            res.push_str("omitted, ellidri hasn't been built with database support");
+        } else {
+            // NOPANIC res has " or " at the end
+            res.truncate(res.len() - 4);
+        }
+        res
     }
 }
 
