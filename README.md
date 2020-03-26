@@ -17,34 +17,25 @@ Join the IRC channel: [#ellidri on freenode][irc]!
 
 - RFC [1459][r1] and [2812][r2] compliance (almost! see [#1][i1])
 - IRCv3 support
-- TLS connections
-- Multiple listening ports
+- Secure and production-ready setup with TLS out-of-the-box
+- Configurable via a file
 - SASL support with SQLite and PostgreSQL
 - kawaii messages
 
-Supported extensions:
-
-- [cap-notify](https://ircv3.net/specs/core/capability-negotiation#cap-notify)
-- [echo-message](https://ircv3.net/specs/extensions/echo-message-3.2)
-- [extended-join](https://ircv3.net/specs/extensions/extended-join-3.1)
-- [invite-notify](https://ircv3.net/specs/extensions/invite-notify-3.2)
-- [message-ids](https://ircv3.net/specs/extensions/message-ids)
-- [message-tags](https://ircv3.net/specs/extensions/message-tags)
-- [multi-prefix](https://ircv3.net/specs/extensions/multi-prefix-3.1)
-- [sasl](https://ircv3.net/specs/extensions/sasl-3.1)
-- [server-time](https://ircv3.net/specs/extensions/server-time-3.2.html)
-- [setname](https://ircv3.net/specs/extensions/setname)
-- [userhost-in-names](https://ircv3.net/specs/extensions/userhost-in-names-3.2)
+[Supported extensions][ext]: `away-notify`, `cap-notify`, `echo-message`,
+`extended-join`, `invite-notify`, `message-ids`, `message-tags`,
+`multi-prefix`, `sasl`, `server-time`, `setname`, `userhost-in-names`
 
 ellidri doesn't support any server-to-server (S2S) protocol.  As such, it is
 impossible to make several instances of ellidri manage the same IRC network.
 
-ellidri will just support the UTF-8 encoding for messages, and for now it only
-supports the `ascii` casemapping.
+ellidri requires UTF-8 from clients, and for now it only supports `ascii` as
+casemapping.
 
 [r1]: https://tools.ietf.org/html/rfc1459
 [r2]: https://tools.ietf.org/html/rfc2812
 [i1]: https://todo.sr.ht/~taiite/ellidri/1
+[ext]: https://ircv3.net/irc/
 
 
 ## Build and install
@@ -58,37 +49,55 @@ Prerequisites:
 
 Install ellidri with `cargo install ellidri`, or with the [AUR package][aur].
 
-Build it with `cargo build`.  Append the `--release` flag to build with
-optimizations enabled.
+During development, build it with `cargo build`, and run it with `cargo run`.
+
+For packaging, build it with `cargo build --release --locked`.  The `release`
+flag will enable optimizations and the `locked` flag will require a valid lock
+file (`Cargo.lock`), to make sure that the same dependencies are used for
+development and for release.  The executable is generated at
+`target/release/ellidri`.
 
 [aur]: https://aur.archlinux.org/packages/ellidri/
 
 
 ## Usage
 
-ellidri needs a configuration file to run.  Its format is the following:
+If you already have a domain name, the simplest way to start ellidri is by the
+command below.  ellidri will get certificates from Let's Encrypt, and listen on
+ports 6667 (plain-text) and 6697 (TLS).  It will also enable STS so that modern
+clients are redirected to the TLS-enabled port.  If you specify the `--database`
+argument, ellidri will also connect to the given database and enable SASL.
 
 ```
-file   =  *( line "\n" )
-line   =  sp key sp value sp
-key    =  word
-value  =  *( word / sp )
-sp     =  any sequence of whitespace
+ellidri --domain your.domain.tld [--database sqlite:///var/lib/ellidri/example.db]
+```
+
+If you want more configuration options, you can instead write a configuration
+file, like the following:
+
+```conf
+# Configuration file
+domain  your.domain.tld
+
+# Manually bind to an address and port.  ellidri will not listen on default
+# ports like above nor generate certificates if you specify `bind_to`.
+bind_to 127.0.0.1:6667
+
+# TLS-enabled port, with a PKCS12 archive.
+bind_to 0.0.0.0:7000 /var/lib/ellidri/identity.p12
+
+# Default is /etc/motd
+motd_file  custom_motd.txt
+```
+
+And start ellidri with the `--conf` argument like so:
+
+```
+ellidri --conf /path/to/the.configuration.file
 ```
 
 An example configuration file with all settings and their defaults can be found
 in `doc/ellidri.conf`.
-
-To start ellidri, pass the path of the configuration file as its first argument:
-
-```shell
-cargo run -- doc/ellidri.conf
-# or
-./target/debug/ellidri doc/ellidri.conf
-# or
-./target/release/ellidri doc/ellidri.conf
-```
-
 
 ## Contributing
 
@@ -96,8 +105,11 @@ Patches are welcome!  Here are some links to get started:
 
 - Documentation: <https://docs.rs/ellidri>
 - Git repository: <https://git.sr.ht/~taiite/ellidri>
-- Send patches to the mailing list: <https://lists.sr.ht/~taiite/public-inbox>
+- Submit PRs on [Github][gh] or send patches to the mailing list:
+  <https://lists.sr.ht/~taiite/public-inbox>
 - Report bugs on the issue tracker: <https://todo.sr.ht/~taiite/ellidri>
+
+[gh]: https://github.com/hhirtz/ellidri
 
 
 ## Acknowledgments
