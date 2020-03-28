@@ -160,6 +160,15 @@ fn parse_command(buf: &str) -> (Result<Command, &str>, &str) {
     (Command::parse(command_string).ok_or(command_string), rest)
 }
 
+/// Match a tag escape with its meaningful character.
+///
+/// # Example
+///
+/// ```rust
+/// # use ellidri::message::tag_escape;
+/// assert_eq!(tag_escape(':'), ';');  // "\:" is ";"
+/// assert_eq!(tag_escape('b'), 'b');  // "\b" is "b"
+/// ```
 pub fn tag_escape(c: char) -> char {
     match c {
         ':' => ';',
@@ -185,6 +194,17 @@ pub struct Tag<'a> {
 }
 
 impl<'a> Tag<'a> {
+    /// Parse a message tag.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// # use ellidri::message::Tag;
+    /// let tag = Tag::parse("label=123456");
+    ///
+    /// assert_eq!(tag.key, "label");
+    /// assert_eq!(tag.value, Some("123456"));
+    /// ```
     pub fn parse(buf: &'a str) -> Self {
         let mut split = buf.splitn(2, '=');
         let key = split.next().unwrap();
@@ -195,16 +215,46 @@ impl<'a> Tag<'a> {
         Self { key, value }
     }
 
+    /// Whether the tag is a client-only tag.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// # use ellidri::message::Tag;
+    /// let msgid = Tag::parse("msgid=42");
+    /// let reply = Tag::parse("+example.pizza/beer");
+    ///
+    /// assert_eq!(msgid.is_client(), false);
+    /// assert_eq!(reply.is_client(), true);
+    /// ```
     pub fn is_client(&self) -> bool {
         self.key.starts_with('+')
     }
 
+    /// Returns the unescaped version of the tag's value.
+    ///
+    /// Tag escaping is defined here: <https://ircv3.net/specs/extensions/message-tags.html> (look
+    /// for "Escaping values").
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// # use ellidri::message::Tag;
+    /// let label = Tag::parse(r"label=Newline:\s\nBackslash-n:\s\\n");
+    ///
+    /// assert_eq!(&label.unescape_value(), "Newline: \nBackslash-n: \\n");
+    /// ```
     pub fn unescape_value(&self) -> String {
         let mut res = String::new();
         self.unescape_value_into(&mut res);
         res
     }
 
+    /// Appends the unescaped value of the tag to the given String.
+    ///
+    /// If the string is already allocated and has enough space, then this function will not
+    /// allocate.  It is therefore preferable to use it if you already have a `String`.  See
+    /// `Tag::unescape_into` for doc about tag escaping.
     pub fn unescape_value_into(&self, buf: &mut String) {
         let value = match self.value {
             Some(value) => value,
@@ -223,6 +273,18 @@ impl<'a> Tag<'a> {
     }
 }
 
+/// An iterator over the tags of a string.
+///
+/// # Example
+///
+/// ```rust
+/// # use ellidri::message::{Tag, tags};
+/// let mut my_tags = tags("label=007;+custom=");
+///
+/// assert_eq!(my_tags.next(), Some(Tag { key: "label", value: Some("007") }));
+/// assert_eq!(my_tags.next(), Some(Tag { key: "+custom", value: None }));
+/// assert_eq!(my_tags.next(), None);
+/// ```
 pub fn tags(s: &str) -> impl Iterator<Item=Tag<'_>> {
     s.split(';')
         .filter(|item| !item.is_empty() && !item.starts_with('=') && !item.starts_with("+="))
