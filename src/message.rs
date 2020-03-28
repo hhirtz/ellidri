@@ -182,9 +182,6 @@ pub struct Tag<'a> {
 
     /// The value of the tag, or `None` when the tag has no value.
     pub value: Option<&'a str>,
-
-    /// Whether this is a client tag (has `+` prepended to its key).
-    pub is_client: bool,
 }
 
 impl<'a> Tag<'a> {
@@ -195,12 +192,11 @@ impl<'a> Tag<'a> {
             Some("") | None => None,
             Some(value) => Some(value),
         };
-        let is_client = key.starts_with('+');
-        Self {
-            key: if is_client {&key[1..]} else {key},
-            value,
-            is_client,
-        }
+        Self { key, value }
+    }
+
+    pub fn is_client(&self) -> bool {
+        self.key.starts_with('+')
     }
 
     pub fn unescape_value(&self) -> String {
@@ -1000,20 +996,20 @@ mod tests {
         assert_eq!(ts.next(), None);
 
         let mut ts = tags("time=12732;re");
-        assert_eq!(ts.next(), Some(Tag { key: "time", value: Some("12732"), is_client: false }));
-        assert_eq!(ts.next(), Some(Tag { key: "re", value: None, is_client: false }));
+        assert_eq!(ts.next(), Some(Tag { key: "time", value: Some("12732") }));
+        assert_eq!(ts.next(), Some(Tag { key: "re", value: None }));
         assert_eq!(ts.next(), None);
 
         let mut ts = tags("+time=12732;re=;+asdf=5678");
-        assert_eq!(ts.next(), Some(Tag { key: "time", value: Some("12732"), is_client: true }));
-        assert_eq!(ts.next(), Some(Tag { key: "re", value: None, is_client: false }));
-        assert_eq!(ts.next(), Some(Tag { key: "asdf", value: Some("5678"), is_client: true }));
+        assert_eq!(ts.next(), Some(Tag { key: "+time", value: Some("12732") }));
+        assert_eq!(ts.next(), Some(Tag { key: "re", value: None }));
+        assert_eq!(ts.next(), Some(Tag { key: "+asdf", value: Some("5678") }));
         assert_eq!(ts.next(), None);
 
         let mut ts = tags("=these;time=12732;+=shouldbe;re=;asdf=5678;=ignored");
-        assert_eq!(ts.next(), Some(Tag { key: "time", value: Some("12732"), is_client: false }));
-        assert_eq!(ts.next(), Some(Tag { key: "re", value: None, is_client: false }));
-        assert_eq!(ts.next(), Some(Tag { key: "asdf", value: Some("5678"), is_client: false }));
+        assert_eq!(ts.next(), Some(Tag { key: "time", value: Some("12732") }));
+        assert_eq!(ts.next(), Some(Tag { key: "re", value: None }));
+        assert_eq!(ts.next(), Some(Tag { key: "asdf", value: Some("5678") }));
         assert_eq!(ts.next(), None);
     }
 
@@ -1037,7 +1033,7 @@ mod tests {
 
         let mut buf = String::new();
         for [test, expected] in tests {
-            let tag = Tag { key: "", value: Some(test), is_client: false };
+            let tag = Tag { key: "", value: Some(test) };
             buf.clear();
             tag.unescape_value_into(&mut buf);
             assert_eq!(&buf, expected);
