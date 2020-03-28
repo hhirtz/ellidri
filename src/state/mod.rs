@@ -4,8 +4,7 @@
 //!
 //! - `mod.rs`: public API of the server state and send utilities
 //! - `rfc2812.rs` : handlers for messages defined in the RFC 2812
-//! - `capabilities.rs` : handlers for the CAP command
-//! - `message_tags.rs` : handler for the TAGMSG command
+//! - `ircv3.rs` : handlers for messages defined in IRCv3 extensions
 
 #![allow(clippy::needless_pass_by_value)]
 
@@ -21,11 +20,8 @@ use std::fmt::Write as _;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
-mod capabilities;
-mod message_tags;
+mod ircv3;
 mod rfc2812;
-mod sasl;
-mod setname;
 #[cfg(test)]
 mod test;
 
