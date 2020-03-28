@@ -14,7 +14,7 @@ pub const SIMPLE_CHAN_MODES: &str = "imnst";
 pub const EXTENDED_CHAN_MODES: &str = "beIkl";
 
 /// CHANMODES feature advertised in RPL_ISUPPORT.
-pub const CHANMODES: &str = "CHANMODES=beI,k,l,imnpqst";
+pub const CHANMODES: &str = "CHANMODES=beI,k,l,imnst";
 
 /// Iterator over the modes of a string.
 struct SimpleQuery<'a> {
