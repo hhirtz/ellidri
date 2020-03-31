@@ -1083,8 +1083,8 @@ mod tests {
         test::collect(&mut buf, &mut q1);
         test::collect(&mut buf, &mut q2);
         test::assert_msgs(&buf, &[
-            (Some("c2!X@127.0.0.1"), Ok(Command::Join), &["#home"]),
             (Some(test::DOMAIN), Err(rpl::ERR_BADCHANKEY), &["c2", "#channel", lines::BAD_CHAN_KEY]),
+            (Some("c2!X@127.0.0.1"), Ok(Command::Join), &["#home"]),
             (Some(test::DOMAIN), Err(rpl::NOTOPIC), &["c2", "#home", lines::NO_TOPIC]),
             (Some(test::DOMAIN), Err(rpl::NAMREPLY), &["c2", "=", "#home", "@c2"]),
             (Some(test::DOMAIN), Err(rpl::ENDOFNAMES), &["c2", "#home", lines::END_OF_NAMES]),

@@ -931,7 +931,7 @@ thread_local! {
 ///
 /// ```rust
 /// # use ellidri::message::{Command, ReplyBuffer, rpl};
-/// let mut response = ReplyBuffer::new("ellidri.dev", "nickname");
+/// let mut response = ReplyBuffer::new("ellidri.dev", "nickname", None);
 ///
 /// response.message("nick!user@127.0.0.1", Command::Topic)
 ///     .param("#hall")
@@ -992,8 +992,8 @@ impl ReplyBuffer {
     ///
     /// ```rust
     /// # use ellidri::message::{ReplyBuffer, rpl};
-    /// let empty = ReplyBuffer::new("ellidri.dev", "ser");
-    /// let mut not_empty = ReplyBuffer::new("ellidri.dev", "ser");
+    /// let empty = ReplyBuffer::new("ellidri.dev", "ser", None);
+    /// let mut not_empty = ReplyBuffer::new("ellidri.dev", "ser", None);
     ///
     /// not_empty.reply(rpl::ERR_NOMOTD);
     ///
@@ -1079,7 +1079,7 @@ impl ReplyBuffer {
     ///
     /// ```rust
     /// # use ellidri::message::{Command, ReplyBuffer, rpl};
-    /// let mut response = ReplyBuffer::new("ellidri.dev", "ser");
+    /// let mut response = ReplyBuffer::new("ellidri.dev", "ser", None);
     ///
     /// response.reply(rpl::WELCOME).trailing_param("Welcome to IRC, ser");
     ///
@@ -1106,7 +1106,7 @@ impl ReplyBuffer {
     ///
     /// ```rust
     /// # use ellidri::message::{Command, ReplyBuffer};
-    /// let mut response = ReplyBuffer::new("ellidri.dev", "ser");
+    /// let mut response = ReplyBuffer::new("ellidri.dev", "ser", None);
     ///
     /// response.message("unneeded_prefix", Command::Admin);
     ///
