@@ -2,7 +2,7 @@
 //!
 //! Intended for use within a `HashMap`.  Actually used by ellidri's `State`.
 //!
-//! It's made for IRC.  It doesn't need to support Unicode case-folding.
+//! It doesn't support Unicode case-folding for now.
 
 #![warn(clippy::all, rust_2018_idioms)]
 #![allow(clippy::filter_map, clippy::find_map, clippy::shadow_unrelated, clippy::use_self)]
@@ -10,6 +10,7 @@
 use std::borrow::Borrow;
 use std::hash::{Hash, Hasher};
 
+/// Case-insensitive wrapper.
 #[repr(transparent)]
 pub struct UniCase<S: ?Sized>(pub S);
 
@@ -22,12 +23,15 @@ impl<'a> From<&'a str> for &'a UniCase<str> {
     }
 }
 
+/// Converts a `&str` into a `&UniCase<str>`.
+///
+/// Shorthand for `<&Unicase<str>>::from`.
 pub fn u(s: &str) -> &UniCase<str> {
     s.into()
 }
 
 impl<S> AsRef<str> for UniCase<S>
-    where S: AsRef<str>,
+    where S: AsRef<str> + ?Sized,
 {
     fn as_ref(&self) -> &str {
         self.0.as_ref()
@@ -38,21 +42,24 @@ impl<S> Hash for UniCase<S>
     where S: AsRef<str> + ?Sized,
 {
     fn hash<H: Hasher>(&self, hasher: &mut H) {
-        self.0.as_ref().bytes().map(|b| b.to_ascii_lowercase())
-            .for_each(|b| hasher.write_u8(b));
+        let bytes = self.0.as_ref().as_bytes();
+        for byte in bytes {
+            hasher.write_u8(byte.to_ascii_lowercase());
+        }
     }
 }
 
-impl<S1> PartialEq for UniCase<S1>
-    where S1: Borrow<str> + ?Sized,
+impl<S1, S2> PartialEq<UniCase<S2>> for UniCase<S1>
+    where S1: AsRef<str> + ?Sized,
+          S2: AsRef<str> + ?Sized,
 {
-    fn eq(&self, other: &UniCase<S1>) -> bool {
-        self.0.borrow().eq_ignore_ascii_case(other.0.borrow())
+    fn eq(&self, other: &UniCase<S2>) -> bool {
+        self.0.as_ref().eq_ignore_ascii_case(other.0.as_ref())
     }
 }
 
 impl<S> Eq for UniCase<S>
-    where S: Borrow<str> + ?Sized,
+    where S: AsRef<str> + ?Sized,
 {}
 
 impl Borrow<UniCase<str>> for UniCase<String> {
