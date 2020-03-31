@@ -1055,7 +1055,6 @@ impl ReplyBuffer {
         if !self.has_label && self.batch.is_none() {
             return;
         }
-        self.has_label = false;
         if self.batch.is_some() {
             self.end_batch();
         }
@@ -1066,6 +1065,7 @@ impl ReplyBuffer {
         if self.is_empty() {
             self.prefixed_message("ACK");
         }
+        self.has_label = false;
     }
 
     /// Appends a reply to the buffer.
