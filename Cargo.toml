@@ -50,7 +50,7 @@ env_logger = { version = "0.7", default-features = false }
 log = { version = "0.4", default-features = false, features = ["max_level_trace", "release_max_level_info"] }
 
 # Time string generation (@time message tag and RPL_TIME reply)
-chrono = { version = "0.4", default-features = false, features = ["clock"] }
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 
 # Masks implementation
 regex = { version = "1", default-features = false, features = ["std", "perf", "unicode-case"] }
