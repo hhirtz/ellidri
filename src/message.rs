@@ -765,14 +765,18 @@ impl<'a> TagBuffer<'a> {
         self.buf.len() == self.tag_start + 1
     }
 
-    pub fn tag(self, key: &str, value: Option<&str>) -> Self {
+    pub fn tag<T>(self, key: &str, value: Option<T>) -> Self
+        where T: fmt::Display
+    {
+        use fmt::Write;
+
         if !self.is_empty() {
             self.buf.push(';');
         }
         self.buf.push_str(key);
         if let Some(value) = value {
             self.buf.push('=');
-            self.buf.push_str(value);
+            let _ = write!(self.buf, "{}", value);
         }
         self
     }
@@ -915,6 +919,7 @@ impl Buffer {
 thread_local! {
     static DOMAIN: RefCell<String> = RefCell::new(String::new());
     static NICKNAME: RefCell<String> = RefCell::new(String::new());
+    static LABEL: RefCell<String> = RefCell::new(String::new());
 }
 
 /// An helper to build IRC replies.
@@ -952,19 +957,30 @@ thread_local! {
 /// otherwise nicknames and domains will be mixed.
 pub struct ReplyBuffer {
     buf: Buffer,
+    batch: Option<u8>,
+    has_label: bool,
 }
 
 impl ReplyBuffer {
     /// Creates a new `ReplyBuffer` and initialize the thread-local storage with the given domain
     /// and nickname.
-    pub fn new(domain: &str, nickname: &str) -> Self {
+    pub fn new(domain: &str, nickname: &str, label: Option<&str>) -> Self {
         DOMAIN.with(|s| {
             let mut s = s.borrow_mut();
             s.clear();
             s.push_str(domain);
         });
+        if let Some(label) = label {
+            LABEL.with(|s| {
+                let mut s = s.borrow_mut();
+                s.clear();
+                s.push_str(label);
+            });
+        }
         let mut res = Self {
             buf: Buffer::new(),
+            batch: None,
+            has_label: label.is_some(),
         };
         res.set_nick(nickname);
         res
@@ -996,6 +1012,62 @@ impl ReplyBuffer {
         });
     }
 
+    pub fn start_batch(&mut self, name: &str) {
+        use fmt::Write;
+
+        let new_batch = self.new_batch();
+        let mut msg = self.reply("BATCH");
+        let _ = write!(msg.raw_param(), "+{}", new_batch);
+        msg.param(name);
+    }
+
+    pub fn end_batch(&mut self) {
+        use fmt::Write;
+
+        let old_batch = self.batch.unwrap();
+        self.batch = if old_batch == 0 {None} else {Some(old_batch - 1)};
+
+        let mut msg = self.reply("BATCH");
+        let _ = write!(msg.raw_param(), "-{}", old_batch);
+    }
+
+    pub fn start_lr_batch(&mut self) {
+        use fmt::Write;
+
+        if !self.has_label {
+            return;
+        }
+        self.has_label = false;
+
+        let new_batch = self.new_batch();
+        LABEL.with(|label| DOMAIN.with(|domain| {
+            let label = label.borrow();
+            let domain = domain.borrow();
+            let mut msg = self.buf.tagged_message("")
+                .tag("label", Some(&label))
+                .prefixed_command(&domain, "BATCH");
+            let _ = write!(msg.raw_param(), "+{}", new_batch);
+            msg.param("labeled-response");
+        }));
+    }
+
+    pub fn end_lr(&mut self) {
+        if !self.has_label && self.batch.is_none() {
+            return;
+        }
+        self.has_label = false;
+        if self.batch.is_some() {
+            self.end_batch();
+        }
+        if let Some(batch) = self.batch {
+            panic!("ReplyBuffer: has an ongoing batch {} after the end of the labeled response",
+                   batch);
+        }
+        if self.is_empty() {
+            self.prefixed_message("ACK");
+        }
+    }
+
     /// Appends a reply to the buffer.
     ///
     /// This will push the domain, the reply and the nickname of the client, and then return the
@@ -1016,8 +1088,14 @@ impl ReplyBuffer {
     pub fn reply<C>(&mut self, r: C) -> MessageBuffer<'_>
         where C: Into<Command>
     {
-        let msg = DOMAIN.with(move |s| self.buf.message(&s.borrow(), r));
+        let msg = self.prefixed_message(r);
         NICKNAME.with(|s| msg.param(&s.borrow()))
+    }
+
+    pub fn prefixed_message<C>(&mut self, command: C) -> MessageBuffer<'_>
+        where C: Into<Command>
+    {
+        DOMAIN.with(move |s| self.message(&s.borrow(), command))
     }
 
     /// Appends a prefixed message like you would do with a `Buffer`.
@@ -1037,12 +1115,33 @@ impl ReplyBuffer {
     pub fn message<C>(&mut self, prefix: &str, command: C) -> MessageBuffer<'_>
         where C: Into<Command>
     {
-        self.buf.message(prefix, command)
+        self.tagged_message("").prefixed_command(prefix, command)
+    }
+
+    pub fn tagged_message(&mut self, tags: &str) -> TagBuffer<'_> {
+        if self.has_label {
+            self.has_label = false;
+            LABEL.with(move |s| {
+                self.buf.tagged_message(tags)
+                    .tag("label", Some(&s.borrow()))
+            })
+        } else if let Some(batch) = self.batch {
+            self.buf.tagged_message(tags)
+                .tag("batch", Some(batch))
+        } else {
+            self.buf.tagged_message(tags)
+        }
     }
 
     /// Consumes the buffer and returns the underlying `String`.
     pub fn build(self) -> String {
         self.buf.build()
+    }
+
+    fn new_batch(&mut self) -> u8 {
+        let new_batch = self.batch.map_or(0, |old_batch| old_batch + 1);
+        self.batch = Some(new_batch);
+        new_batch
     }
 }
 

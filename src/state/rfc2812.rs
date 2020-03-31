@@ -15,6 +15,7 @@ impl super::StateInner {
     // ADMIN
 
     pub fn cmd_admin(&self, ctx: CommandContext<'_>) -> Result {
+        ctx.rb.start_lr_batch();
         ctx.rb.reply(rpl::ADMINME).param(&self.domain).trailing_param(lines::ADMIN_ME);
         ctx.rb.reply(rpl::ADMINLOC1).trailing_param(&self.org_location);
         ctx.rb.reply(rpl::ADMINLOC2).trailing_param(&self.org_name);
@@ -42,15 +43,14 @@ impl super::StateInner {
                 msg.trailing_param(away_message);
             }
         }
-        self.send_notification(ctx.id, away_notify, |id, client| {
-            id != ctx.id && client.capabilities().away_notify
-        });
+        self.send_notification(ctx.id, away_notify, |_, client| client.capabilities().away_notify);
         Ok(())
     }
 
     // INFO
 
     pub fn cmd_info(&self, ctx: CommandContext<'_>) -> Result {
+        ctx.rb.start_lr_batch();
         for line in super::SERVER_INFO.lines() {
             ctx.rb.reply(rpl::INFO).trailing_param(line);
         }
@@ -93,6 +93,7 @@ impl super::StateInner {
             return Err(());
         }
 
+        ctx.rb.start_lr_batch();
         ctx.rb.reply(rpl::INVITING).param(nick).param(target);
         if let Some(away_msg) = invited_cli.away_message() {
             ctx.rb.reply(rpl::AWAY).param(nick).trailing_param(away_msg);
@@ -160,7 +161,7 @@ impl super::StateInner {
             .filter(|(chan, _)| !chan.is_empty())
     }
 
-    fn send_join(&self, target: &str, client: &Client) {
+    fn send_join(&self, id: usize, rb: &mut ReplyBuffer, target: &str, client: &Client) {
         let mut join = Buffer::new();
         join.message(client.full_name(), Command::Join).param(target);
         let join = MessageQueueItem::from(join);
@@ -173,7 +174,7 @@ impl super::StateInner {
         let extended_join = MessageQueueItem::from(extended_join);
 
         let channel = &self.channels[u(target)];
-        for member in channel.members.keys() {
+        for member in channel.members.keys().filter(|m| **m != id) {
             let member = &self.clients[*member];
             if member.capabilities().extended_join {
                 member.send(extended_join.clone());
@@ -181,13 +182,14 @@ impl super::StateInner {
                 member.send(join.clone());
             }
         }
+        rb.message(client.full_name(), Command::Join).param(target);
 
         if let Some(ref away_message) = client.away_message {
             let mut away_notify = Buffer::new();
             away_notify.message(client.full_name(), Command::Away).trailing_param(away_message);
             let away_notify = MessageQueueItem::from(away_notify);
 
-            for member in channel.members.keys() {
+            for member in channel.members.keys().filter(|m| **m != id) {
                 let member = &self.clients[*member];
                 if member.capabilities().away_notify {
                     member.send(away_notify.clone());
@@ -220,7 +222,8 @@ impl super::StateInner {
                     .or_insert_with(|| Channel::new(&default_chan_mode));
                 channel.add_member(ctx.id);
 
-                self.send_join(target, client);
+                ctx.rb.start_lr_batch();
+                self.send_join(ctx.id, ctx.rb, target, client);
                 self.write_topic(ctx.rb, target);
                 self.write_names(ctx.id, ctx.rb, target);
                 update_idle = true;
@@ -264,19 +267,27 @@ impl super::StateInner {
             }
         };
 
+        let reason = &reason[..reason.len().min(self.kicklen)];
+        let client = &self.clients[ctx.id];
         let mut kick_response = Buffer::new();
         {
-            let msg = kick_response.message(self.clients[ctx.id].full_name(), Command::Kick)
+            let msg = kick_response.message(client.full_name(), Command::Kick)
                 .param(target)
                 .param(nick);
             if !reason.is_empty() {
-                msg.trailing_param(&reason[..reason.len().min(self.kicklen)]);
+                msg.trailing_param(reason);
             }
         }
         let msg = MessageQueueItem::from(kick_response);
         let channel = self.channels.get_mut(u(target)).unwrap();
-        for member in channel.members.keys() {
+        for member in channel.members.keys().filter(|m| **m != ctx.id) {
             self.clients[*member].send(msg.clone());
+        }
+        let msg = ctx.rb.message(client.full_name(), Command::Kick)
+            .param(target)
+            .param(nick);
+        if !reason.is_empty() {
+            msg.trailing_param(reason);
         }
         channel.members.remove(&kicked_addrs);
 
@@ -287,6 +298,7 @@ impl super::StateInner {
 
     pub fn cmd_list(&self, ctx: CommandContext<'_>, targets: &str) -> Result {
         let client = &self.clients[ctx.id];
+        ctx.rb.start_lr_batch();
         if targets.is_empty() {
             for (name, channel) in &self.channels {
                 if channel.secret && !client.operator && !channel.members.contains_key(&ctx.id) {
@@ -315,6 +327,7 @@ impl super::StateInner {
     // LUSERS
 
     pub fn cmd_lusers(&self, ctx: CommandContext<'_>) -> Result {
+        ctx.rb.start_lr_batch();
         self.write_lusers(ctx.rb);
         Ok(())
     }
@@ -410,16 +423,27 @@ impl super::StateInner {
         } }
 
         if !applied_modes.is_empty() {
-            let mut response = Buffer::new();
+            ctx.rb.start_lr_batch();
+            let client = &self.clients[ctx.id];
+            let mut mode_change = Buffer::new();
             {
-                let mut msg = response.message(self.clients[ctx.id].full_name(), Command::Mode)
+                let mut msg = mode_change.message(client.full_name(), Command::Mode)
                     .param(target)
                     .param(&applied_modes);
-                for mp in applied_modeparams {
-                    msg = msg.param(&mp);
+                for mp in &applied_modeparams {
+                    msg = msg.param(mp);
                 }
             }
-            self.broadcast(target, &MessageQueueItem::from(response));
+            let mode_change = MessageQueueItem::from(mode_change);
+            for member in channel.members.keys().filter(|m| **m != ctx.id) {
+                self.clients[*member].send(mode_change.clone());
+            }
+            let mut msg = ctx.rb.message(client.full_name(), Command::Mode)
+                .param(target)
+                .param(&applied_modes);
+            for mp in &applied_modeparams {
+                msg = msg.param(mp);
+            }
         }
 
         Ok(())
@@ -491,6 +515,7 @@ impl super::StateInner {
     // MOTD
 
     pub fn cmd_motd(&self, ctx: CommandContext<'_>) -> Result {
+        ctx.rb.start_lr_batch();
         self.write_motd(ctx.rb);
         Ok(())
     }
@@ -501,6 +526,7 @@ impl super::StateInner {
         if targets.is_empty() || targets == "*" {
             ctx.rb.reply(rpl::ENDOFNAMES).param("*").trailing_param(lines::END_OF_NAMES);
         } else {
+            ctx.rb.start_lr_batch();
             for target in targets.split(',') {
                 self.write_names(ctx.id, ctx.rb, target);
             }
@@ -538,6 +564,7 @@ impl super::StateInner {
 
         let mut nick_response = Buffer::new();
         nick_response.message(client.full_name(), Command::Nick).param(nick);
+        ctx.rb.message(client.full_name(), Command::Nick).param(nick);
         client.set_nick(nick);
         self.send_notification(ctx.id, nick_response, |_, _| true);
 
@@ -562,6 +589,7 @@ impl super::StateInner {
 
         let client = self.clients.get_mut(ctx.id).unwrap();
         client.operator = true;
+        ctx.rb.start_lr_batch();
         ctx.rb.message(&self.domain, Command::Mode).param(client.nick()).param("+o");
         ctx.rb.reply(rpl::YOUREOPER).trailing_param(lines::YOURE_OPER);
 
@@ -573,7 +601,9 @@ impl super::StateInner {
     pub fn cmd_part(&mut self, ctx: CommandContext<'_>, targets: &str, reason: &str) -> Result {
         let client = &self.clients[ctx.id];
 
+        let mut res = Ok(());
         for target in targets.split(',').filter(|s| !s.is_empty()) {
+            ctx.rb.start_lr_batch();
             let channel = match self.channels.get_mut(u(target)) {
                 Some(channel) => channel,
                 None => {
@@ -581,32 +611,38 @@ impl super::StateInner {
                     ctx.rb.reply(rpl::ERR_NOTONCHANNEL)
                         .param(target)
                         .trailing_param(lines::NOT_ON_CHANNEL);
-                    return Err(());
+                    res = Err(());
+                    continue;
                 }
             };
             find_member(ctx.id, ctx.rb, channel, target)?;
 
-            let mut response = Buffer::new();
-
-            channel.members.remove(&ctx.id);
-            if reason.is_empty() {
-                response.message(client.full_name(), Command::Part).param(target);
-            } else {
-                response.message(client.full_name(), Command::Part)
-                    .param(target)
-                    .trailing_param(reason);
-            }
-
-            let msg = MessageQueueItem::from(response);
             if channel.members.is_empty() {
                 self.channels.remove(u(target));
             } else {
-                self.broadcast(target, &msg);
+                let mut part_notice = Buffer::new();
+
+                channel.members.remove(&ctx.id);
+                if reason.is_empty() {
+                    part_notice.message(client.full_name(), Command::Part).param(target);
+                } else {
+                    part_notice.message(client.full_name(), Command::Part)
+                        .param(target)
+                        .trailing_param(reason);
+                }
+                let part_notice = MessageQueueItem::from(part_notice);
+                for member in channel.members.keys() {
+                    self.clients[*member].send(part_notice.clone());
+                }
             }
-            client.send(msg);
+
+            let msg = ctx.rb.message(client.full_name(), Command::Part).param(target);
+            if !reason.is_empty() {
+                msg.trailing_param(reason);
+            }
         }
 
-        Ok(())
+        res
     }
 
     // PASS
@@ -673,12 +709,20 @@ impl super::StateInner {
             return Err(());
         }
 
-        let mut response = Buffer::new();
+        let topic = &topic[..topic.len().min(self.topiclen)];
         channel.topic = if topic.is_empty() { None } else { Some(topic.to_owned()) };
-        response.message(self.clients[ctx.id].full_name(), Command::Topic)
+
+        let mut topic_notice = Buffer::new();
+        topic_notice.message(self.clients[ctx.id].full_name(), Command::Topic)
             .param(target)
-            .trailing_param(&topic[..topic.len().min(self.topiclen)]);
-        self.broadcast(target, &MessageQueueItem::from(response));
+            .trailing_param(topic);
+        let topic_notice = MessageQueueItem::from(topic_notice);
+        for member in channel.members.keys().filter(|m| **m != ctx.id) {
+            self.clients[*member].send(topic_notice.clone());
+        }
+        ctx.rb.message(self.clients[ctx.id].full_name(), Command::Topic)
+            .param(target)
+            .trailing_param(topic);
 
         Ok(())
     }
@@ -721,6 +765,7 @@ impl super::StateInner {
     // VERSION
 
     pub fn cmd_version(&self, ctx: CommandContext<'_>) -> Result {
+        ctx.rb.start_lr_batch();
         ctx.rb.reply(rpl::VERSION).param(crate::server_version!()).param(&self.domain);
         self.write_i_support(ctx.rb);
         Ok(())
@@ -735,6 +780,7 @@ impl super::StateInner {
         let client = &self.clients[ctx.id];
 
         if let Some(channel) = self.channels.get(u(mask)) {
+            ctx.rb.start_lr_batch();
             let in_channel = channel.members.contains_key(&ctx.id);
             if !channel.secret || in_channel || client.operator {
                 for (member, modes) in &channel.members {
@@ -761,6 +807,7 @@ impl super::StateInner {
                 }
             }
         } else if let Some(&a) = self.nicks.get(u(mask)) {
+            ctx.rb.start_lr_batch();
             let c = &self.clients[a];
             if (!o || c.operator) && c.is_registered() {
                 let mut channel_name = None;
@@ -804,6 +851,7 @@ impl super::StateInner {
     pub fn cmd_whois(&self, ctx: CommandContext<'_>, nick: &str) -> Result {
         let (_, target_client) = find_nick(ctx.id, ctx.rb, &self.clients, &self.nicks, nick)?;
 
+        ctx.rb.start_lr_batch();
         ctx.rb.reply(rpl::WHOISUSER)
             .param(target_client.nick())
             .param(target_client.user())

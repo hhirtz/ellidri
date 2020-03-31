@@ -100,8 +100,8 @@ impl super::StateInner {
                 client.log_in(user);
                 client.auth_reset();
 
-                self.send_notification(ctx.id, account_notify, |id, client| {
-                    id != ctx.id && client.capabilities().account_notify
+                self.send_notification(ctx.id, account_notify, |_, client| {
+                    client.capabilities().account_notify
                 });
 
                 Ok(())
@@ -182,6 +182,7 @@ impl super::StateInner {
         let client = self.clients.get_mut(ctx.id).unwrap();
         let mut real_response = Buffer::new();
         real_response.message(client.full_name(), Command::SetName).param(real);
+        ctx.rb.message(client.full_name(), Command::SetName).param(real);
         client.set_real(real);
         self.send_notification(ctx.id, real_response, |_, _| true);
 

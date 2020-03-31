@@ -11,7 +11,7 @@
 use crate::{auth, config, lines, modes, util};
 use crate::channel::Channel;
 use crate::client::{Client, MessageQueue, MessageQueueItem};
-use crate::message::{Buffer, Command, Message, ReplyBuffer, rpl};
+use crate::message::{Buffer, Command, Message, ReplyBuffer, rpl, tags};
 use ellidri_unicase::{u, UniCase};
 use slab::Slab;
 use std::{cmp, fs, io, net};
@@ -281,15 +281,7 @@ impl StateInner {
                 msg.trailing_param(reason);
             }
         }
-        let msg = MessageQueueItem::from(response);
-
-        for channel in self.channels.values() {
-            if channel.members.contains_key(&id) {
-                for member in channel.members.keys() {
-                    self.send(*member, msg.clone());
-                }
-            }
-        }
+        self.send_notification(id, response, |_, _| true);
 
         self.channels.retain(|_, channel| {
             channel.members.remove(&id);
@@ -304,7 +296,12 @@ impl StateInner {
             Some(client) => client,
             None => return Err(()),
         };
-        let mut rb = ReplyBuffer::new(&self.domain, client.nick());
+        let label = if client.capabilities().has_labeled_response() {
+            tags(msg.tags).find(|tag| tag.key == "label").map(|tag| tag.value).flatten()
+        } else {
+            None
+        };
+        let mut rb = ReplyBuffer::new(&self.domain, client.nick(), label);
 
         if MAX_TAG_DATA_LENGTH < msg.tags.len() {
             rb.reply(rpl::ERR_INPUTTOOLONG).trailing_param(lines::INPUT_TOO_LONG);
@@ -419,6 +416,7 @@ impl StateInner {
                 log::debug!("{}: {:?} + {:?} == {:?}", id, old_state, command, new_state);
             }
         }
+        rb.end_lr();
         if !rb.is_empty() {
             self.send(id, MessageQueueItem::from(rb));
         }
@@ -494,23 +492,34 @@ impl StateInner {
         }
     }
 
-    /// Sends the given message to all users in the given channel.
-    fn broadcast(&self, target: &str, msg: &MessageQueueItem) {
-        let channel = &self.channels[u(target)];
-        for member in channel.members.keys() {
-            self.send(*member, msg.clone());
-        }
-    }
-
-    fn build_message(&self, from: &Client, cmd: Command, target: &str, tags: &str,
+    fn build_message(&self, ctx: &mut CommandContext<'_>, from: &Client, cmd: Command, target: &str,
                      content: Option<&str>) -> MessageQueueItem
     {
+        let msgid = util::new_message_id();
+        let time = util::time_precise();
+
+        if from.capabilities().echo_message && from.capabilities().has_message_tags() {
+            let msg_buf = ctx.rb.tagged_message(ctx.client_tags)
+                .tag("msgid", Some(&msgid))
+                .tag("time", Some(&time))
+                .prefixed_command(from.full_name(), cmd)
+                .param(target);
+            if let Some(content) = content {
+                msg_buf.trailing_param(content);
+            }
+        } else if from.capabilities().echo_message {
+            let msg_buf = ctx.rb.message(from.full_name(), cmd).param(target);
+            if let Some(content) = content {
+                msg_buf.trailing_param(content);
+            }
+        }
+
         let mut buf = Buffer::new();
         let mut tags_len = 0;
         {
-            let msg_buf = buf.tagged_message(tags)
-                .tag("msgid", Some(&util::new_message_id()))
-                .tag("time", Some(&util::time_precise()))
+            let msg_buf = buf.tagged_message(ctx.client_tags)
+                .tag("msgid", Some(&msgid))
+                .tag("time", Some(&time))
                 .save_tags_len(&mut tags_len)
                 .prefixed_command(from.full_name(), cmd)
                 .param(target);
@@ -523,7 +532,7 @@ impl StateInner {
         msg
     }
 
-    fn send_query_or_channel_msg(&mut self, ctx: CommandContext<'_>, cmd: Command, target: &str,
+    fn send_query_or_channel_msg(&mut self, mut ctx: CommandContext<'_>, cmd: Command, target: &str,
                                  content: Option<&str>) -> HandlerResult
     {
         if content == Some("") {
@@ -543,23 +552,16 @@ impl StateInner {
                 return Err(());
             }
 
-            let msg = self.build_message(client, cmd, target, ctx.client_tags, content);
+            let msg = self.build_message(&mut ctx, client, cmd, target, content);
 
-            if client.capabilities().echo_message {
-                client.send(msg.clone());
-            }
             self.channels[u(target)].members.keys()
                 .filter(|&&id| id != ctx.id)
                 .for_each(|&id| self.send(id, msg.clone()));
         } else {
             let (_, target_client) = find_nick(ctx.id, ctx.rb, &self.clients, &self.nicks, target)?;
-            let msg = self.build_message(client, cmd, target, ctx.client_tags, content);
+            let msg = self.build_message(&mut ctx, client, cmd, target, content);
 
-            if client.capabilities().echo_message {
-                client.send(msg.clone());
-            }
             target_client.send(msg);
-
             if let Some(ref away_msg) = target_client.away_message {
                 ctx.rb.reply(rpl::AWAY).param(target).trailing_param(away_msg);
             }
@@ -579,7 +581,9 @@ impl StateInner {
             .flat_map(|channel| channel.members.keys().cloned())
             .collect::<HashSet<_>>();
         noticed.insert(from);
-        for id in noticed.into_iter().filter(|&id| filter(id, &self.clients[id])) {
+        let iter = noticed.into_iter()
+            .filter(|&id| from != id && filter(id, &self.clients[id]));
+        for id in iter {
             self.send(id, msg.clone());
         }
     }
