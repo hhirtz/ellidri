@@ -138,6 +138,7 @@ async fn handle<S>(conn: S, peer_addr: SocketAddr, shared: State)
             // - put a limit on line length (4096 + 512  if starts with @, 512 otherwise)
             //   (also 512 should be configurable)
             // - kill clients that send 1-byte (or so) reads every time
+            // - send an ERROR to the client when this fails
             reader.read_line(&mut buf).await?;
             log::trace!("{} >> {}", peer_addr, buf.trim());
             if handle_buffer(peer_id, &buf, &shared).await? {

@@ -95,6 +95,8 @@ fn runtime(workers: usize) -> tokio::runtime::Runtime {
         builder.core_threads(workers);
     }
 
+    // TODO panic catch
+
     builder
         .threaded_scheduler()
         .enable_io()
