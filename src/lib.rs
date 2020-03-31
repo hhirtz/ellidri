@@ -36,16 +36,6 @@ mod util;
 
 /// The beginning of everything
 pub fn start() {
-    let matches = clap::App::new(env!("CARGO_PKG_NAME"))
-        .version(env!("CARGO_PKG_VERSION"))
-        .author(env!("CARGO_PKG_AUTHORS"))
-        .about(env!("CARGO_PKG_DESCRIPTION"))
-        .arg(clap::Arg::with_name("CONFIG_FILE")
-            .help("ellidri's configuration file")
-            .required(true))
-        .get_matches();
-    let config_path = matches.value_of("CONFIG_FILE").unwrap();
-
     if cfg!(debug_assertions) {
         env::set_var("RUST_BACKTRACE", "1");
     }
@@ -60,10 +50,35 @@ pub fn start() {
         })
         .init();
 
+    let matches = clap::App::new(env!("CARGO_PKG_NAME"))
+        .version(env!("CARGO_PKG_VERSION"))
+        .author(env!("CARGO_PKG_AUTHORS"))
+        .about(env!("CARGO_PKG_DESCRIPTION"))
+        .arg(clap::Arg::with_name("CONFIG_FILE")
+            .long("--config")
+            .value_name("CONFIG_FILE")
+            .help("ellidri's configuration file")
+            .required_unless("DOMAIN")
+            .conflicts_with("DOMAIN"))
+        .arg(clap::Arg::with_name("DOMAIN")
+            .long("--domain")
+            .value_name("DOMAIN")
+            .help("ellidri's effective domain name (unimplemented)")
+            .required_unless("CONFIG_FILE")
+            .conflicts_with("CONFIG_FILE"))
+        .get_matches();
+
+    if matches.is_present("DOMAIN") {
+        eprintln!("At the moment, --domain is unimplemented.  Please use --config instead.");
+        process::exit(1);
+    }
+
+    let config_path = matches.value_of("CONFIG_FILE").unwrap();
     let cfg = Config::from_file(&config_path).unwrap_or_else(|err| {
         log::error!("Failed to read {:?}: {}", config_path, err);
         process::exit(1);
     });
+
     let sasl_backend = cfg.sasl_backend;
     let auth_provider = auth::choose_provider(sasl_backend, cfg.db_url).unwrap_or_else(|err| {
         log::warn!("Failed to initialize the {} SASL backend: {}", sasl_backend, err);
