@@ -17,7 +17,7 @@ Join the IRC channel: [#ellidri on freenode][irc]!
 
 - RFC [1459][r1] and [2812][r2] compliance (almost! see [#1][i1])
 - IRCv3 support
-- Secure and production-ready setup with TLS out-of-the-box
+- TODO: Secure and production-ready setup with TLS out-of-the-box
 - Configurable via a file
 - SASL support with SQLite and PostgreSQL
 - kawaii messages
@@ -43,7 +43,8 @@ casemapping.
 
 Prerequisites:
 
-- The Rust compiler (at least version 1.39) and Cargo: <https://rustup.rs/>
+- The Rust compiler (at least version 1.39, or v1.41 when using PostgreSQL) and
+  Cargo: <https://rustup.rs/>
 - SQLite 3 (if the `sqlite` feature is enabled)
 - PostgreSQL client libraries (if the `postgres` feature is enabled)
 - On Linux, the OpenSSL library and its development files
@@ -62,6 +63,12 @@ development and for release.  The executable is generated at
 
 
 ## Usage
+
+**Note:** for now this is being worked on, and the only option to run ellidri is
+with a configuration file, like so: `ellidri CONFIG_FILE`.  Type
+`ellidri --help` for help.  In the long term, ellidri will fetch certificates
+from caddy and certbot by default, since in a setup with ports 80 and 443 taken
+by a HTTP server fetching certificate is practically impossible.
 
 If you already have a domain name, the simplest way to start ellidri is by the
 command below.  ellidri will get certificates from Let's Encrypt, and listen on
