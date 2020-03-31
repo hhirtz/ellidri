@@ -51,7 +51,7 @@ pub struct State {
     pub domain: String,
 
     pub default_chan_mode: String,
-    pub motd_file: Option<String>,
+    pub motd_file: String,
     pub password: Option<String>,
     pub opers: Vec<(String, String)>,
 
@@ -121,7 +121,7 @@ impl State {
         Self {
             domain: "ellidri.localdomain".to_owned(),
             default_chan_mode: "+nt".to_owned(),
-            motd_file: None,
+            motd_file: "/etc/motd".to_owned(),
             password: None,
             opers: vec![],
             org_name: "--unspecified--".to_owned(),
@@ -173,7 +173,7 @@ impl Config {
             .unique_setting("org_location",      false, |value| res.state.org_location = value)?
             .unique_setting("org_mail",          false, |value| res.state.org_mail = value)?
             .unique_setting("default_chan_mode", false, |value| default_chan_mode = value)?
-            .unique_setting("motd_file",         false, |value| res.state.motd_file = Some(value))?
+            .unique_setting("motd_file",         false, |value| res.state.motd_file = value)?
             .unique_setting("password",          false, |value| res.state.password = Some(value))?
             .unique_setting("awaylen",           false, |value| res.state.awaylen = value)?
             .unique_setting("channellen",        false, |value| res.state.channellen = value)?

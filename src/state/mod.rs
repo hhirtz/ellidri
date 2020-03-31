@@ -213,13 +213,14 @@ pub(crate) struct StateInner {
 
 impl StateInner {
     pub fn new(config: config::State, auth_provider: Box<dyn auth::Provider>) -> Self {
-        let motd = config.motd_file.and_then(|file| match fs::read_to_string(&file) {
+        log::info!("Loading MOTD from {:?}", config.motd_file);
+        let motd = match fs::read_to_string(&config.motd_file) {
             Ok(motd) => Some(motd),
             Err(err) => {
-                log::warn!("Failed to read {:?}: {}", file, err);
+                log::warn!("Failed to read {:?}: {}", config.motd_file, err);
                 None
             }
-        });
+        };
         Self {
             domain: config.domain,
             org_name: config.org_name,
