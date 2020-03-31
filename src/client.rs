@@ -143,82 +143,110 @@ impl ConnectionState {
     }
 }
 
-// TODO factorize this with a macro?
-pub mod cap {
-    use std::collections::HashSet;
+macro_rules! caps {
+    ( $( $cap:ident $cap_str:literal $cap_member:ident )* |
+      $( $specap:ident $specap_str:literal $specap_member:ident )*
+    ) => {
+        pub mod cap {
+            use std::collections::HashSet;
 
-    pub const ACCOUNT_NOTIFY: &str = "account-notify";
-    pub const AWAY_NOTIFY: &str    = "away-notify";
-    pub const CAP_NOTIFY: &str     = "cap-notify";
-    pub const ECHO_MESSAGE: &str   = "echo-message";
-    pub const EXTENDED_JOIN: &str  = "extended-join";
-    pub const INVITE_NOTIFY: &str  = "invite-notify";
-    pub const MESSAGE_TAGS: &str   = "message-tags";
-    pub const MULTI_PREFIX: &str   = "multi-prefix";
-    pub const SASL: &str           = "sasl";
-    pub const SERVER_TIME: &str    = "server-time";
-    pub const SETNAME: &str        = "setname";
-    pub const USERHOST_IN_NAMES: &str = "userhost-in-names";
+            $( pub const $cap: &str = $cap_str; )*
+            $( pub const $specap: &str = $specap_str; )*
 
-    // TODO replace with const fn
-    lazy_static::lazy_static! {
-        pub static ref ALL: HashSet<&'static str> =
-            [ ACCOUNT_NOTIFY
-            , AWAY_NOTIFY
-            , CAP_NOTIFY
-            , ECHO_MESSAGE
-            , EXTENDED_JOIN
-            , INVITE_NOTIFY
-            , MULTI_PREFIX
-            , MESSAGE_TAGS
-            , SASL
-            , SERVER_TIME
-            , SETNAME
-            , USERHOST_IN_NAMES
-            ].iter().cloned().collect();
-    }
-
-    pub const LS_COMMON: &str =
-"account-notify away-notify cap-notify echo-message extended-join invite-notify message-tags \
-multi-prefix server-time setname userhost-in-names";
-
-    pub fn are_supported(capabilities: &str) -> bool {
-        query(capabilities).all(|(cap,  _)| ALL.contains(cap))
-    }
-
-    pub fn query(buf: &str) -> impl Iterator<Item=(&str, bool)> {
-        buf.split_whitespace().map(|word| {
-            if word.starts_with('-') {
-                // NOPANIC  word starts with '-', which is encoded on 1 byte in UTF-8
-                (&word[1..], false)
-            } else {
-                (word, true)
+            lazy_static::lazy_static! {
+                pub static ref ALL: HashSet<&'static str> = [
+                    $( $cap ),*, $( $specap ),*
+                ].iter().cloned().collect();
             }
-        })
-    }
+
+            const _LS_COMMON: &str = concat!( $( $cap_str, " " ),* );
+
+            pub fn are_supported(capabilities: &str) -> bool {
+                query(capabilities).all(|(cap,  _)| ALL.contains(cap))
+            }
+
+            pub fn ls_common() -> &'static str {
+                &_LS_COMMON[.._LS_COMMON.len() - 1]
+            }
+
+            pub fn query(buf: &str) -> impl Iterator<Item=(&str, bool)> {
+                buf.split_whitespace().map(|word| {
+                    if word.starts_with('-') {
+                        // NOPANIC  word starts with '-', which is encoded on 1 byte in UTF-8
+                        (&word[1..], false)
+                    } else {
+                        (word, true)
+                    }
+                })
+            }
+        }
+
+        #[derive(Clone, Default)]
+        pub struct Capabilities {
+            pub v302: bool,
+            $( pub $cap_member: bool, )*
+            $( pub $specap_member: bool, )*
+        }
+
+        impl Client {
+            pub fn update_capabilities(&mut self, capabilities: &str) {
+                for (capability, enable) in cap::query(capabilities) {
+                    match capability {
+                        $( cap::$cap => self.capabilities.$cap_member = enable, )*
+                        $( cap::$specap => self.capabilities.$specap_member = enable, )*
+                        _ => {}
+                    }
+                }
+            }
+
+            pub fn write_enabled_capabilities(&self, response: &mut ReplyBuffer) {
+                let mut msg = response.reply(Command::Cap).param("LIST");
+                let trailing = msg.raw_trailing_param();
+                let len = trailing.len();
+            $(
+                if self.capabilities.$cap_member {
+                    trailing.push_str(cap::$cap);
+                    trailing.push(' ');
+                }
+            )*
+            $(
+                if self.capabilities.$specap_member {
+                    trailing.push_str(cap::$specap);
+                    trailing.push(' ');
+                }
+            )*
+                if len < trailing.len() { trailing.pop(); }
+            }
+        }
+    };
+}
+
+caps! {
+    ACCOUNT_NOTIFY    "account-notify"     account_notify
+    AWAY_NOTIFY       "away-notify"        away_notify
+    BATCH             "batch"              batch
+    CAP_NOTIFY        "cap-notify"         cap_notify
+    ECHO_MESSAGE      "echo-message"       echo_message
+    EXTENDED_JOIN     "extended-join"      extended_join
+    INVITE_NOTIFY     "invite-notify"      invite_notify
+    LABELED_RESPONSE  "labeled-response"   labeled_response
+    MESSAGE_TAGS      "message-tags"       message_tags
+    MULTI_PREFIX      "multi-prefix"       multi_prefix
+    SERVER_TIME       "server-time"        server_time
+    SETNAME           "setname"            setname
+    USERHOST_IN_NAMES "userhost-in-names"  userhost_in_names
+    |
+    SASL "sasl" sasl
 }
 
 pub const AUTHENTICATE_CHUNK_LEN: usize = 400;
 pub const AUTHENTICATE_WHOLE_LEN: usize = 1024;
 
-#[derive(Clone, Default)]
-pub struct Capabilities {
-    pub v302: bool,
-    pub account_notify: bool,
-    pub away_notify: bool,
-    pub cap_notify: bool,
-    pub echo_message: bool,
-    pub extended_join: bool,
-    pub invite_notify: bool,
-    pub message_tags: bool,
-    pub multi_prefix: bool,
-    pub sasl: bool,
-    pub server_time: bool,
-    pub setname: bool,
-    pub userhost_in_names: bool,
-}
-
 impl Capabilities {
+    pub fn has_labeled_response(&self) -> bool {
+        self.batch && self.labeled_response
+    }
+
     pub fn has_message_tags(&self) -> bool {
         self.message_tags || self.server_time
     }
@@ -303,89 +331,10 @@ impl Client {
         &self.capabilities
     }
 
-    // TODO factorize this with a macro?
-    pub fn update_capabilities(&mut self, capabilities: &str) {
-        for (capability, enable) in cap::query(capabilities) {
-            match capability {
-                cap::ACCOUNT_NOTIFY => self.capabilities.account_notify = enable,
-                cap::AWAY_NOTIFY => self.capabilities.away_notify = enable,
-                cap::CAP_NOTIFY => self.capabilities.cap_notify = enable,
-                cap::ECHO_MESSAGE => self.capabilities.echo_message = enable,
-                cap::EXTENDED_JOIN => self.capabilities.extended_join = enable,
-                cap::INVITE_NOTIFY => self.capabilities.invite_notify = enable,
-                cap::MESSAGE_TAGS => self.capabilities.message_tags = enable,
-                cap::MULTI_PREFIX => self.capabilities.multi_prefix = enable,
-                cap::SASL => self.capabilities.sasl = enable,
-                cap::SERVER_TIME => self.capabilities.server_time = enable,
-                cap::SETNAME => self.capabilities.setname = enable,
-                cap::USERHOST_IN_NAMES => self.capabilities.userhost_in_names = enable,
-                _ => {}
-            }
-        }
-    }
-
     pub fn set_cap_version(&mut self, version: &str) {
         if version == "302" {
             self.capabilities.v302 = true;
             self.capabilities.cap_notify = true;
-        }
-    }
-
-    // TODO factorize this with a macro?
-    pub fn write_enabled_capabilities(&self, response: &mut ReplyBuffer) {
-        let mut msg = response.reply(Command::Cap).param("LIST");
-        let trailing = msg.raw_trailing_param();
-        let len = trailing.len();
-        if self.capabilities.account_notify {
-            trailing.push_str(cap::ACCOUNT_NOTIFY);
-            trailing.push(' ');
-        }
-        if self.capabilities.away_notify {
-            trailing.push_str(cap::AWAY_NOTIFY);
-            trailing.push(' ');
-        }
-        if self.capabilities.cap_notify {
-            trailing.push_str(cap::CAP_NOTIFY);
-            trailing.push(' ');
-        }
-        if self.capabilities.echo_message {
-            trailing.push_str(cap::ECHO_MESSAGE);
-            trailing.push(' ');
-        }
-        if self.capabilities.extended_join {
-            trailing.push_str(cap::EXTENDED_JOIN);
-            trailing.push(' ');
-        }
-        if self.capabilities.invite_notify {
-            trailing.push_str(cap::INVITE_NOTIFY);
-            trailing.push(' ');
-        }
-        if self.capabilities.message_tags {
-            trailing.push_str(cap::MESSAGE_TAGS);
-            trailing.push(' ');
-        }
-        if self.capabilities.multi_prefix {
-            trailing.push_str(cap::MULTI_PREFIX);
-            trailing.push(' ');
-        }
-        if self.capabilities.sasl {
-            trailing.push_str(cap::SASL);
-            trailing.push(' ');
-        }
-        if self.capabilities.server_time {
-            trailing.push_str(cap::SERVER_TIME);
-            trailing.push(' ');
-        }
-        if self.capabilities.setname {
-            trailing.push_str(cap::SETNAME);
-            trailing.push(' ');
-        }
-        if self.capabilities.userhost_in_names {
-            trailing.push_str(cap::USERHOST_IN_NAMES);
-            trailing.push(' ');
-        }
-        if len < trailing.len() {
-            trailing.pop();
         }
     }
 

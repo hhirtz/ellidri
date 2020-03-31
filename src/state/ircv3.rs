@@ -28,7 +28,7 @@ impl super::StateInner {
         let mut msg = ctx.rb.reply(Command::Cap).param("LS");
         let mut trailing = msg.raw_trailing_param();
 
-        trailing.push_str(cap::LS_COMMON);
+        trailing.push_str(cap::ls_common());
         if self.auth_provider.is_available() {
             trailing.push_str(" sasl");
             if client.capabilities().v302 {
