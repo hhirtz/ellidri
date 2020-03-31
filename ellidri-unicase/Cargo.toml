@@ -9,4 +9,5 @@ repository = "https://git.sr.ht/~taiite/ellidri"
 readme = "README.md"
 license = "ISC"
 
-[dependencies]
+[package.metadata.docs.rs]
+targets = ["x86_64-unknown-linux-gnu"]
