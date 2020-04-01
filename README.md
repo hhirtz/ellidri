@@ -64,31 +64,13 @@ development and for release.  The executable is generated at
 
 ## Usage
 
-**Note:** for now this is being worked on, and the only option to run ellidri is
-with a configuration file, like so: `ellidri CONFIG_FILE`.  Type
-`ellidri --help` for help.  In the long term, ellidri will fetch certificates
-from caddy and certbot by default, since in a setup with ports 80 and 443 taken
-by a HTTP server fetching certificate is practically impossible.
-
-If you already have a domain name, the simplest way to start ellidri is by the
-command below.  ellidri will get certificates from Let's Encrypt, and listen on
-ports 6667 (plain-text) and 6697 (TLS).  It will also enable STS so that modern
-clients are redirected to the TLS-enabled port.  If you specify the `--database`
-argument, ellidri will also connect to the given database and enable SASL.
-
-```
-ellidri --domain your.domain.tld [--database sqlite:///var/lib/ellidri/example.db]
-```
-
-If you want more configuration options, you can instead write a configuration
-file, like the following:
+ellidri must be started with a configuration file, for example:
 
 ```conf
 # Configuration file
 domain  your.domain.tld
 
-# Manually bind to an address and port.  ellidri will not listen on default
-# ports like above nor generate certificates if you specify `bind_to`.
+# Bind to an address and port.
 bind_to 127.0.0.1:6667
 
 # TLS-enabled port, with a PKCS12 archive.
@@ -98,10 +80,10 @@ bind_to 0.0.0.0:7000 /var/lib/ellidri/identity.p12
 motd_file  custom_motd.txt
 ```
 
-And start ellidri with the `--conf` argument like so:
+And start ellidri with the `--config` argument like so:
 
 ```
-ellidri --conf /path/to/the.configuration.file
+ellidri --config /path/to/the.configuration.file
 ```
 
 An example configuration file with all settings and their defaults can be found
