@@ -254,7 +254,7 @@ impl<'a> Tag<'a> {
     ///
     /// If the string is already allocated and has enough space, then this function will not
     /// allocate.  It is therefore preferable to use it if you already have a `String`.  See
-    /// `Tag::unescape_into` for doc about tag escaping.
+    /// `Tag::unescape_value` for doc about tag escaping.
     pub fn unescape_value_into(&self, buf: &mut String) {
         let value = match self.value {
             Some(value) => value,
@@ -745,12 +745,15 @@ impl Drop for MessageBuffer<'_> {
     }
 }
 
+/// Helper to build the tags of an IRC message.
 pub struct TagBuffer<'a> {
     buf: &'a mut String,
     tag_start: usize,
 }
 
 impl<'a> TagBuffer<'a> {
+    /// Creates a new tag buffer.  This function is private, because it is meant to be called by
+    /// `Buffer` or `ReplyBuffer`.
     fn new(buf: &'a mut String) -> Self {
         buf.reserve(MESSAGE_LENGTH);
         let tag_start = buf.len();
@@ -761,10 +764,12 @@ impl<'a> TagBuffer<'a> {
         }
     }
 
-    fn is_empty(&self) -> bool {
+    /// Whether the buffer has tags in it or not.
+    pub fn is_empty(&self) -> bool {
         self.buf.len() == self.tag_start + 1
     }
 
+    /// Adds a new tag to the buffer, with the given `key` and `value`.
     pub fn tag<T>(self, key: &str, value: Option<T>) -> Self
         where T: fmt::Display
     {
@@ -781,6 +786,7 @@ impl<'a> TagBuffer<'a> {
         self
     }
 
+    /// Adds the tag string `s`.
     fn raw_tag(self, s: &str) -> Self {
         if !self.is_empty() {
             self.buf.push(';');
@@ -789,6 +795,9 @@ impl<'a> TagBuffer<'a> {
         self
     }
 
+    /// Writes the length of tags in `out`.
+    ///
+    /// Use this to know the start of the prefix or command.
     pub fn save_tags_len(self, out: &mut usize) -> Self {
         if self.buf.ends_with('@') {
             *out = 0;
@@ -798,6 +807,7 @@ impl<'a> TagBuffer<'a> {
         self
     }
 
+    /// Starts building a message with the given prefix and command.
     pub fn prefixed_command<C>(self, prefix: &str, cmd: C) -> MessageBuffer<'a>
         where C: Into<Command>
     {
@@ -922,39 +932,46 @@ thread_local! {
     static LABEL: RefCell<String> = RefCell::new(String::new());
 }
 
-/// An helper to build IRC replies.
+/// An helper to build responses meant for clients.
 ///
-/// IRC replies are IRC messages that have the domain of the server as prefix, and the nickname of
-/// the client as first parameter.
+/// While `Buffer` is able to build any kind of IRC message, `ReplyBuffer` allows for easy creation
+/// of IRC replies (messages that have the domain of the server as prefix, and the nickname of the
+/// client as first parameter), and easy label/batch handling.
 ///
 /// # Example
 ///
 /// ```rust
 /// # use ellidri::message::{Command, ReplyBuffer, rpl};
-/// let mut response = ReplyBuffer::new("ellidri.dev", "nickname", None);
+/// let mut response = ReplyBuffer::new("ellidri.dev", "nickname", Some("client-label"));
 ///
+/// // Start a labeled-response batch.
+/// response.start_lr_batch();
+///
+/// // Normal message, same API as `Buffer`.
 /// response.message("nick!user@127.0.0.1", Command::Topic)
 ///     .param("#hall")
 ///     .trailing_param("Welcome to new users!");
+///
+/// // A reply.  It adds ":ellidri.dev" and "nickname" automatically.
 /// response.reply(rpl::TOPIC)
 ///     .param("#hall")
 ///     .trailing_param("Welcome to new users!");
 ///
+/// // End the labeled-response.
+/// response.end_lr();
+///
 /// let result = response.build();
-/// assert_eq!(&result, ":nick!user@127.0.0.1 TOPIC #hall :Welcome to new users!\r\n\
-/// :ellidri.dev 332 nickname #hall :Welcome to new users!\r\n");
+/// assert_eq!(&result, "@label=client-label :ellidri.dev BATCH +0 labeled-response\r\n
+/// @batch=0 :nick!user@127.0.0.1 TOPIC #hall :Welcome to new users!\r\n\
+/// @batch=0 :ellidri.dev 332 nickname #hall :Welcome to new users!\r\n
+/// :ellidri.dev BATCH -0");
 /// ```
-///
-/// # On allocation
-///
-/// Allocation only occurs on `ReplyBuffer::reply` and `ReplyBuffer::message` calls.  These
-/// functions reseve `MESSAGE_LENGTH` prior to writing on the internal buffer.
 ///
 /// # Usage note
 ///
-/// This buffer uses thread-local storage to store the domain and the nickname, to reduce the
-/// number of allocations.  Therefore, the user must not make two `ReplyBuffer`s at the same time,
-/// otherwise nicknames and domains will be mixed.
+/// This buffer uses thread-local storage to store the domain, the nickname and the label, to
+/// reduce the number of allocations.  Therefore, the user must not make two `ReplyBuffer`s at the
+/// same time, otherwise nicknames, domains and labels will be mixed.
 pub struct ReplyBuffer {
     buf: Buffer,
     batch: Option<u8>,
@@ -962,8 +979,8 @@ pub struct ReplyBuffer {
 }
 
 impl ReplyBuffer {
-    /// Creates a new `ReplyBuffer` and initialize the thread-local storage with the given domain
-    /// and nickname.
+    /// Creates a new `ReplyBuffer` and initialize the thread-local storage with the given domain,
+    /// nickname and label.
     pub fn new(domain: &str, nickname: &str, label: Option<&str>) -> Self {
         DOMAIN.with(|s| {
             let mut s = s.borrow_mut();
@@ -1004,6 +1021,9 @@ impl ReplyBuffer {
         self.buf.is_empty()
     }
 
+    /// Changes the nickname.
+    ///
+    /// Internally, it changes the thread-local storage associated with the nickname.
     pub fn set_nick(&mut self, nickname: &str) {
         NICKNAME.with(|n| {
             let mut n = n.borrow_mut();
@@ -1012,6 +1032,7 @@ impl ReplyBuffer {
         });
     }
 
+    /// Starts a batch with the given name.
     pub fn start_batch(&mut self, name: &str) {
         use fmt::Write;
 
@@ -1021,6 +1042,7 @@ impl ReplyBuffer {
         msg.param(name);
     }
 
+    /// Ends the inner-most batch.
     pub fn end_batch(&mut self) {
         use fmt::Write;
 
@@ -1031,6 +1053,7 @@ impl ReplyBuffer {
         let _ = write!(msg.raw_param(), "-{}", old_batch);
     }
 
+    /// Starts a labeled-response batch.
     pub fn start_lr_batch(&mut self) {
         use fmt::Write;
 
@@ -1051,6 +1074,9 @@ impl ReplyBuffer {
         }));
     }
 
+    /// Ends the labeled-response.
+    ///
+    /// If the buffer is empty, appends an ACK message.
     pub fn end_lr(&mut self) {
         if !self.has_label && self.batch.is_none() {
             return;
@@ -1092,6 +1118,9 @@ impl ReplyBuffer {
         NICKNAME.with(|s| msg.param(&s.borrow()))
     }
 
+    /// Appends a command to the buffer, with the domain prefix, but without the nickname parameter.
+    ///
+    /// This function adds the `@label` tag if necessary.
     pub fn prefixed_message<C>(&mut self, command: C) -> MessageBuffer<'_>
         where C: Into<Command>
     {
@@ -1100,7 +1129,8 @@ impl ReplyBuffer {
 
     /// Appends a prefixed message like you would do with a `Buffer`.
     ///
-    /// This function may allocate to reserve space for the message.
+    /// If the given `prefix` is empty, no prefix is added.  This function adds the `@label` tag if
+    /// necessary, and may allocate to reserve space for the message.
     ///
     /// # Example
     ///
@@ -1109,8 +1139,9 @@ impl ReplyBuffer {
     /// let mut response = ReplyBuffer::new("ellidri.dev", "ser", None);
     ///
     /// response.message("unneeded_prefix", Command::Admin);
+    /// response.message("", Command::Info);
     ///
-    /// assert_eq!(&response.build(), ":unneeded_prefix ADMIN\r\n");
+    /// assert_eq!(&response.build(), ":unneeded_prefix ADMIN\r\nINFO\r\n");
     /// ```
     pub fn message<C>(&mut self, prefix: &str, command: C) -> MessageBuffer<'_>
         where C: Into<Command>
@@ -1118,6 +1149,10 @@ impl ReplyBuffer {
         self.tagged_message("").prefixed_command(prefix, command)
     }
 
+    /// Starts building a tagged message.
+    ///
+    /// This function behaves like `Buffer::tagged_message`.  Neither the domain nor the prefix
+    /// will be added.  However it still adds the `@label` tag if necessary.
     pub fn tagged_message(&mut self, tags: &str) -> TagBuffer<'_> {
         if self.has_label {
             self.has_label = false;
@@ -1138,6 +1173,8 @@ impl ReplyBuffer {
         self.buf.build()
     }
 
+    /// Private function that sets up the internal state for a new batch, and returns the
+    /// identitifier of this new batch.
     fn new_batch(&mut self) -> u8 {
         let new_batch = self.batch.map_or(0, |old_batch| old_batch + 1);
         self.batch = Some(new_batch);

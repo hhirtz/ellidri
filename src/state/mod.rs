@@ -115,14 +115,18 @@ impl State {
         Self(Arc::new(Mutex::new(inner)))
     }
 
+    /// Returns the timeout for registration, in milliseconds.
     pub async fn login_timeout(&self) -> u64 {
         self.0.lock().await.login_timeout
     }
 
     /// Adds a new connection to the state.
     ///
-    /// Each connection is identified by its address.  The queue is used to push messages back to
-    /// the peer.
+    /// The given `addr`ess is used to build the client's host, and the given `queue` is used to
+    /// push messages back to the client.
+    ///
+    /// Each connection is identified by an integer.  This function returns the identifier for this
+    /// connection, which must be used to handle messages from this client.
     pub async fn peer_joined(&self, addr: net::SocketAddr, queue: MessageQueue) -> usize {
         self.0.lock().await.peer_joined(addr, queue)
     }
@@ -146,18 +150,6 @@ impl State {
         self.0.lock().await.remove_if_unregistered(id);
     }
 }
-
-// TODO mv StateInner State
-// et mettre des Mutex aux bons endroits
-//
-// - 1 RwLock sur tout org_*
-// - 1 Mutex sur (clients, channels)
-// - 1 RwLock sur motd
-// - 1 RwLock sur password
-// - 1 RwLock sur default_chan_mode
-// - 1 RwLock sur opers
-//
-// NOPE pck cc faut les clients pour envoyer des trucs, du coup ça sert à rien
 
 /// The actual shared data (state) of the IRC server.
 pub(crate) struct StateInner {
@@ -198,6 +190,7 @@ pub(crate) struct StateInner {
     /// A list of (name, password) that are valid OPER parameters.
     opers: Vec<(String, String)>,
 
+    /// Limits in number of characters for user input.
     awaylen: usize,
     channellen: usize,
     kicklen: usize,
@@ -206,8 +199,10 @@ pub(crate) struct StateInner {
     topiclen: usize,
     userlen: usize,
 
+    /// Registration timeout, in milliseconds.
     login_timeout: u64,
 
+    /// SASL backend.
     auth_provider: Box<dyn auth::Provider>,
 }
 
