@@ -293,7 +293,7 @@ impl StateInner {
             None => return Err(()),
         };
         let label = if client.capabilities().has_labeled_response() {
-            tags(msg.tags).find(|tag| tag.key == "label").map(|tag| tag.value).flatten()
+            tags(msg.tags).find(|tag| tag.key == "label").and_then(|tag| tag.value)
         } else {
             None
         };
