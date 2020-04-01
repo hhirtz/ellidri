@@ -961,9 +961,9 @@ thread_local! {
 /// response.end_lr();
 ///
 /// let result = response.build();
-/// assert_eq!(&result, "@label=client-label :ellidri.dev BATCH +0 labeled-response\r\n
+/// assert_eq!(&result, "@label=client-label :ellidri.dev BATCH +0 labeled-response\r\n\
 /// @batch=0 :nick!user@127.0.0.1 TOPIC #hall :Welcome to new users!\r\n\
-/// @batch=0 :ellidri.dev 332 nickname #hall :Welcome to new users!\r\n
+/// @batch=0 :ellidri.dev 332 nickname #hall :Welcome to new users!\r\n\
 /// :ellidri.dev BATCH -0");
 /// ```
 ///
