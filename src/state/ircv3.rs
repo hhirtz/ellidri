@@ -2,7 +2,7 @@
 
 use crate::{auth, lines};
 use crate::client::cap;
-use crate::message::{Buffer, Command, rpl};
+use ellidri_tokens::{Buffer, Command, rpl};
 use super::{CommandContext, HandlerResult as Result};
 
 /// Handlers for commands related to the message-tags specification.

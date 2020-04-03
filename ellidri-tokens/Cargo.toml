@@ -1,0 +1,15 @@
+[package]
+name = "ellidri-tokens"
+version = "0.1.0"
+authors = ["Hubert Hirtz <hubert.hirtz@laposte.net>"]
+edition = "2018"
+description = "Parse IRC like a boss"
+homepage = "https://git.sr.ht/~taiite/ellidri"
+repository = "https://git.sr.ht/~taiite/ellidri"
+readme = "README.md"
+keywords = ["irc"]
+categories = ["network-programming"]
+license = "ISC"
+
+[package.metadata.docs.rs]
+targets = ["x86_64-unknown-linux-gnu"]

@@ -1,5 +1,5 @@
 [workspace]
-members = [".", "ellidri-unicase"]
+members = [".", "ellidri-tokens", "ellidri-unicase"]
 
 
 [package]
@@ -43,6 +43,9 @@ tokio-tls = { version = "0.3", default-features = false }
 # Case-insensitive HashMap.
 # Separated from the main crate because it contains unsafe code.
 ellidri-unicase = { version = "2.0.0", path = "ellidri-unicase" }
+
+# IRC parsing
+ellidri-tokens = { version = "0.1.0", path = "ellidri-tokens" }
 
 # Logging and CLI
 clap = { version = "2.33", default-features = false }

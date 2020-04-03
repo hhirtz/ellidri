@@ -1,4 +1,4 @@
-use crate::message::MessageBuffer;
+use ellidri_tokens::MessageBuffer;
 use std::fmt::Write;
 
 // Network messages

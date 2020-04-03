@@ -140,7 +140,7 @@ impl str::FromStr for ModeString {
     type Err = ();
 
     fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
-        if crate::modes::is_channel_mode_string(s) {
+        if ellidri_tokens::mode::is_channel_mode_string(s) {
             Ok(ModeString(s.to_owned()))
         } else {
             Err(())

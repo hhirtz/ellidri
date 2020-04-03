@@ -1,23 +1,36 @@
+# kawaii
+
 [![builds.sr.ht status](https://builds.sr.ht/~taiite/ellidri.svg)](https://builds.sr.ht/~taiite/ellidri?)
 [![crates.io](https://img.shields.io/crates/v/ellidri.svg)](https://crates.io/crates/ellidri)
 
-# kawaii
+This repository contains some crates that may be helpful to the IRC smith of the
+21st century!  They were built around ellidri, a modern [IRC server][ircd] (or
+IRCd, for short).  You will especially find:
 
-ellidri is an [IRC server][ircd] (or IRCd, for short), that aims to be simple to
-setup, widely compatible, feature complete and scalable.
+- an IRC parsing library, ellidri-tokens, which provides tools to correctly and
+  efficiently parse IRC messages and mode strings,
+- ellidri-unicase, providing a wrapper around strings to make them
+  case-insensitive regarding IRC's different case mappings,
+- an IRC server, ellidri, that aims to be simple to setup, widely compatible,
+  feature complete and scalable.
 
-Join the IRC channel: [#ellidri on freenode][irc]!
+To discuss about ellidri and cie, join the IRC channel: [#ellidri on
+freenode][irc]!  There is also a test server running at [ellidri.org][org], if
+you want to try it out!
+
+The rest of this document is about ellidri, the IRC server.  All other projects
+have their own `README.md`.
 
 [ircd]: https://en.wikipedia.org/wiki/IRCd
 [v3]: https://ircv3.net/
 [irc]: https://webchat.freenode.net/#ellidri
+[org]: https://ellidri.org/
 
 
 ## Features
 
 - RFC [1459][r1] and [2812][r2] compliance (almost! see [#1][i1])
 - IRCv3 support
-- TODO: Secure and production-ready setup with TLS out-of-the-box
 - Configurable via a file
 - SASL support with SQLite and PostgreSQL
 - kawaii messages

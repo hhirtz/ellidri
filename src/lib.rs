@@ -28,8 +28,6 @@ mod channel;
 mod client;
 pub mod config;
 mod lines;
-pub mod message;
-pub mod modes;
 mod net;
 mod state;
 mod util;

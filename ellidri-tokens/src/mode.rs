@@ -1,6 +1,6 @@
 //! Mode parsing and validation
 
-use std::borrow::Borrow;
+use std::str;
 
 /// User modes supported by ellidri.  Advertised in welcome messages.
 pub const USER_MODES: &str = "aiorsw";
@@ -18,36 +18,33 @@ pub const CHANMODES: &str = "CHANMODES=beI,k,l,imnst";
 
 /// Iterator over the modes of a string.
 struct SimpleQuery<'a> {
-    modes: &'a [u8],
+    modes: str::Chars<'a>,
     value: bool,
 }
 
 impl<'a> SimpleQuery<'a> {
     pub fn new(modes: &'a str) -> Self {
         Self {
-            modes: modes.as_bytes(),
+            modes: modes.chars(),
             value: true,
         }
     }
 }
 
 impl Iterator for SimpleQuery<'_> {
-    type Item = (bool, u8);
+    type Item = (bool, char);
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {
-            let (&c, rest) = if let Some(it) = self.modes.split_first() {
-                it
+            let c = if let Some(c) = self.modes.next() {
+                c
             } else {
                 return None;
             };
-            self.modes = rest;
             match c {
-                b'+' => { self.value = true; },
-                b'-' => { self.value = false; },
-                c => {
-                    return Some((self.value, c));
-                },
+                '+' => { self.value = true; },
+                '-' => { self.value = false; },
+                c => { return Some((self.value, c)); },
             }
         }
     }
@@ -57,13 +54,13 @@ impl Iterator for SimpleQuery<'_> {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Error {
     /// One of the modes in the query is unknown.
-    UnknownMode(char),
+    Unknown(char, bool),
 
     /// A mode is missing its required parameter.
-    MissingModeParam,
+    MissingParam(char, bool),
 
     /// This mode is supported by ellidri, but cannot be changed with the MODE command.
-    UnchangeableMode
+    Unchangeable(char, bool),
 }
 
 /// Alias to std's Result using this module's Error.
@@ -71,12 +68,12 @@ pub type Result<T> = std::result::Result<T, Error>;
 
 /// Item of a user mode query.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum UserModeChange {
+pub enum UserChange {
     Invisible(bool),
     DeOperator,
 }
 
-impl UserModeChange {
+impl UserChange {
     /// Whether this change is enabling or disabling a mode.
     pub fn value(self) -> bool {
         match self {
@@ -99,31 +96,30 @@ impl UserModeChange {
 /// # Example
 ///
 /// ```rust
-/// # use ellidri::modes;
-/// # use ellidri::modes::{Error, UserModeChange};
-/// let mut query = modes::user_query("+io-oXa");
+/// # use ellidri_tokens::mode::{self, Error, UserChange};
+/// let mut query = mode::user_query("+io-oXa");
 ///
-/// assert_eq!(query.next(), Some(Ok(UserModeChange::Invisible(true))));
-/// assert_eq!(query.next(), Some(Err(Error::UnchangeableMode)));
-/// assert_eq!(query.next(), Some(Ok(UserModeChange::DeOperator)));
-/// assert_eq!(query.next(), Some(Err(Error::UnknownMode('X'))));
-/// assert_eq!(query.next(), Some(Err(Error::UnchangeableMode)));
+/// assert_eq!(query.next(), Some(Ok(UserChange::Invisible(true))));
+/// assert_eq!(query.next(), Some(Err(Error::Unchangeable('o', true))));
+/// assert_eq!(query.next(), Some(Ok(UserChange::DeOperator)));
+/// assert_eq!(query.next(), Some(Err(Error::Unknown('X', false))));
+/// assert_eq!(query.next(), Some(Err(Error::Unchangeable('a', false))));
 /// assert_eq!(query.next(), None);
 /// ```
-pub fn user_query(modes: &str) -> impl Iterator<Item=Result<UserModeChange>> + '_ {
+pub fn user_query(modes: &str) -> impl Iterator<Item=Result<UserChange>> + '_ {
     SimpleQuery::new(modes).map(|(value, mode)| {
         match mode {
-            b'i' => Ok(UserModeChange::Invisible(value)),
-            b'o' if !value => Ok(UserModeChange::DeOperator),
-            other if USER_MODES.contains(other as char) => Err(Error::UnchangeableMode),
-            other => Err(Error::UnknownMode(other as char)),
+            'i' => Ok(UserChange::Invisible(value)),
+            'o' if !value => Ok(UserChange::DeOperator),
+            other if USER_MODES.contains(other) => Err(Error::Unchangeable(other, value)),
+            other => Err(Error::Unknown(other, value)),
         }
     })
 }
 
 /// Item of a channel mode query.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum ChannelModeChange<'a> {
+pub enum ChannelChange<'a> {
     InviteOnly(bool),
     Moderated(bool),
     NoPrivMsgFromOutside(bool),
@@ -142,10 +138,10 @@ pub enum ChannelModeChange<'a> {
     ChangeVoice(bool, &'a str),
 }
 
-impl ChannelModeChange<'_> {
+impl ChannelChange<'_> {
     /// Whether this change is enabling or disabling a mode.
     pub fn value(&self) -> bool {
-        use ChannelModeChange::*;
+        use ChannelChange::*;
         match self {
             InviteOnly(v) |
             Moderated(v) |
@@ -166,7 +162,7 @@ impl ChannelModeChange<'_> {
 
     /// The letter of this mode change.
     pub fn symbol(&self) -> char {
-        use ChannelModeChange::*;
+        use ChannelChange::*;
         match self {
             InviteOnly(_) => 'i',
             Moderated(_) => 'm',
@@ -186,7 +182,7 @@ impl ChannelModeChange<'_> {
 
     /// The parameter of this mode change.
     pub fn param(&self) -> Option<&str> {
-        use ChannelModeChange::*;
+        use ChannelChange::*;
         match self {
             Key(_, p) | ChangeBan(_, p) | ChangeException(_, p) | ChangeInvitation(_, p)
                 | ChangeOperator(_, p) | ChangeHalfop(_, p) | ChangeVoice(_, p) => Some(p),
@@ -201,86 +197,86 @@ impl ChannelModeChange<'_> {
 /// # Example
 ///
 /// ```rust
-/// # use ellidri::modes;
-/// # use ellidri::modes::{ChannelModeChange, Error};
-/// let mut query = modes::channel_query("-olX+kmv", &["admin", "secret_key"]);
+/// # use ellidri_tokens::mode::{self, Error, ChannelChange};
+/// let mut query = mode::channel_query("-olX+kmv", &["admin", "secret_key"]);
 ///
-/// assert_eq!(query.next(), Some(Ok(ChannelModeChange::ChangeOperator(false, "admin"))));
-/// assert_eq!(query.next(), Some(Ok(ChannelModeChange::UserLimit(None))));
-/// assert_eq!(query.next(), Some(Err(Error::UnknownMode('X'))));
-/// assert_eq!(query.next(), Some(Ok(ChannelModeChange::Key(true, "secret_key"))));
-/// assert_eq!(query.next(), Some(Ok(ChannelModeChange::Moderated(true))));
-/// assert_eq!(query.next(), Some(Err(Error::MissingModeParam)));
+/// assert_eq!(query.next(), Some(Ok(ChannelChange::ChangeOperator(false, "admin"))));
+/// assert_eq!(query.next(), Some(Ok(ChannelChange::UserLimit(None))));
+/// assert_eq!(query.next(), Some(Err(Error::Unknown('X', false))));
+/// assert_eq!(query.next(), Some(Ok(ChannelChange::Key(true, "secret_key"))));
+/// assert_eq!(query.next(), Some(Ok(ChannelChange::Moderated(true))));
+/// assert_eq!(query.next(), Some(Err(Error::MissingParam('v', true))));
 /// assert_eq!(query.next(), None);
 /// ```
 pub fn channel_query<'a, I, S>(modes: &'a str, params: I)
-    -> impl Iterator<Item=Result<ChannelModeChange<'a>>>
+    -> impl Iterator<Item=Result<ChannelChange<'a>>>
 where
     I: IntoIterator<Item=&'a S> + 'a,
-    S: Borrow<str> + 'a,
+    S: AsRef<str> + 'a,
 {
-    let mut params = params.into_iter().map(|p| p.borrow()).filter(|p| !p.is_empty());
+    let mut params = params.into_iter().map(|p| p.as_ref()).filter(|p| !p.is_empty());
     SimpleQuery::new(modes).map(move |(value, mode)| {
+        use ChannelChange::*;
         match mode {
-            b'i' => Ok(ChannelModeChange::InviteOnly(value)),
-            b'm' => Ok(ChannelModeChange::Moderated(value)),
-            b'n' => Ok(ChannelModeChange::NoPrivMsgFromOutside(value)),
-            b's' => Ok(ChannelModeChange::Secret(value)),
-            b't' => Ok(ChannelModeChange::TopicRestricted(value)),
-            b'k' => if let Some(param) = params.next() {
-                Ok(ChannelModeChange::Key(value, param))
+            'i' => Ok(InviteOnly(value)),
+            'm' => Ok(Moderated(value)),
+            'n' => Ok(NoPrivMsgFromOutside(value)),
+            's' => Ok(Secret(value)),
+            't' => Ok(TopicRestricted(value)),
+            'k' => if let Some(param) = params.next() {
+                Ok(Key(value, param))
             } else if !value {
                 // Accept "MODE -k" since freenode does it this way
-                Ok(ChannelModeChange::Key(false, "*"))
+                Ok(Key(false, "*"))
             } else {
-                Err(Error::MissingModeParam)
+                Err(Error::MissingParam('k', value))
             },
-            b'l' => if value {
+            'l' => if value {
                 if let Some(param) = params.next() {
-                    Ok(ChannelModeChange::UserLimit(Some(param)))
+                    Ok(UserLimit(Some(param)))
                 } else {
-                    Err(Error::MissingModeParam)
+                    Err(Error::MissingParam('l', value))
                 }
             } else {
-                Ok(ChannelModeChange::UserLimit(None))
+                Ok(UserLimit(None))
             },
-            b'b' => if let Some(param) = params.next() {
-                Ok(ChannelModeChange::ChangeBan(value, param))
+            'b' => if let Some(param) = params.next() {
+                Ok(ChangeBan(value, param))
             } else {
-                Ok(ChannelModeChange::GetBans)
+                Ok(GetBans)
             },
-            b'e' => if let Some(param) = params.next() {
-                Ok(ChannelModeChange::ChangeException(value, param))
+            'e' => if let Some(param) = params.next() {
+                Ok(ChangeException(value, param))
             } else {
-                Ok(ChannelModeChange::GetExceptions)
+                Ok(GetExceptions)
             },
-            b'I' => if let Some(param) = params.next() {
-                Ok(ChannelModeChange::ChangeInvitation(value, param))
+            'I' => if let Some(param) = params.next() {
+                Ok(ChangeInvitation(value, param))
             } else {
-                Ok(ChannelModeChange::GetInvitations)
+                Ok(GetInvitations)
             },
-            b'o' => if let Some(param) = params.next() {
-                Ok(ChannelModeChange::ChangeOperator(value, param))
+            'o' => if let Some(param) = params.next() {
+                Ok(ChangeOperator(value, param))
             } else {
-                Err(Error::MissingModeParam)
+                Err(Error::MissingParam('o', value))
             },
-            b'h' => if let Some(param) = params.next() {
-                Ok(ChannelModeChange::ChangeHalfop(value, param))
+            'h' => if let Some(param) = params.next() {
+                Ok(ChangeHalfop(value, param))
             } else {
-                Err(Error::MissingModeParam)
+                Err(Error::MissingParam('h', value))
             },
-            b'v' => if let Some(param) = params.next() {
-                Ok(ChannelModeChange::ChangeVoice(value, param))
+            'v' => if let Some(param) = params.next() {
+                Ok(ChangeVoice(value, param))
             } else {
-                Err(Error::MissingModeParam)
+                Err(Error::MissingParam('v', value))
             },
-            other => Err(Error::UnknownMode(other as char)),
+            other => Err(Error::Unknown(other, value)),
         }
     })
 }
 
 /// Same as `channel_query`, but with no mode parameters.
-pub fn simple_channel_query(modes: &str) -> impl Iterator<Item=Result<ChannelModeChange<'_>>> {
+pub fn simple_channel_query(modes: &str) -> impl Iterator<Item=Result<ChannelChange<'_>>> {
     channel_query::<_, String>(modes, &[])
 }
 
@@ -291,9 +287,9 @@ pub fn simple_channel_query(modes: &str) -> impl Iterator<Item=Result<ChannelMod
 /// # Example
 ///
 /// ```rust
-/// # use ellidri::modes;
-/// assert!(modes::is_channel_mode_string("+nt"));
-/// assert!(!modes::is_channel_mode_string("+X"));
+/// # use ellidri_tokens::mode;
+/// assert!(mode::is_channel_mode_string("+nt"));
+/// assert!(!mode::is_channel_mode_string("+X"));
 /// ```
 pub fn is_channel_mode_string(s: &str) -> bool {
     simple_channel_query(s).all(|r| r.is_ok())
@@ -307,25 +303,25 @@ mod tests {
     #[test]
     fn test_simple_query() {
         let mut q = SimpleQuery::new("+ab+C++D+-+E--fg+-h");
-        assert_eq!(q.next(), Some((true, b'a')));
-        assert_eq!(q.next(), Some((true, b'b')));
-        assert_eq!(q.next(), Some((true, b'C')));
-        assert_eq!(q.next(), Some((true, b'D')));
-        assert_eq!(q.next(), Some((true, b'E')));
-        assert_eq!(q.next(), Some((false, b'f')));
-        assert_eq!(q.next(), Some((false, b'g')));
-        assert_eq!(q.next(), Some((false, b'h')));
+        assert_eq!(q.next(), Some((true, 'a')));
+        assert_eq!(q.next(), Some((true, 'b')));
+        assert_eq!(q.next(), Some((true, 'C')));
+        assert_eq!(q.next(), Some((true, 'D')));
+        assert_eq!(q.next(), Some((true, 'E')));
+        assert_eq!(q.next(), Some((false, 'f')));
+        assert_eq!(q.next(), Some((false, 'g')));
+        assert_eq!(q.next(), Some((false, 'h')));
         assert_eq!(q.next(), None);
 
         let mut q = SimpleQuery::new("a");
-        assert_eq!(q.next(), Some((true, b'a')));
+        assert_eq!(q.next(), Some((true, 'a')));
         assert_eq!(q.next(), None);
 
         let mut q = SimpleQuery::new("");
         assert_eq!(q.next(), None);
 
         let mut q = SimpleQuery::new(" ");
-        assert_eq!(q.next(), Some((true, b' ')));
+        assert_eq!(q.next(), Some((true, ' ')));
         assert_eq!(q.next(), None);
     }
 
@@ -333,59 +329,59 @@ mod tests {
     #[test]
     fn test_chanmode_key() {
         let mut q = channel_query::<_, String>("+k", &[]);
-        assert_eq!(q.next(), Some(Err(Error::MissingModeParam)));
+        assert_eq!(q.next(), Some(Err(Error::MissingParam('k', true))));
         assert_eq!(q.next(), None);
 
         let mut q = channel_query("+k", &["beer"]);
-        assert_eq!(q.next(), Some(Ok(ChannelModeChange::Key(true, "beer"))));
+        assert_eq!(q.next(), Some(Ok(ChannelChange::Key(true, "beer"))));
         assert_eq!(q.next(), None);
 
         let mut q = channel_query::<_, String>("-k", &[]);
-        assert_eq!(q.next(), Some(Ok(ChannelModeChange::Key(false, "*"))));
+        assert_eq!(q.next(), Some(Ok(ChannelChange::Key(false, "*"))));
         assert_eq!(q.next(), None);
 
         let mut q = channel_query("-k", &["beer"]);
-        assert_eq!(q.next(), Some(Ok(ChannelModeChange::Key(false, "beer"))));
+        assert_eq!(q.next(), Some(Ok(ChannelChange::Key(false, "beer"))));
         assert_eq!(q.next(), None);
 
         let mut q = channel_query("+kb", &["beer"]);
-        assert_eq!(q.next(), Some(Ok(ChannelModeChange::Key(true, "beer"))));
-        assert_eq!(q.next(), Some(Ok(ChannelModeChange::GetBans)));
+        assert_eq!(q.next(), Some(Ok(ChannelChange::Key(true, "beer"))));
+        assert_eq!(q.next(), Some(Ok(ChannelChange::GetBans)));
         assert_eq!(q.next(), None);
 
         let mut q = channel_query("-kb", &["beer"]);
-        assert_eq!(q.next(), Some(Ok(ChannelModeChange::Key(false, "beer"))));
-        assert_eq!(q.next(), Some(Ok(ChannelModeChange::GetBans)));
+        assert_eq!(q.next(), Some(Ok(ChannelChange::Key(false, "beer"))));
+        assert_eq!(q.next(), Some(Ok(ChannelChange::GetBans)));
         assert_eq!(q.next(), None);
 
         let mut q = channel_query("+bk", &["beer"]);
-        assert_eq!(q.next(), Some(Ok(ChannelModeChange::ChangeBan(true, "beer"))));
-        assert_eq!(q.next(), Some(Err(Error::MissingModeParam)));
+        assert_eq!(q.next(), Some(Ok(ChannelChange::ChangeBan(true, "beer"))));
+        assert_eq!(q.next(), Some(Err(Error::MissingParam('k', true))));
         assert_eq!(q.next(), None);
 
         let mut q = channel_query("-bk", &["beer"]);
-        assert_eq!(q.next(), Some(Ok(ChannelModeChange::ChangeBan(false, "beer"))));
-        assert_eq!(q.next(), Some(Ok(ChannelModeChange::Key(false, "*"))));
+        assert_eq!(q.next(), Some(Ok(ChannelChange::ChangeBan(false, "beer"))));
+        assert_eq!(q.next(), Some(Ok(ChannelChange::Key(false, "*"))));
         assert_eq!(q.next(), None);
 
         let mut q = channel_query("+kb", &["beer", "wine"]);
-        assert_eq!(q.next(), Some(Ok(ChannelModeChange::Key(true, "beer"))));
-        assert_eq!(q.next(), Some(Ok(ChannelModeChange::ChangeBan(true, "wine"))));
+        assert_eq!(q.next(), Some(Ok(ChannelChange::Key(true, "beer"))));
+        assert_eq!(q.next(), Some(Ok(ChannelChange::ChangeBan(true, "wine"))));
         assert_eq!(q.next(), None);
 
         let mut q = channel_query("-kb", &["beer", "wine"]);
-        assert_eq!(q.next(), Some(Ok(ChannelModeChange::Key(false, "beer"))));
-        assert_eq!(q.next(), Some(Ok(ChannelModeChange::ChangeBan(false, "wine"))));
+        assert_eq!(q.next(), Some(Ok(ChannelChange::Key(false, "beer"))));
+        assert_eq!(q.next(), Some(Ok(ChannelChange::ChangeBan(false, "wine"))));
         assert_eq!(q.next(), None);
 
         let mut q = channel_query("+bk", &["beer", "wine"]);
-        assert_eq!(q.next(), Some(Ok(ChannelModeChange::ChangeBan(true, "beer"))));
-        assert_eq!(q.next(), Some(Ok(ChannelModeChange::Key(true, "wine"))));
+        assert_eq!(q.next(), Some(Ok(ChannelChange::ChangeBan(true, "beer"))));
+        assert_eq!(q.next(), Some(Ok(ChannelChange::Key(true, "wine"))));
         assert_eq!(q.next(), None);
 
         let mut q = channel_query("-bk", &["beer", "wine"]);
-        assert_eq!(q.next(), Some(Ok(ChannelModeChange::ChangeBan(false, "beer"))));
-        assert_eq!(q.next(), Some(Ok(ChannelModeChange::Key(false, "wine"))));
+        assert_eq!(q.next(), Some(Ok(ChannelChange::ChangeBan(false, "beer"))));
+        assert_eq!(q.next(), Some(Ok(ChannelChange::Key(false, "wine"))));
         assert_eq!(q.next(), None);
     }
 }  // mod tests

@@ -8,10 +8,10 @@
 
 #![allow(clippy::needless_pass_by_value)]
 
-use crate::{auth, config, lines, modes, util};
+use crate::{auth, config, lines, util};
 use crate::channel::Channel;
 use crate::client::{Client, MessageQueue, MessageQueueItem};
-use crate::message::{Buffer, Command, Message, ReplyBuffer, rpl, tags};
+use ellidri_tokens::{Buffer, Command, Message, mode, ReplyBuffer, rpl, tags};
 use ellidri_unicase::{u, UniCase};
 use slab::Slab;
 use std::{cmp, fs, io, net};
@@ -589,7 +589,7 @@ impl StateInner {
             .param("CASEMAPPING=ascii")
             .param("CHANLIMIT=#:,&:")
             .param("CHANTYPES=#&")
-            .param(modes::CHANMODES)
+            .param(mode::CHANMODES)
             .param("EXCEPTS")
             .param("HOSTLEN=39")  // max size of an IPv6 address
             .param("INVEX")
@@ -704,9 +704,9 @@ impl StateInner {
         rb.reply(rpl::MYINFO)
             .param(&self.domain)
             .param(server_version!())
-            .param(modes::USER_MODES)
-            .param(modes::SIMPLE_CHAN_MODES)
-            .param(modes::EXTENDED_CHAN_MODES);
+            .param(mode::USER_MODES)
+            .param(mode::SIMPLE_CHAN_MODES)
+            .param(mode::EXTENDED_CHAN_MODES);
         self.write_i_support(rb);
         self.write_lusers(rb);
         self.write_motd(rb);

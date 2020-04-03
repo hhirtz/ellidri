@@ -1,6 +1,5 @@
-use crate::lines;
-use crate::message::Message;
-use crate::state::State;
+use crate::{lines, State};
+use ellidri_tokens::Message;
 use futures::future;
 use std::{fs, path, process, str};
 use std::collections::HashMap;

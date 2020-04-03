@@ -6,7 +6,7 @@
 
 use crate::client::AUTHENTICATE_CHUNK_LEN;
 use crate::config::{db, SaslBackend};
-use crate::message::{Command, ReplyBuffer};
+use ellidri_tokens::{Command, ReplyBuffer};
 use std::str;
 
 /// Provider errors, used by the `Provider` trait.

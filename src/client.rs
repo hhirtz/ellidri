@@ -1,8 +1,7 @@
 //! Client data, connection state and capability logic.
 
-use crate::message::{Buffer, Command, MessageBuffer, ReplyBuffer};
-use crate::modes;
-use crate::util::time;
+use crate::util;
+use ellidri_tokens::{Buffer, Command, MessageBuffer, mode, ReplyBuffer};
 use std::sync::Arc;
 use tokio::sync::mpsc;
 
@@ -299,7 +298,7 @@ impl Client {
     /// The nickname is set to "*", as it seems it's what freenode server does.  The username and
     /// the realname are set to empty strings.
     pub fn new(queue: MessageQueue, host: String) -> Self {
-        let now = time();
+        let now = util::time();
         Self {
             queue,
             full_name: String::with_capacity(FULL_NAME_LENGTH),
@@ -490,11 +489,11 @@ impl Client {
     }
 
     pub fn idle_time(&self) -> u64 {
-        time() - self.last_action_time
+        util::time() - self.last_action_time
     }
 
     pub fn update_idle_time(&mut self) {
-        self.last_action_time = time();
+        self.last_action_time = util::time();
     }
 
     pub fn away_message(&self) -> Option<&str> {
@@ -509,8 +508,8 @@ impl Client {
         if self.operator { modes.push('o'); }
     }
 
-    pub fn apply_mode_change(&mut self, change: modes::UserModeChange) -> bool {
-        use modes::UserModeChange::*;
+    pub fn apply_mode_change(&mut self, change: mode::UserChange) -> bool {
+        use mode::UserChange::*;
         let applied;
         match change {
             Invisible(value) => {

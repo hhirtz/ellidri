@@ -4,8 +4,8 @@
 
 use crate::channel::Channel;
 use crate::client::{Client, MessageQueueItem};
-use crate::{lines, modes, util};
-use crate::message::{Buffer, Command, ReplyBuffer, rpl};
+use crate::{lines, util};
+use ellidri_tokens::{Buffer, Command, mode, ReplyBuffer, rpl};
 use ellidri_unicase::{u, UniCase};
 use std::iter;
 use super::{CommandContext, HandlerResult as Result, find_channel, find_member, find_nick};
@@ -218,7 +218,7 @@ impl super::StateInner {
 
             if ok {
                 let default_chan_mode = &self.default_chan_mode;
-                let channel = self.channels.entry(UniCase(target.to_owned()))
+                let channel = self.channels.entry(UniCase::new(target.to_owned()))
                     .or_insert_with(|| Channel::new(&default_chan_mode));
                 channel.add_member(ctx.id);
 
@@ -304,7 +304,7 @@ impl super::StateInner {
                 if channel.secret && !client.operator && !channel.members.contains_key(&ctx.id) {
                     continue;
                 }
-                let msg = ctx.rb.reply(rpl::LIST).param(name.as_ref());
+                let msg = ctx.rb.reply(rpl::LIST).param(name.get());
                 channel.list_entry(msg);
             }
         } else {
@@ -377,16 +377,16 @@ impl super::StateInner {
         let mut applied_modes = String::new();
         let mut applied_modeparams = Vec::new();
         let mut last_applied_value = true;
-        for maybe_change in modes::channel_query(modes, modeparams) { match maybe_change {
-            Ok(modes::ChannelModeChange::GetBans) => {
+        for maybe_change in mode::channel_query(modes, modeparams) { match maybe_change {
+            Ok(mode::ChannelChange::GetBans) => {
                 reply_list(ctx.rb, rpl::BANLIST, rpl::ENDOFBANLIST, lines::END_OF_BAN_LIST,
                            channel.ban_mask.patterns());
             }
-            Ok(modes::ChannelModeChange::GetExceptions) => {
+            Ok(mode::ChannelChange::GetExceptions) => {
                 reply_list(ctx.rb, rpl::EXCEPTLIST, rpl::ENDOFEXCEPTLIST, lines::END_OF_EXCEPT_LIST,
                            channel.exception_mask.patterns());
             }
-            Ok(modes::ChannelModeChange::GetInvitations) => {
+            Ok(mode::ChannelChange::GetInvitations) => {
                 reply_list(ctx.rb, rpl::INVITELIST, rpl::ENDOFINVITELIST, lines::END_OF_INVITE_LIST,
                            channel.exception_mask.patterns());
             }
@@ -414,7 +414,7 @@ impl super::StateInner {
                 }
                 Err(_) => { unreachable!(); }
             }
-            Err(modes::Error::UnknownMode(mode)) => {
+            Err(mode::Error::Unknown(mode, _)) => {
                 let mut msg = ctx.rb.reply(rpl::ERR_UNKNOWNMODE);
                 msg.raw_param().push(mode);
                 msg.trailing_param(lines::UNKNOWN_MODE);
@@ -464,13 +464,13 @@ impl super::StateInner {
         let client = self.clients.get_mut(ctx.id).unwrap();
 
         let mut applied_modes = String::new();
-        for maybe_change in modes::user_query(modes) { match maybe_change {
+        for maybe_change in mode::user_query(modes) { match maybe_change {
             Ok(change) => if client.apply_mode_change(change) {
                 log::debug!("  - Applied {:?}", change);
                 applied_modes.push(if change.value() {'+'} else {'-'});
                 applied_modes.push(change.symbol());
             }
-            Err(modes::Error::UnknownMode(mode)) => {
+            Err(mode::Error::Unknown(mode, _)) => {
                 let mut msg = ctx.rb.reply(rpl::ERR_UMODEUNKNOWNFLAG);
                 msg.raw_param().push(mode);
                 msg.trailing_param(lines::UNKNOWN_MODE);
@@ -553,7 +553,7 @@ impl super::StateInner {
 
         let client = self.clients.get_mut(ctx.id).unwrap();
         self.nicks.remove(u(client.nick()));
-        self.nicks.insert(UniCase(nick.to_owned()), ctx.id);
+        self.nicks.insert(UniCase::new(nick.to_owned()), ctx.id);
         ctx.rb.set_nick(nick);
 
         if !client.is_registered() {
@@ -823,7 +823,7 @@ impl super::StateInner {
                 }
                 if !c.invisible || a == ctx.id || channel_name.is_some() || client.operator {
                     let client = &self.clients[ctx.id];
-                    let channel_name = channel_name.unwrap_or("*");
+                    let channel_name = channel_name.map_or("*", UniCase::get);
                     let mut msg = ctx.rb.reply(rpl::WHOREPLY)
                         .param(channel_name)
                         .param(c.user())

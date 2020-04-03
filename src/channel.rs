@@ -1,7 +1,6 @@
-use crate::{modes, util};
-use crate::message::{MessageBuffer, Reply, rpl};
+use crate::util;
+use ellidri_tokens::{MessageBuffer, mode, rpl};
 use regex as re;
-use std::borrow::Borrow;
 use std::collections::{HashMap, HashSet};
 
 /// Modes applied to clients on a per-channel basis.
@@ -57,11 +56,11 @@ impl MemberModes {
 
     pub fn can_change<'a, I, S>(self, modes: &'a str, params: I) -> bool
         where I: IntoIterator<Item=&'a S> +'a,
-              S: Borrow<str> + 'a,
+              S: AsRef<str> + 'a,
     {
-        use modes::ChannelModeChange::*;
+        use mode::ChannelChange::*;
 
-        modes::channel_query(modes, params).all(|mode| match mode {
+        mode::channel_query(modes, params).all(|mode| match mode {
             Err(_) => true,
             Ok(GetBans) | Ok(GetExceptions) | Ok(GetInvitations) => true,
             Ok(Moderated(_)) | Ok(TopicRestricted(_)) | Ok(UserLimit(_)) |
@@ -123,7 +122,7 @@ impl Channel {
             secret: false,
             topic_restricted: false,
         };
-        for change in modes::simple_channel_query(modes).filter_map(Result::ok) {
+        for change in mode::simple_channel_query(modes).filter_map(Result::ok) {
             channel.apply_mode_change(change, |_| "").unwrap();
         }
         channel
@@ -203,11 +202,11 @@ impl Channel {
     }
 
     // TODO use MessageBuffer
-    pub fn apply_mode_change<'a, F>(&mut self, change: modes::ChannelModeChange<'_>,
-                                    nick_of: F) -> Result<bool, Reply>
+    pub fn apply_mode_change<'a, F>(&mut self, change: mode::ChannelChange<'_>,
+                                    nick_of: F) -> Result<bool, &'static str>
         where F: Fn(&usize) -> &'a str
     {
-        use modes::ChannelModeChange::*;
+        use mode::ChannelChange::*;
 
         let mut applied = false;
         match change {
