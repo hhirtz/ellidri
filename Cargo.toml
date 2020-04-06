@@ -1,5 +1,5 @@
 [workspace]
-members = [".", "ellidri-tokens", "ellidri-unicase"]
+members = [".", "ellidri-reader", "ellidri-tokens", "ellidri-unicase"]
 
 
 [package]
@@ -18,6 +18,10 @@ license = "ISC"
 [package.metadata.docs.rs]
 targets = ["x86_64-unknown-linux-gnu"]
 all-features = true
+
+
+[profile.release]
+debug = true
 
 
 [features]
@@ -45,6 +49,7 @@ tokio-tls = { version = "0.3", default-features = false }
 ellidri-unicase = { version = "2.0.0", path = "ellidri-unicase" }
 
 # IRC parsing
+ellidri-reader = { version = "0.1", path = "ellidri-reader" }
 ellidri-tokens = { version = "0.1.0", path = "ellidri-tokens" }
 
 # Logging and CLI

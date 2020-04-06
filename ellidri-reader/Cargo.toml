@@ -1,0 +1,11 @@
+[package]
+name = "ellidri-reader"
+version = "0.1.0"
+authors = ["Hubert Hirtz <hubert.hirtz@laposte.net>"]
+edition = "2018"
+
+[dependencies]
+futures = { version = "0.3", default-features = false, features = ["std"] }
+memchr = { version = "2", default-features = false, features = ["std"] }
+#pin-project-lite = { version = "0.1", default-features = false }
+tokio = { version = "0.2", default-features = false, features = ["io-util"] }

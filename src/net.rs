@@ -1,4 +1,5 @@
 use crate::{lines, State};
+use ellidri_reader::IrcReader;
 use ellidri_tokens::Message;
 use futures::future;
 use std::{fs, path, process, str};
@@ -122,23 +123,16 @@ async fn handle<S>(conn: S, peer_addr: SocketAddr, shared: State)
     where S: io::AsyncRead + io::AsyncWrite
 {
     let (reader, mut writer) = io::split(conn);
-    let mut reader = io::BufReader::new(reader);
+    let mut reader = IrcReader::new(reader, 512);
     let (msg_queue, mut outgoing_msgs) = sync::mpsc::unbounded_channel();
     let peer_id = shared.peer_joined(peer_addr, msg_queue).await;
     tokio::spawn(login_timeout(peer_id, shared.clone()));
 
     let incoming = async {
-        use io::AsyncBufReadExt as _;
-
         let mut buf = String::new();
         loop {
             buf.clear();
-            // TODO better control of the reading.  Especially:
-            // - put a limit on line length (4096 + 512  if starts with @, 512 otherwise)
-            //   (also 512 should be configurable)
-            // - kill clients that send 1-byte (or so) reads every time
-            // - send an ERROR to the client when this fails
-            reader.read_line(&mut buf).await?;
+            reader.read_message(&mut buf).await?;
             log::trace!("{} >> {}", peer_addr, buf.trim());
             if handle_buffer(peer_id, &buf, &shared).await? {
                 break;

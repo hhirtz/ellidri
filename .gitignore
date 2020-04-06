@@ -1,9 +1,19 @@
 target/
 **/*.rs.bk
 
+# Intellij IDEA junk
 *.iml
 .idea/
 
+# TLS certs and identities
 *.pem
 *.pfx
+
+# Sqlite databases
 *.db
+
+# Profiling stuff
+*.zst
+*.svg
+*.data
+*.data.old
