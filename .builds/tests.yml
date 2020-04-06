@@ -12,3 +12,5 @@ tasks:
     - test: |
         cd ellidri
         RUST_BACKTRACE=1 cargo test --locked --no-fail-fast --no-default-features
+        RUST_BACKTRACE=1 cargo test --no-fail-fast -p ellidri-tokens
+        RUST_BACKTRACE=1 cargo test --no-fail-fast -p ellidri-unicase
