@@ -2,7 +2,7 @@
 
 use crate::{auth, config, Config};
 use crate::client::MessageQueueItem;
-use crate::message::{assert_msg, Command, Message};
+use ellidri_tokens::{assert_msg, Command, Message};
 use std::cell::RefCell;
 use std::net::SocketAddr;
 use super::StateInner;

@@ -4,9 +4,7 @@
 //! implemented through a provider, a type that implements the `Provider` trait.  Each provider may
 //! support multiple authentication mechanisms.
 
-use crate::client::AUTHENTICATE_CHUNK_LEN;
 use crate::config::{db, SaslBackend};
-use ellidri_tokens::{Command, ReplyBuffer};
 use std::str;
 
 /// Provider errors, used by the `Provider` trait.
@@ -199,31 +197,5 @@ pub fn choose_provider(backend: SaslBackend, db_url: Option<db::Url>)
     match backend {
         SaslBackend::None => Ok(Box::new(DummyProvider)),
         SaslBackend::Database => choose_db_provider(db_url.unwrap()),
-    }
-}
-
-/// Encode `buf` in the base64 format, and split it in 400-byte chunks to append to AUTHENTICATE
-/// messages.
-pub fn write_buffer<T>(rb: &mut ReplyBuffer, buf: T)
-    where T: AsRef<[u8]>
-{
-    if buf.as_ref().is_empty() {
-        rb.message("", Command::Authenticate).param("+");
-        return;
-    }
-
-    let encoded = base64::encode(buf);
-    let mut i = 0;
-    while i < encoded.len() {
-        let max = encoded.len().min(i + AUTHENTICATE_CHUNK_LEN);
-        // NOPANIC
-        // i < encoded.len() && (max == encoded.len() || max == i + x), x > 0  ==>  i < max
-        // max <= encoded.len()
-        let chunk = &encoded[i..max];
-        rb.message("", Command::Authenticate).param(chunk);
-        i = max;
-    }
-    if i % AUTHENTICATE_CHUNK_LEN == 0 {
-        rb.message("", Command::Authenticate).param("+");
     }
 }

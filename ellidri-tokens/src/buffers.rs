@@ -303,12 +303,20 @@ impl Default for Buffer {
     }
 }
 
+impl From<String> for Buffer {
+    fn from(val: String) -> Self {
+        Self { buf: val }
+    }
+}
+
 impl Buffer {
     /// Creates a `Buffer`.  Does not allocate.
     pub fn new() -> Self {
-        Self {
-            buf: String::new(),
-        }
+        Self { buf: String::new() }
+    }
+
+    pub fn with_capacity(capacity: usize) -> Self {
+        Self { buf: String::with_capacity(capacity) }
     }
 
     /// Whether the buffer is empty.
@@ -329,6 +337,28 @@ impl Buffer {
         self.buf.is_empty()
     }
 
+    /// Returns a reference to the underlying `String`.
+    pub fn get(&self) -> &str {
+        &self.buf
+    }
+
+    /// Empties the buffer.
+    pub fn clear(&mut self) {
+        self.buf.clear();
+    }
+
+    pub fn len(&self) -> usize {
+        self.buf.len()
+    }
+
+    pub fn capacity(&self) -> usize {
+        self.buf.capacity()
+    }
+
+    pub fn reserve(&mut self, capacity: usize) {
+        self.buf.reserve(capacity);
+    }
+
     /// Appends an IRC message with a prefix to the buffer.
     ///
     /// This function may allocate to reserve space for the message.
@@ -346,7 +376,6 @@ impl Buffer {
     pub fn message<C>(&mut self, prefix: &str, command: C) -> MessageBuffer<'_>
         where C: Into<Command>
     {
-        self.buf.reserve(MESSAGE_LENGTH);
         MessageBuffer::with_prefix(&mut self.buf, prefix, command)
     }
 
@@ -367,266 +396,5 @@ impl Buffer {
     /// Consumes the `Buffer` and returns the underlying `String`.
     pub fn build(self) -> String {
         self.buf
-    }
-}
-
-thread_local! {
-    static DOMAIN: RefCell<String> = RefCell::new(String::new());
-    static NICKNAME: RefCell<String> = RefCell::new(String::new());
-    static LABEL: RefCell<String> = RefCell::new(String::new());
-}
-
-/// An helper to build responses meant for clients.
-///
-/// While `Buffer` is able to build any kind of IRC message, `ReplyBuffer` allows for easy creation
-/// of IRC replies (messages that have the domain of the server as prefix, and the nickname of the
-/// client as first parameter), and easy label/batch handling.
-///
-/// If you're looking for something simple, try `Buffer` first.
-///
-/// # Example
-///
-/// ```rust
-/// # use ellidri_tokens::{Command, ReplyBuffer, rpl};
-/// let mut response = ReplyBuffer::new("ellidri.dev", "nickname", Some("client-label"));
-///
-/// // Start a labeled-response batch.
-/// response.start_lr_batch();
-///
-/// // Normal message, same API as `Buffer`.
-/// response.message("nick!user@127.0.0.1", Command::Topic)
-///     .param("#hall")
-///     .trailing_param("Welcome to new users!");
-///
-/// // A reply.  It adds ":ellidri.dev" and "nickname" automatically.
-/// response.reply(rpl::TOPIC)
-///     .param("#hall")
-///     .trailing_param("Welcome to new users!");
-///
-/// // End the labeled-response.
-/// response.end_lr();
-///
-/// let result = response.build();
-/// assert_eq!(&result, "@label=client-label :ellidri.dev BATCH +0 labeled-response\r\n\
-/// @batch=0 :nick!user@127.0.0.1 TOPIC #hall :Welcome to new users!\r\n\
-/// @batch=0 :ellidri.dev 332 nickname #hall :Welcome to new users!\r\n\
-/// :ellidri.dev BATCH -0\r\n");
-/// ```
-///
-/// # Usage note
-///
-/// This buffer uses thread-local storage to store the domain, the nickname and the label, to
-/// reduce the number of allocations.  Therefore, the user must not make two `ReplyBuffer`s at the
-/// same time on the same thread, otherwise nicknames, domains and labels will be mixed.
-pub struct ReplyBuffer {
-    buf: Buffer,
-    batch: Option<u8>,
-    has_label: bool,
-}
-
-impl ReplyBuffer {
-    /// Creates a new `ReplyBuffer` and initialize the thread-local storage with the given domain,
-    /// nickname and label.
-    pub fn new(domain: &str, nickname: &str, label: Option<&str>) -> Self {
-        DOMAIN.with(|s| {
-            let mut s = s.borrow_mut();
-            s.clear();
-            s.push_str(domain);
-        });
-        if let Some(label) = label {
-            LABEL.with(|s| {
-                let mut s = s.borrow_mut();
-                s.clear();
-                s.push_str(label);
-            });
-        }
-        let mut res = Self {
-            buf: Buffer::new(),
-            batch: None,
-            has_label: label.is_some(),
-        };
-        res.set_nick(nickname);
-        res
-    }
-
-    /// Whether the buffer has messages in it or not.
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// # use ellidri_tokens::{ReplyBuffer, rpl};
-    /// let empty = ReplyBuffer::new("ellidri.dev", "ser", None);
-    /// let mut not_empty = ReplyBuffer::new("ellidri.dev", "ser", None);
-    ///
-    /// not_empty.reply(rpl::ERR_NOMOTD);
-    ///
-    /// assert_eq!(empty.is_empty(), true);
-    /// assert_eq!(not_empty.is_empty(), false);
-    /// ```
-    pub fn is_empty(&self) -> bool {
-        self.buf.is_empty()
-    }
-
-    /// Changes the nickname.
-    ///
-    /// Internally, it changes the thread-local storage associated with the nickname.
-    pub fn set_nick(&mut self, nickname: &str) {
-        NICKNAME.with(|n| {
-            let mut n = n.borrow_mut();
-            n.clear();
-            n.push_str(nickname);
-        });
-    }
-
-    /// Starts a batch with the given name.
-    pub fn start_batch(&mut self, name: &str) {
-        use fmt::Write;
-
-        let new_batch = self.new_batch();
-        let mut msg = self.prefixed_message("BATCH");
-        let _ = write!(msg.raw_param(), "+{}", new_batch);
-        msg.param(name);
-    }
-
-    /// Ends the inner-most batch.
-    pub fn end_batch(&mut self) {
-        use fmt::Write;
-
-        let old_batch = self.batch.unwrap();
-        self.batch = if old_batch == 0 {None} else {Some(old_batch - 1)};
-
-        let mut msg = self.prefixed_message("BATCH");
-        let _ = write!(msg.raw_param(), "-{}", old_batch);
-    }
-
-    /// Starts a labeled-response batch.
-    pub fn start_lr_batch(&mut self) {
-        use fmt::Write;
-
-        if !self.has_label {
-            return;
-        }
-        self.has_label = false;
-
-        let new_batch = self.new_batch();
-        LABEL.with(|label| DOMAIN.with(|domain| {
-            let label = label.borrow();
-            let domain = domain.borrow();
-            let mut msg = self.buf.tagged_message("")
-                .tag("label", Some(&label))
-                .prefixed_command(&domain, "BATCH");
-            let _ = write!(msg.raw_param(), "+{}", new_batch);
-            msg.param("labeled-response");
-        }));
-    }
-
-    /// Ends the labeled-response.
-    ///
-    /// If the buffer is empty, appends an ACK message.
-    pub fn end_lr(&mut self) {
-        if !self.has_label && self.batch.is_none() {
-            return;
-        }
-        if self.batch.is_some() {
-            self.end_batch();
-        }
-        if let Some(batch) = self.batch {
-            panic!("ReplyBuffer: has an ongoing batch {} after the end of the labeled response",
-                   batch);
-        }
-        if self.is_empty() {
-            self.prefixed_message("ACK");
-        }
-        self.has_label = false;
-    }
-
-    /// Appends a reply to the buffer.
-    ///
-    /// This will push the domain, the reply and the nickname of the client, and then return the
-    /// resulting `MessageBuffer`.
-    ///
-    /// This function appends the `@label` tag if necessary, and may allocate to reserve space for
-    /// the message.
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// # use ellidri_tokens::{Command, ReplyBuffer, rpl};
-    /// let mut response = ReplyBuffer::new("ellidri.dev", "ser", None);
-    ///
-    /// response.reply(rpl::WELCOME).trailing_param("Welcome to IRC, ser");
-    ///
-    /// assert_eq!(&response.build(), ":ellidri.dev 001 ser :Welcome to IRC, ser\r\n");
-    /// ```
-    pub fn reply<C>(&mut self, r: C) -> MessageBuffer<'_>
-        where C: Into<Command>
-    {
-        let msg = self.prefixed_message(r);
-        NICKNAME.with(|s| msg.param(&s.borrow()))
-    }
-
-    /// Appends a command to the buffer, with the domain prefix, but without the nickname parameter.
-    ///
-    /// This function adds the `@label` tag if necessary, and may allocate to reserve space for the
-    /// message.
-    pub fn prefixed_message<C>(&mut self, command: C) -> MessageBuffer<'_>
-        where C: Into<Command>
-    {
-        DOMAIN.with(move |s| self.message(&s.borrow(), command))
-    }
-
-    /// Appends a prefixed message like you would do with a `Buffer`.
-    ///
-    /// If the given `prefix` is empty, no prefix is added.  This function adds the `@label` tag if
-    /// necessary, and may allocate to reserve space for the message.
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// # use ellidri_tokens::{Command, ReplyBuffer};
-    /// let mut response = ReplyBuffer::new("ellidri.dev", "ser", None);
-    ///
-    /// response.message("unneeded_prefix", Command::Admin);
-    /// response.message("", Command::Info);
-    ///
-    /// assert_eq!(&response.build(), ":unneeded_prefix ADMIN\r\nINFO\r\n");
-    /// ```
-    pub fn message<C>(&mut self, prefix: &str, command: C) -> MessageBuffer<'_>
-        where C: Into<Command>
-    {
-        self.tagged_message("").prefixed_command(prefix, command)
-    }
-
-    /// Starts building a tagged message.
-    ///
-    /// This function behaves like `Buffer::tagged_message`.  Neither the domain nor the prefix
-    /// will be added.  However it still adds the `@label` tag if necessary, and may allocate to
-    /// reserve space for the message.
-    pub fn tagged_message(&mut self, tags: &str) -> TagBuffer<'_> {
-        if self.has_label {
-            self.has_label = false;
-            LABEL.with(move |s| {
-                self.buf.tagged_message(tags)
-                    .tag("label", Some(&s.borrow()))
-            })
-        } else if let Some(batch) = self.batch {
-            self.buf.tagged_message(tags)
-                .tag("batch", Some(batch))
-        } else {
-            self.buf.tagged_message(tags)
-        }
-    }
-
-    /// Consumes the buffer and returns the underlying `String`.
-    pub fn build(self) -> String {
-        self.buf.build()
-    }
-
-    /// Private function that sets up the internal state for a new batch, and returns the
-    /// identitifier of this new batch.
-    fn new_batch(&mut self) -> u8 {
-        let new_batch = self.batch.map_or(0, |old_batch| old_batch + 1);
-        self.batch = Some(new_batch);
-        new_batch
     }
 }

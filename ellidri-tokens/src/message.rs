@@ -255,8 +255,8 @@ impl<'a> Message<'a> {
     ///
     /// # Return value
     ///
-    /// Returns `Some(msg)` when the message is correctly formed, `None` otherwise.
-    ///
+    /// Returns `Some(msg)` when the message is correctly formed, `None` otherwise.  Correctly
+    /// formed means the message has a command.
     ///
     /// ```rust
     /// # use ellidri_tokens::Message;

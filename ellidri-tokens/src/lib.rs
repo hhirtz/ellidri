@@ -3,7 +3,7 @@
 //! This library provides helpers to tokenize and build IRC messages, while keeping the number of
 //! allocations minimal.
 
-pub use buffers::{Buffer, MessageBuffer, ReplyBuffer, TagBuffer};
+pub use buffers::{Buffer, MessageBuffer, TagBuffer};
 pub use command::Command;
 pub use message::{
     MESSAGE_LENGTH,

@@ -15,12 +15,15 @@
 //! ellidri ellidri.conf
 //! ```
 
+// TODO setrlimit, drop priviledges and set seccomp rules
+
 #![forbid(unsafe_code)]
 #![warn(clippy::all, rust_2018_idioms)]
 #![allow(clippy::filter_map, clippy::find_map, clippy::shadow_unrelated, clippy::use_self)]
 
 pub use crate::config::Config;
 pub use crate::state::State;
+pub use ellidri_tokens as tokens;
 use std::{env, process};
 
 pub mod auth;
@@ -100,7 +103,6 @@ pub fn start() {
     runtime.block_on(infinite());
 }
 
-#[cfg(feature = "threads")]
 fn runtime(workers: usize) -> tokio::runtime::Runtime {
     let mut builder = tokio::runtime::Builder::new();
 
@@ -114,15 +116,6 @@ fn runtime(workers: usize) -> tokio::runtime::Runtime {
         .threaded_scheduler()
         .enable_io()
         .build()
-        .unwrap_or_else(|err| {
-            log::error!("Failed to start the tokio runtime: {}", err);
-            process::exit(1);
-        })
-}
-
-#[cfg(not(feature = "threads"))]
-fn runtime(_cfg: usize) -> tokio::runtime::Runtime {
-    tokio::runtime::Runtime::new()
         .unwrap_or_else(|err| {
             log::error!("Failed to start the tokio runtime: {}", err);
             process::exit(1);
