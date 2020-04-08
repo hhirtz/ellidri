@@ -22,6 +22,8 @@ pub use crate::config::Config;
 pub use crate::state::State;
 pub use ellidri_tokens as tokens;
 use std::{env, process};
+use std::sync::Arc;
+use tokio::sync::Notify;
 
 pub mod auth;
 mod channel;
@@ -85,19 +87,24 @@ pub fn start() {
     let mut runtime = runtime(cfg.workers);
     let shared = State::new(cfg.state, auth_provider);
 
+    let num_bindings = cfg.bindings.len();
+    let failures = Arc::new(Notify::new());
+
     let mut store = net::TlsIdentityStore::default();
     for config::Binding { address, tls_identity } in cfg.bindings {
         if let Some(identity_path) = tls_identity {
             let acceptor = store.acceptor(identity_path);
-            let server = net::listen_tls(address, shared.clone(), acceptor);
+            let server = net::listen_tls(address, shared.clone(), acceptor,
+                                         failures.clone());
             runtime.spawn(server);
         } else {
-            let server = net::listen(address, shared.clone());
+            let server = net::listen(address, shared.clone(),
+                                     failures.clone());
             runtime.spawn(server);
         }
     }
 
-    runtime.block_on(infinite());
+    runtime.block_on(control(num_bindings, failures));
 }
 
 fn runtime(workers: usize) -> tokio::runtime::Runtime {
@@ -120,6 +127,13 @@ fn runtime(workers: usize) -> tokio::runtime::Runtime {
         })
 }
 
-fn infinite() -> impl std::future::Future<Output=()> {
-    futures::future::poll_fn(|_| futures::task::Poll::Pending)
+async fn control(mut num_bindings: usize, failures: Arc<Notify>) {
+    loop {
+        if num_bindings == 0 {
+            log::error!("No listener left, exiting.");
+            return;
+        }
+        failures.notified().await;
+        num_bindings -= 1;
+    }
 }

@@ -7,6 +7,7 @@ use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::{io, net, sync, time};
+use tokio::sync::Notify;
 use tokio_tls::TlsAcceptor;
 
 const KEEPALIVE_SECS: u64 = 75;
@@ -55,15 +56,16 @@ fn build_acceptor(p: &path::Path) -> tokio_tls::TlsAcceptor {
 // TODO make listen and listen_tls poll a Notify future and return when they are notified
 // https://docs.rs/tokio/0.2.13/tokio/sync/struct.Notify.html
 
-// TODO make listen and listen_tls not call process::exit and just return the error.
-// right now we can't since there's no way to exit the program when a listener fails.
-
 /// Returns a future that listens, accepts and handles incoming plain-text connections.
-pub async fn listen(addr: SocketAddr, shared: State) -> io::Result<()> {
-    let mut ln = net::TcpListener::bind(&addr).await.unwrap_or_else(|err| {
-        log::error!("Failed to listen to {}: {}", addr, err);
-        process::exit(1);
-    });
+pub async fn listen(addr: SocketAddr, shared: State, failures: Arc<Notify>) {
+    let mut ln = match net::TcpListener::bind(&addr).await {
+        Ok(ln) => ln,
+        Err(err) => {
+            log::error!("Failed to listen to {}: {}", addr, err);
+            failures.notify();
+            return;
+        }
+    };
 
     log::info!("Listening on {} for plain-text connections...", addr);
 
@@ -84,13 +86,17 @@ fn handle_tcp(conn: net::TcpStream, peer_addr: SocketAddr, shared: State) {
 }
 
 /// Returns a future that listens, accepts and handles incoming TLS connections.
-pub async fn listen_tls(addr: SocketAddr, shared: State, acceptor: Arc<TlsAcceptor>)
-    -> io::Result<()>
+pub async fn listen_tls(addr: SocketAddr, shared: State, acceptor: Arc<TlsAcceptor>,
+                        failures: Arc<Notify>)
 {
-    let mut ln = net::TcpListener::bind(&addr).await.unwrap_or_else(|err| {
-        log::error!("Failed to listen to {}: {}", addr, err);
-        process::exit(1);
-    });
+    let mut ln = match net::TcpListener::bind(&addr).await {
+        Ok(ln) => ln,
+        Err(err) => {
+            log::error!("Failed to listen to {}: {}", addr, err);
+            failures.notify();
+            return;
+        }
+    };
 
     log::info!("Listening on {} for tls connections...", addr);
 
