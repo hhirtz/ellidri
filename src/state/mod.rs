@@ -140,7 +140,7 @@ impl State {
     }
 
     /// Updates the state according to the given message from the given client.
-    pub async fn handle_message(&self, id: usize, msg: Message<'_>) -> HandlerResult {
+    pub async fn handle_message(&self, id: usize, msg: Message<'_>) -> Result<u32, ()> {
         self.0.lock().await.handle_message(id, msg)
     }
 
@@ -290,7 +290,7 @@ impl StateInner {
         self.nicks.remove(u(client.nick()));
     }
 
-    pub fn handle_message(&mut self, id: usize, msg: Message<'_>) -> HandlerResult {
+    pub fn handle_message(&mut self, id: usize, msg: Message<'_>) -> Result<u32, ()> {
         let client = match self.clients.get(id) {
             Some(client) => client,
             None => return Err(()),
@@ -307,7 +307,7 @@ impl StateInner {
             rb.reply(rpl::ERR_INPUTTOOLONG, 96, |msg| {
                 msg.trailing_param(lines::INPUT_TOO_LONG);
             });
-            return Ok(());
+            return Ok(3);
         }
 
         let command = match msg.command {
@@ -322,7 +322,7 @@ impl StateInner {
                         msg.trailing_param(lines::NOT_REGISTERED);
                     });
                 }
-                return Ok(());
+                return Ok(1);
             }
         };
 
@@ -336,7 +336,7 @@ impl StateInner {
                     msg.trailing_param(lines::NOT_REGISTERED);
                 });
             }
-            return Ok(());
+            return Ok(2);
         }
 
         if !msg.has_enough_params() {
@@ -362,7 +362,7 @@ impl StateInner {
                     });
                 }
             }
-            return Ok(());
+            return Ok(1);
         }
 
         if !client.can_issue_command(command, msg.params[0]) {
@@ -375,7 +375,7 @@ impl StateInner {
                     msg.trailing_param(lines::NOT_REGISTERED);
                 });
             }
-            return Ok(());
+            return Ok(2);
         }
 
         let sub_command = msg.params[0];
@@ -384,7 +384,8 @@ impl StateInner {
         if !self.clients.contains(id) {
             return Err(());
         }
-        if cmd_result.is_ok() {
+
+        let used_points = if cmd_result.is_ok() {
             let client = self.clients.get_mut(id).unwrap();
             let old_state = client.state();
             let new_state = client.apply_command(command, sub_command);
@@ -393,10 +394,13 @@ impl StateInner {
             } else if !old_state.is_registered() {
                 log::debug!("{}: {:?} + {:?} == {:?}", id, old_state, command, new_state);
             }
-        }
+            points_of(command)
+        } else {
+            points_of(command).saturating_mul(2)
+        };
         rb.end_lr();
 
-        Ok(())
+        Ok(used_points)
     }
 
     fn handle_message_inner<'a>(&mut self, id: usize, rb: &'a mut ReplyBuffer, msg: Message<'a>) -> HandlerResult {
@@ -453,6 +457,42 @@ impl StateInner {
                 self.clients.remove(id);
             }
         }
+    }
+}
+
+fn points_of(command: Command) -> u32 {
+    match command {
+        Command::Admin => 1,
+        Command::Authenticate => 6,
+        Command::Away => 4,
+        Command::Cap => 1,
+        Command::Info => 2,
+        Command::Invite => 4,
+        Command::Join => 4,
+        Command::Kick => 2,
+        Command::List => 6,
+        Command::Lusers => 2,
+        Command::Mode => 2,
+        Command::Motd => 2,
+        Command::Names => 2,
+        Command::Nick => 4,
+        Command::Notice => 4,
+        Command::Oper => 6,
+        Command::Part => 4,
+        Command::Pass => 2,
+        Command::Ping => 1,
+        Command::Pong => 1,
+        Command::PrivMsg => 4,
+        Command::Quit => 1,
+        Command::SetName => 4,
+        Command::TagMsg => 4,
+        Command::Time => 2,
+        Command::Topic => 3,
+        Command::User => 1,
+        Command::Version => 1,
+        Command::Who => 3,
+        Command::Whois => 3,
+        Command::Reply(_) => 1,
     }
 }
 

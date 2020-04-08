@@ -118,6 +118,42 @@ fn handle_tls(conn: net::TcpStream, peer_addr: SocketAddr, shared: State,
     });
 }
 
+macro_rules! rate_limit {
+    ( $rate:expr, $burst:expr, $do:expr ) => {{
+        let rate: u32 = $rate;
+        let burst: u32 = $burst;
+        let mut used_points: u32 = 0;
+        let mut last_round = time::Instant::now();
+
+        loop {
+            used_points = match $do.await {
+                Ok(points) => used_points + points,
+                Err(err) => return Err(err),
+            };
+            if burst < used_points {
+                let elapsed = last_round.elapsed();
+                let millis = elapsed.as_millis();
+                let millis = if (std::u32::MAX as u128) < millis {
+                    std::u32::MAX
+                } else {
+                    millis as u32
+                };
+
+                used_points = used_points.saturating_sub(millis / rate * 4);
+                last_round += elapsed;
+
+                if burst < used_points {
+                    let wait_millis = (used_points - burst) / 4 * rate;
+                    let wait = time::Duration::from_millis(wait_millis as u64);
+                    time::delay_for(wait).await;
+                    used_points = burst;
+                    last_round += wait;
+                }
+            }
+        }
+    }};
+}
+
 /// Returns a future that handles an IRC connection.
 async fn handle<S>(conn: S, peer_addr: SocketAddr, shared: State)
     where S: io::AsyncRead + io::AsyncWrite
@@ -130,14 +166,13 @@ async fn handle<S>(conn: S, peer_addr: SocketAddr, shared: State)
 
     let incoming = async {
         let mut buf = String::new();
-        loop {
+        rate_limit!(1024, 16, async {
             buf.clear();
             reader.read_message(&mut buf).await?;
             log::trace!("{} >> {}", peer_addr, buf.trim());
-            if handle_buffer(peer_id, &buf, &shared).await? {
-                break;
-            }
-        }
+            handle_buffer(peer_id, &buf, &shared).await
+        });
+        #[allow(unreachable_code)]  // used for type inference
         Ok(())
     };
 
@@ -156,20 +191,19 @@ async fn handle<S>(conn: S, peer_addr: SocketAddr, shared: State)
 
 /// Handle a line from the client.
 ///
-/// Returns `Err(_)` if the buffer is empty, `Ok(true)` if the connection is scheduled to be
-/// closed, `Ok(false)` otherwise.
-async fn handle_buffer(peer_id: usize, buf: &str, shared: &State) -> io::Result<bool> {
+/// Returns `Err(_)` if the connection must be closed, `Ok(points)` otherwise.  Points are used for
+/// rate limits.
+async fn handle_buffer(peer_id: usize, buf: &str, shared: &State) -> io::Result<u32> {
     if buf.is_empty() {
         return Err(io::Error::new(io::ErrorKind::UnexpectedEof, lines::CONNECTION_RESET));
     }
 
     if let Some(msg) = Message::parse(buf) {
-        if let Err(()) = shared.handle_message(peer_id, msg).await {
-            return Ok(true);
-        }
+        return shared.handle_message(peer_id, msg).await
+            .map_err(|()| io::ErrorKind::Other.into());
     }
 
-    Ok(false)
+    Ok(1)
 }
 
 async fn login_timeout(peer_id: usize, shared: State) {

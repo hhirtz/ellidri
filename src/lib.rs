@@ -5,7 +5,6 @@
 //! You need a configuration file, and pass its name as an argument. The git repository contains an
 //! example `doc/ellidri.conf`, with comments describing the different options.
 //!
-//!
 //! During development: `cargo run -- doc/ellidri.conf`
 //!
 //! For an optimized build:
@@ -14,8 +13,6 @@
 //! cargo install
 //! ellidri ellidri.conf
 //! ```
-
-// TODO setrlimit, drop priviledges and set seccomp rules
 
 #![forbid(unsafe_code)]
 #![warn(clippy::all, rust_2018_idioms)]
@@ -115,6 +112,7 @@ fn runtime(workers: usize) -> tokio::runtime::Runtime {
     builder
         .threaded_scheduler()
         .enable_io()
+        .enable_time()
         .build()
         .unwrap_or_else(|err| {
             log::error!("Failed to start the tokio runtime: {}", err);
