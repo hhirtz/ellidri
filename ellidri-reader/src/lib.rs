@@ -8,7 +8,6 @@ const UTF8_ERR: &str = "This was definitely not UTF-8...";
 const TOO_LONG_ERR: &str = "Kyaa! Your message is too long!";
 
 const MAX_READ_PER_MESSAGE: u8 = 4;
-const MAX_JUNK_BEFORE_MESSAGE: usize = 32;
 const MAX_TAG_LENGTH: usize = 4096;
 
 pub struct IrcReader<R> {
@@ -93,21 +92,8 @@ fn read_line<R>(mut reader: pin::Pin<&mut BufReader<R>>, cx: &mut task::Context<
             return task::Poll::Ready(Err(io::Error::new(io::ErrorKind::TimedOut, TOO_LONG_ERR)));
         }
         let (done, used) = {
+            // TODO prevent spam +inf times "\r" or "\n"
             let available = ready!(reader.as_mut().poll_fill_buf(cx))?;
-
-            let mut i = 0;
-            while i < available.len() {
-                if MAX_JUNK_BEFORE_MESSAGE <= i {
-                    return task::Poll::Ready(
-                        Err(io::Error::new(io::ErrorKind::TimedOut, ABUSE_ERR))
-                    );
-                }
-                if available[i] != b'\r' && available[i] != b'\n' && available[i] != b' ' {
-                    break;
-                }
-                i += 1;
-            }
-            let available = &available[i..];
 
             if n.limit == 0 && !available.is_empty() {
                 if available[0] == b'@' {
@@ -117,7 +103,7 @@ fn read_line<R>(mut reader: pin::Pin<&mut BufReader<R>>, cx: &mut task::Context<
             }
 
             if let Some(i) = memchr::memchr2(b'\r', b'\n', available) {
-                bytes.extend_from_slice(&available[..i]);
+                bytes.extend_from_slice(&available[..=i]);
                 if i + 1 < available.len() && available[i + 1] == b'\n' {
                     (true, i + 2)
                 } else {
@@ -133,8 +119,6 @@ fn read_line<R>(mut reader: pin::Pin<&mut BufReader<R>>, cx: &mut task::Context<
         if done || used == 0 {
             return task::Poll::Ready(Ok(mem::replace(&mut n.read, 0)));
         }
-        if used < 10 {
-            n.count += 1;
-        }
+        n.count += 1;
     }
 }
