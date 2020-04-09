@@ -829,6 +829,8 @@ impl super::StateInner {
             ctx.rb.reply(rpl::ERR_PASSWDMISMATCH, 0, |msg| {
                 msg.trailing_param(lines::PASSWORD_MISMATCH);
             });
+            let client = self.clients.remove(ctx.id);
+            self.remove_client(ctx.id, client, lines::CLOSING_LINK, None);
             return Err(());
         }
         client.set_user(&user[..user.len().min(self.userlen)]);
