@@ -38,7 +38,7 @@ sqlite = ["r2d2", "r2d2_sqlite", "rusqlite"]
 # Async runtime
 futures = { version = "0.3", default-features = false, features = ["std"] }
 slab = { version = "0.4", default-features = false }
-tokio = { version = "0.2", default-features = false, features = ["blocking", "io-util", "rt-threaded", "sync", "tcp", "time"] }
+tokio = { version = "0.2", default-features = false, features = ["blocking", "io-util", "rt-threaded", "signal", "sync", "tcp", "time"] }
 
 # TLS support
 native-tls = { version = "0.2", default-features = false }

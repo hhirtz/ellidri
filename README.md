@@ -31,7 +31,7 @@ have their own `README.md`.
 
 - RFC [1459][r1] and [2812][r2] compliance (almost! see [#1][i1])
 - IRCv3 support
-- Configurable via a file
+- Configurable via a file that can be reloaded at runtime
 - SASL support with SQLite and PostgreSQL
 - kawaii messages
 
@@ -106,11 +106,20 @@ in `doc/ellidri.conf`.
 
 Patches are welcome!  Here are some links to get started:
 
-- Documentation: <https://docs.rs/ellidri>
+- Documentation: <https://docs.rs/ellidri> (please note!  This documentation
+  only shows public items, but private items are also documented!  Developpers
+  can generate the documentation by hand the command below)
 - Git repository: <https://git.sr.ht/~taiite/ellidri>
 - Submit PRs on [Github][gh] or send patches to the mailing list:
   <https://lists.sr.ht/~taiite/public-inbox>
 - Report bugs on the issue tracker: <https://todo.sr.ht/~taiite/ellidri>
+
+When developing ellidri, you can use the following command to generate the
+documentation of all items:
+
+```
+cargo doc --no-deps --document-private-items --open
+```
 
 [gh]: https://github.com/hhirtz/ellidri
 

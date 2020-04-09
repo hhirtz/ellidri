@@ -56,6 +56,7 @@ pub const ENDOFINFO: &str       = "374";  // :End of INFO
 pub const MOTDSTART: &str       = "375";  // :- <servername> Message of the day -
 pub const ENDOFMOTD: &str       = "376";  // :End of MOTD command
 pub const YOUREOPER: &str       = "381";  // :You are now an operator
+pub const REHASHING: &str       = "382";  // <config file> :Rehashing
 pub const TIME: &str            = "391";  // <servername> :<time in whatever format>
 
 pub const ERR_NOSUCHNICK: &str       = "401";  // <nick> :No such nick/channel
@@ -84,6 +85,7 @@ pub const ERR_UNKNOWNMODE: &str      = "472";  // <char> :Don't know this mode f
 pub const ERR_INVITEONLYCHAN: &str   = "473";  // <channel> :Cannot join channel (+I)
 pub const ERR_BANNEDFROMCHAN: &str   = "474";  // <channel> :Cannot join channel (+b)
 pub const ERR_BADCHANKEY: &str       = "475";  // <channel> :Cannot join channel (+k)
+pub const ERR_NOPRIVILEDGES: &str    = "481";  // :Permission Denied- You're not an IRC operator
 pub const ERR_CHANOPRIVSNEEDED: &str = "482";  // <channel> :You're not an operator
 
 pub const ERR_UMODEUNKNOWNFLAG: &str = "501";  // :Unknown mode flag

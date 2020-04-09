@@ -89,11 +89,8 @@ pub const NO_MOTD: &str =
 pub const NO_TOPIC: &str =
 "It seems this channel doesn't have any topic";
 
-pub const NOT_ON_CHANNEL: &str =
-"Senpai... I can't do that if you're not on the channel!";
-
-pub const NOT_REGISTERED: &str =
-"You must register first!";
+pub const NO_PRIVILEDGES: &str =
+"Senpai, could you stop doing that? ellidri doesn't like it...";
 
 pub const NO_SUCH_NICK: &str =
 "I can't find this senpai...";
@@ -101,8 +98,17 @@ pub const NO_SUCH_NICK: &str =
 pub const NO_SUCH_CHANNEL: &str =
 "I can't find this channel...";
 
+pub const NOT_ON_CHANNEL: &str =
+"Senpai... I can't do that if you're not on the channel!";
+
+pub const NOT_REGISTERED: &str =
+"You must register first!";
+
 pub const PASSWORD_MISMATCH: &str =
 "Nope! Wrong password";
+
+pub const REHASHING: &str =
+"Oh~~!  Onwards to reload the configuration!";
 
 pub const UNKNOWN_COMMAND: &str =
 "Hnn... What did you just say?";

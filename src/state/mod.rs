@@ -19,7 +19,7 @@ use std::{cmp, fs, io, net};
 use std::collections::{HashMap, HashSet};
 use std::fmt::Write as _;
 use std::sync::Arc;
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, Notify};
 
 mod ircv3;
 mod rfc2812;
@@ -110,14 +110,20 @@ pub struct State(Arc<Mutex<StateInner>>);
 
 impl State {
     /// Intialize the IRC state from the given configuration.
-    pub fn new(config: config::State, auth_provider: Box<dyn auth::Provider>) -> Self {
-        let inner = StateInner::new(config, auth_provider);
+    ///
+    /// `rehash` will be notified/pinged whenever an operator sends a REHASH command.
+    pub fn new(config: config::State, auth_provider: Box<dyn auth::Provider>, rehash: Arc<Notify>)
+               -> Self
+    {
+        let inner = StateInner::new(config, auth_provider, rehash);
         Self(Arc::new(Mutex::new(inner)))
     }
 
-    /// Returns the timeout for registration, in milliseconds.
-    pub async fn login_timeout(&self) -> u64 {
-        self.0.lock().await.login_timeout
+    /// Reload state configuration.
+    ///
+    /// `cfg.motd_file` must be the contents of the MOTD file instead of its path.
+    pub async fn rehash(&self, cfg: config::State, auth_provider: Box<dyn auth::Provider>) {
+        self.0.lock().await.rehash(cfg, auth_provider);
     }
 
     /// Adds a new connection to the state.
@@ -146,6 +152,11 @@ impl State {
 
     pub async fn remove_if_unregistered(&self, id: usize) {
         self.0.lock().await.remove_if_unregistered(id);
+    }
+
+    /// Returns the timeout for registration, in milliseconds.
+    pub async fn login_timeout(&self) -> u64 {
+        self.0.lock().await.login_timeout
     }
 }
 
@@ -202,10 +213,15 @@ pub(crate) struct StateInner {
 
     /// SASL backend.
     auth_provider: Box<dyn auth::Provider>,
+
+    /// Channel to send rehash notifications
+    rehash: Arc<Notify>,
 }
 
 impl StateInner {
-    pub fn new(config: config::State, auth_provider: Box<dyn auth::Provider>) -> Self {
+    pub fn new(config: config::State, auth_provider: Box<dyn auth::Provider>, rehash: Arc<Notify>)
+               -> Self
+    {
         log::info!("Loading MOTD from {:?}", config.motd_file);
         let motd = match fs::read_to_string(&config.motd_file) {
             Ok(motd) => Some(motd),
@@ -236,7 +252,26 @@ impl StateInner {
             userlen: config.userlen,
             login_timeout: config.login_timeout,
             auth_provider,
+            rehash,
         }
+    }
+
+    pub fn rehash(&mut self, config: config::State, auth_provider: Box<dyn auth::Provider>) {
+        self.domain = Arc::from(config.domain);
+        self.org_name = config.org_name;
+        self.org_location = config.org_location;
+        self.motd = if config.motd_file.is_empty() {None} else {Some(config.motd_file)};
+        self.password = config.password;
+        self.default_chan_mode = config.default_chan_mode;
+        self.opers = config.opers;
+        self.awaylen = config.awaylen;
+        self.channellen = config.channellen;
+        self.kicklen = config.kicklen;
+        self.namelen = config.namelen;
+        self.topiclen = config.topiclen;
+        self.userlen = config.userlen;
+        self.login_timeout = config.login_timeout;
+        self.auth_provider = auth_provider;
     }
 
     pub fn peer_joined(&mut self, addr: net::SocketAddr, queue: MessageQueue) -> usize {
@@ -437,6 +472,7 @@ impl StateInner {
             Command::Pong => Ok(()),
             Command::PrivMsg => self.cmd_privmsg(ctx, ps[0], ps[1]),
             Command::Quit => self.cmd_quit(ctx, ps[0]),
+            Command::Rehash => self.cmd_rehash(ctx),
             Command::SetName => self.cmd_setname(ctx, ps[0]),
             Command::TagMsg => self.cmd_tagmsg(ctx, ps[0]),
             Command::Time => self.cmd_time(ctx),
@@ -484,6 +520,7 @@ fn points_of(command: Command) -> u32 {
         Command::Pong => 1,
         Command::PrivMsg => 4,
         Command::Quit => 1,
+        Command::Rehash => 1,
         Command::SetName => 4,
         Command::TagMsg => 4,
         Command::Time => 2,

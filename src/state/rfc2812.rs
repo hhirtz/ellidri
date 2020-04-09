@@ -734,6 +734,23 @@ impl super::StateInner {
         Ok(())
     }
 
+    // REHASH
+
+    pub fn cmd_rehash(&self, ctx: CommandContext<'_>) -> Result {
+        if self.clients[ctx.id].operator {
+            ctx.rb.reply(rpl::REHASHING, 0, |msg| {
+                msg.param("--").trailing_param(lines::REHASHING);
+            });
+            self.rehash.notify();
+            Ok(())
+        } else {
+            ctx.rb.reply(rpl::ERR_NOPRIVILEDGES, 0, |msg| {
+                msg.trailing_param(lines::NO_PRIVILEDGES);
+            });
+            Err(())
+        }
+    }
+
     // TIME
 
     pub fn cmd_time(&self, ctx: CommandContext<'_>) -> Result {

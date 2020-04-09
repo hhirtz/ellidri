@@ -1,13 +1,15 @@
-use crate::{lines, State};
+use crate::{control, lines, State};
 use ellidri_reader::IrcReader;
 use ellidri_tokens::Message;
 use futures::future;
-use std::{fs, path, process, str};
+use futures::FutureExt;
+use std::{fs, path, str};
 use std::collections::HashMap;
+use std::error::Error;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::{io, net, sync, time};
-use tokio::sync::Notify;
+use tokio::sync::mpsc;
 use tokio_tls::TlsAcceptor;
 
 const KEEPALIVE_SECS: u64 = 75;
@@ -16,63 +18,98 @@ const TLS_TIMEOUT_SECS: u64 = 30;
 /// `TlsAcceptor` cache, to avoid reading the same identity file several times.
 #[derive(Default)]
 pub struct TlsIdentityStore {
-    acceptors: HashMap<path::PathBuf, Arc<tokio_tls::TlsAcceptor>>,
+    acceptors: HashMap<path::PathBuf, Arc<TlsAcceptor>>,
 }
 
 impl TlsIdentityStore {
     /// Retrieves the acceptor at `path`, or get it from the cache if it has already been built.
-    pub fn acceptor(&mut self, file: path::PathBuf) -> Arc<tokio_tls::TlsAcceptor> {
-        if let Some(acceptor) = self.acceptors.get(&file) {
-            acceptor.clone()
+    pub fn acceptor<P>(&mut self, file: P) -> Result<Arc<TlsAcceptor>, Box<dyn Error + 'static>>
+        where P: AsRef<path::Path> + Into<path::PathBuf>,
+    {
+        if let Some(acceptor) = self.acceptors.get(file.as_ref()) {
+            Ok(acceptor.clone())
         } else {
-            let acceptor = Arc::new(build_acceptor(&file));
-            self.acceptors.insert(file, acceptor.clone());
-            acceptor
+            let acceptor = Arc::new(build_acceptor(file.as_ref())?);
+            self.acceptors.insert(file.into(), acceptor.clone());
+            Ok(acceptor)
         }
     }
 }
 
 /// Read the file at `p`, parse the identity and builds a `TlsAcceptor` object.
-fn build_acceptor(p: &path::Path) -> tokio_tls::TlsAcceptor {
+fn build_acceptor(p: &path::Path) -> Result<TlsAcceptor, Box<dyn Error + 'static>> {
     log::info!("Loading TLS identity from {:?}", p.display());
-    let der = fs::read(p).unwrap_or_else(|err| {
-        log::error!("Failed to read {:?}: {}", p.display(), err);
-        process::exit(1);
-    });
-    let identity = native_tls::Identity::from_pkcs12(&der, "").unwrap_or_else(|err| {
-        log::error!("Failed to parse {:?}: {}", p.display(), err);
-        process::exit(1);
-    });
+    let der = fs::read(p)
+        .map_err(|err| {
+            log::error!("Failed to read {:?}: {}", p.display(), err);
+            err
+        })?;
+    let identity = native_tls::Identity::from_pkcs12(&der, "")
+        .map_err(|err| {
+            log::error!("Failed to parse {:?}: {}", p.display(), err);
+            err
+        })?;
     let acceptor = native_tls::TlsAcceptor::builder(identity)
         .min_protocol_version(Some(native_tls::Protocol::Tlsv11))
         .build()
-        .unwrap_or_else(|err| {
+        .map_err(|err| {
             log::error!("Failed to initialize TLS: {}", err);
-            process::exit(1);
-        });
-    tokio_tls::TlsAcceptor::from(acceptor)
+            err
+        })?;
+    Ok(TlsAcceptor::from(acceptor))
 }
 
-// TODO make listen and listen_tls poll a Notify future and return when they are notified
-// https://docs.rs/tokio/0.2.13/tokio/sync/struct.Notify.html
-
-/// Returns a future that listens, accepts and handles incoming plain-text connections.
-pub async fn listen(addr: SocketAddr, shared: State, failures: Arc<Notify>) {
+/// Returns a future that listens, accepts and handles incoming connections.
+///
+/// TODO
+pub async fn listen(addr: SocketAddr, shared: State, mut acceptor: Option<Arc<TlsAcceptor>>,
+                    mut stop: mpsc::Sender<SocketAddr>,
+                    mut commands: mpsc::Receiver<control::Command>)
+{
     let mut ln = match net::TcpListener::bind(&addr).await {
         Ok(ln) => ln,
         Err(err) => {
-            log::error!("Failed to listen to {}: {}", addr, err);
-            failures.notify();
+            log::error!("Binding {} failed to come online: {}", addr, err);
+            let _ = stop.send(addr).await;
             return;
         }
     };
 
-    log::info!("Listening on {} for plain-text connections...", addr);
+    if acceptor.is_some() {
+        log::info!("Binding {} online, accepting TLS connections", addr);
+    } else {
+        log::info!("Binding {} online, accepting plain-text connections", addr);
+    }
 
     loop {
-        match ln.accept().await {
-            Ok((conn, peer_addr)) => handle_tcp(conn, peer_addr, shared.clone()),
-            Err(err) => log::warn!("Failed to accept connection: {}", err),
+        futures::select! {
+            maybe_conn = ln.accept().fuse() => match maybe_conn {
+                Ok((conn, peer_addr)) => match acceptor.as_ref() {
+                    Some(a) => handle_tls(conn, peer_addr, shared.clone(), a.clone()),
+                    None => handle_tcp(conn, peer_addr, shared.clone()),
+                }
+                Err(err) => log::warn!("Binding {} failed to accept a connection: {}", addr, err),
+            },
+            command = commands.recv().fuse() => match command {
+                Some(control::Command::UsePlain) => {
+                    if acceptor.is_some() {
+                        log::info!("Binding {} switched to plain-text connections", addr);
+                    }
+                    acceptor = None;
+                }
+                Some(control::Command::UseTls(a)) => {
+                    if acceptor.is_some() {
+                        log::info!("Binding {} reloaded its TLS configuration", addr);
+                    } else {
+                        log::info!("Binding {} switched to TLS connections", addr);
+                    }
+                    acceptor = Some(a);
+                }
+                None => {
+                    log::info!("Binding {} now offline", addr);
+                    return;
+                },
+            },
         }
     }
 }
@@ -83,27 +120,6 @@ fn handle_tcp(conn: net::TcpStream, peer_addr: SocketAddr, shared: State) {
         return;
     }
     tokio::spawn(handle(conn, peer_addr, shared));
-}
-
-/// Returns a future that listens, accepts and handles incoming TLS connections.
-pub async fn listen_tls(addr: SocketAddr, shared: State, acceptor: Arc<TlsAcceptor>,
-                        failures: Arc<Notify>)
-{
-    let mut ln = match net::TcpListener::bind(&addr).await {
-        Ok(ln) => ln,
-        Err(err) => {
-            log::error!("Failed to listen to {}: {}", addr, err);
-            failures.notify();
-            return;
-        }
-    };
-
-    log::info!("Listening on {} for tls connections...", addr);
-
-    loop { match ln.accept().await {
-        Ok((conn, peer_addr)) => handle_tls(conn, peer_addr, shared.clone(), acceptor.clone()),
-        Err(err) => log::warn!("Failed to accept connection: {}", err),
-    }}
 }
 
 fn handle_tls(conn: net::TcpStream, peer_addr: SocketAddr, shared: State,

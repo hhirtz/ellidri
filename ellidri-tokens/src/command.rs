@@ -123,6 +123,7 @@ commands! {
     Pong     "PONG"     1
     PrivMsg  "PRIVMSG"  2
     Quit     "QUIT"     0
+    Rehash   "REHASH"   0
     SetName  "SETNAME"  1
     TagMsg   "TAGMSG"   1
     Time     "TIME"     0

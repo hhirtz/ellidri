@@ -17,6 +17,15 @@ pub enum Error {
     Format(Parser, Option<usize>, Range<usize>, String),
 }
 
+impl std::error::Error for Error {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Io(err) => Some(err),
+            _ => None,
+        }
+    }
+}
+
 impl From<io::Error> for Error {
     fn from(val: io::Error) -> Self { Self::Io(val) }
 }
@@ -96,6 +105,7 @@ impl fmt::Display for SaslBackend {
 }
 
 pub mod db {
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
     pub enum Driver {
         #[cfg(feature = "sqlite")]
         Sqlite,
@@ -103,6 +113,7 @@ pub mod db {
         Postgres,
     }
 
+    #[derive(Clone, Debug)]
     pub struct Url(pub Driver, pub String);
 }
 

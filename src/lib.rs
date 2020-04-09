@@ -18,17 +18,19 @@
 #![warn(clippy::all, rust_2018_idioms)]
 #![allow(clippy::filter_map, clippy::find_map, clippy::shadow_unrelated, clippy::use_self)]
 
+#![recursion_limit = "1024"]
+
 pub use crate::config::Config;
+use crate::control::Control;
 pub use crate::state::State;
 pub use ellidri_tokens as tokens;
 use std::{env, process};
-use std::sync::Arc;
-use tokio::sync::Notify;
 
 pub mod auth;
 mod channel;
 mod client;
 pub mod config;
+mod control;
 mod lines;
 mod net;
 mod state;
@@ -74,66 +76,12 @@ pub fn start() {
     }
 
     let config_path = matches.value_of("CONFIG_FILE").unwrap();
-    let cfg = Config::from_file(&config_path).unwrap_or_else(|err| {
-        log::error!("Failed to read {:?}: {}", config_path, err);
-        process::exit(1);
-    });
+    let (mut runtime, control) = Control::new(config_path);
 
-    let sasl_backend = cfg.sasl_backend;
-    let auth_provider = auth::choose_provider(sasl_backend, cfg.db_url).unwrap_or_else(|err| {
-        log::warn!("Failed to initialize the {} SASL backend: {}", sasl_backend, err);
-        Box::new(auth::DummyProvider)
-    });
-    let mut runtime = runtime(cfg.workers);
-    let shared = State::new(cfg.state, auth_provider);
-
-    let num_bindings = cfg.bindings.len();
-    let failures = Arc::new(Notify::new());
-
-    let mut store = net::TlsIdentityStore::default();
-    for config::Binding { address, tls_identity } in cfg.bindings {
-        if let Some(identity_path) = tls_identity {
-            let acceptor = store.acceptor(identity_path);
-            let server = net::listen_tls(address, shared.clone(), acceptor,
-                                         failures.clone());
-            runtime.spawn(server);
-        } else {
-            let server = net::listen(address, shared.clone(),
-                                     failures.clone());
-            runtime.spawn(server);
-        }
-    }
-
-    runtime.block_on(control(num_bindings, failures));
+    runtime.spawn(control.run());
+    runtime.block_on(infinite());
 }
 
-fn runtime(workers: usize) -> tokio::runtime::Runtime {
-    let mut builder = tokio::runtime::Builder::new();
-
-    if workers != 0 {
-        builder.core_threads(workers);
-    }
-
-    // TODO panic catch
-
-    builder
-        .threaded_scheduler()
-        .enable_io()
-        .enable_time()
-        .build()
-        .unwrap_or_else(|err| {
-            log::error!("Failed to start the tokio runtime: {}", err);
-            process::exit(1);
-        })
-}
-
-async fn control(mut num_bindings: usize, failures: Arc<Notify>) {
-    loop {
-        if num_bindings == 0 {
-            log::error!("No listener left, exiting.");
-            return;
-        }
-        failures.notified().await;
-        num_bindings -= 1;
-    }
+fn infinite() -> impl std::future::Future<Output=()> {
+    futures::future::pending()
 }

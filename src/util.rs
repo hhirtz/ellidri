@@ -112,3 +112,14 @@ pub fn time() -> u64 {
         }
     }
 }
+
+#[cfg(not(unix))]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct PendingStream;
+
+#[cfg(not(unix))]
+impl PendingStream {
+    pub fn recv(self) -> impl Future<Output=Option<()>> {
+        futures::future::pending()
+    }
+}
