@@ -149,8 +149,9 @@ macro_rules! rate_limit {
 
         loop {
             used_points = match $do.await {
-                Ok(points) => used_points + points,
-                Err(err) => return Err(err),
+                Ok(Some(points)) => used_points + points,
+                Ok(None) => break Ok(()),
+                Err(err) => break Err(err),
             };
             if burst < used_points {
                 let elapsed = last_round.elapsed();
@@ -190,12 +191,13 @@ async fn handle<S>(conn: S, peer_addr: SocketAddr, shared: State)
         let mut buf = String::new();
         rate_limit!(1024, 16, async {
             buf.clear();
-            reader.read_message(&mut buf).await?;
+            let n = reader.read_message(&mut buf).await?;
+            if n == 0 {
+                return Err(io::Error::new(io::ErrorKind::UnexpectedEof, lines::CONNECTION_RESET));
+            }
             log::trace!("{} >> {}", peer_addr, buf.trim());
-            handle_buffer(peer_id, &buf, &shared).await
-        });
-        #[allow(unreachable_code)]  // used for type inference
-        Ok(())
+            Ok(handle_buffer(peer_id, &buf, &shared).await)
+        })
     };
 
     let outgoing = async {
@@ -213,19 +215,13 @@ async fn handle<S>(conn: S, peer_addr: SocketAddr, shared: State)
 
 /// Handle a line from the client.
 ///
-/// Returns `Err(_)` if the connection must be closed, `Ok(points)` otherwise.  Points are used for
+/// Returns `None` if the connection must be closed, `Some(points)` otherwise.  Points are used for
 /// rate limits.
-async fn handle_buffer(peer_id: usize, buf: &str, shared: &State) -> io::Result<u32> {
-    if buf.is_empty() {
-        return Err(io::Error::new(io::ErrorKind::UnexpectedEof, lines::CONNECTION_RESET));
-    }
-
+async fn handle_buffer(peer_id: usize, buf: &str, shared: &State) -> Option<u32> {
     if let Some(msg) = Message::parse(buf) {
-        return shared.handle_message(peer_id, msg).await
-            .map_err(|()| io::ErrorKind::Other.into());
+        return shared.handle_message(peer_id, msg).await.ok();
     }
-
-    Ok(1)
+    Some(1)
 }
 
 async fn login_timeout(peer_id: usize, shared: State) {
