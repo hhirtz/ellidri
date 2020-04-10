@@ -234,6 +234,10 @@ pub const AUTHENTICATE_CHUNK_LEN: usize = 400;
 pub const AUTHENTICATE_WHOLE_LEN: usize = 1024;
 
 impl Capabilities {
+    //pub fn has_cap_notify(&self) -> bool {
+        //self.v302 || self.cap_notify
+    //}
+
     pub fn has_labeled_response(&self) -> bool {
         self.batch && self.labeled_response
     }
@@ -245,7 +249,6 @@ impl Capabilities {
     pub fn set_cap_version(&mut self, version: &str) {
         if version == "302" {
             self.v302 = true;
-            self.cap_notify = true;
         }
     }
 
