@@ -87,7 +87,7 @@ domain  your.domain.tld
 bind_to 127.0.0.1:6667
 
 # TLS-enabled port, with a PKCS12 archive.
-bind_to 0.0.0.0:7000 /var/lib/ellidri/identity.p12
+bind_to 0.0.0.0:6697 /var/lib/ellidri/identity.p12
 
 # Default is /etc/motd
 motd_file  custom_motd.txt
