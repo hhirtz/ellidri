@@ -64,63 +64,64 @@ impl Default for ConnectionState {
 
 impl ConnectionState {
     pub fn apply(self, command: Command, sub_command: &str) -> Result<ConnectionState, ()> {
+        use Command::*;
         match self {
             ConnectionState::ConnectionEstablished => match command {
-                Command::Cap if sub_command == "LS" => Ok(ConnectionState::CapGiven),
-                Command::Cap if sub_command == "REQ" => Ok(ConnectionState::CapGiven),
-                Command::Authenticate | Command::Cap | Command::Pass => Ok(self),
-                Command::Nick => Ok(ConnectionState::NickGiven),
-                Command::User => Ok(ConnectionState::UserGiven),
-                Command::Quit => Ok(ConnectionState::Quit),
+                Cap if sub_command == "LS" => Ok(ConnectionState::CapGiven),
+                Cap if sub_command == "REQ" => Ok(ConnectionState::CapGiven),
+                Authenticate | Cap | Pass | Ping => Ok(self),
+                Nick => Ok(ConnectionState::NickGiven),
+                User => Ok(ConnectionState::UserGiven),
+                Quit => Ok(ConnectionState::Quit),
                 _ => Err(()),
             }
             ConnectionState::NickGiven => match command {
-                Command::Cap if sub_command == "LS" => Ok(ConnectionState::CapNickGiven),
-                Command::Cap if sub_command == "REQ" => Ok(ConnectionState::CapNickGiven),
-                Command::Authenticate | Command::Cap | Command::Nick | Command::Pass => Ok(self),
-                Command::User => Ok(ConnectionState::Registered),
-                Command::Quit => Ok(ConnectionState::Quit),
+                Cap if sub_command == "LS" => Ok(ConnectionState::CapNickGiven),
+                Cap if sub_command == "REQ" => Ok(ConnectionState::CapNickGiven),
+                Authenticate | Cap | Nick | Pass | Ping => Ok(self),
+                User => Ok(ConnectionState::Registered),
+                Quit => Ok(ConnectionState::Quit),
                 _ => Err(()),
             }
             ConnectionState::UserGiven => match command {
-                Command::Cap if sub_command == "LS" => Ok(ConnectionState::CapUserGiven),
-                Command::Cap if sub_command == "REQ" => Ok(ConnectionState::CapUserGiven),
-                Command::Authenticate | Command::Cap | Command::Pass => Ok(self),
-                Command::Nick => Ok(ConnectionState::Registered),
-                Command::Quit => Ok(ConnectionState::Quit),
+                Cap if sub_command == "LS" => Ok(ConnectionState::CapUserGiven),
+                Cap if sub_command == "REQ" => Ok(ConnectionState::CapUserGiven),
+                Authenticate | Cap | Pass | Ping => Ok(self),
+                Nick => Ok(ConnectionState::Registered),
+                Quit => Ok(ConnectionState::Quit),
                 _ => Err(()),
             }
             ConnectionState::CapGiven => match command {
-                Command::Cap if sub_command == "END" => Ok(ConnectionState::ConnectionEstablished),
-                Command::Authenticate | Command::Cap | Command::Pass => Ok(self),
-                Command::Nick => Ok(ConnectionState::CapNickGiven),
-                Command::User => Ok(ConnectionState::CapUserGiven),
-                Command::Quit => Ok(ConnectionState::Quit),
+                Cap if sub_command == "END" => Ok(ConnectionState::ConnectionEstablished),
+                Authenticate | Cap | Pass | Ping => Ok(self),
+                Nick => Ok(ConnectionState::CapNickGiven),
+                User => Ok(ConnectionState::CapUserGiven),
+                Quit => Ok(ConnectionState::Quit),
                 _ => Err(()),
             }
             ConnectionState::CapNickGiven => match command {
-                Command::Cap if sub_command == "END" => Ok(ConnectionState::NickGiven),
-                Command::Authenticate | Command::Cap | Command::Pass | Command::Nick => Ok(self),
-                Command::User => Ok(ConnectionState::CapNegotiation),
-                Command::Quit => Ok(ConnectionState::Quit),
+                Cap if sub_command == "END" => Ok(ConnectionState::NickGiven),
+                Authenticate | Cap | Nick | Pass | Ping => Ok(self),
+                User => Ok(ConnectionState::CapNegotiation),
+                Quit => Ok(ConnectionState::Quit),
                 _ => Err(()),
             }
             ConnectionState::CapUserGiven => match command {
-                Command::Cap if sub_command == "END" => Ok(ConnectionState::UserGiven),
-                Command::Authenticate | Command::Cap | Command::Pass => Ok(self),
-                Command::Nick => Ok(ConnectionState::CapNegotiation),
-                Command::Quit => Ok(ConnectionState::Quit),
+                Cap if sub_command == "END" => Ok(ConnectionState::UserGiven),
+                Authenticate | Cap | Pass | Ping => Ok(self),
+                Nick => Ok(ConnectionState::CapNegotiation),
+                Quit => Ok(ConnectionState::Quit),
                 _ => Err(()),
             }
             ConnectionState::CapNegotiation => match command {
-                Command::Cap if sub_command == "END" => Ok(ConnectionState::Registered),
-                Command::Authenticate | Command::Cap | Command::Pass | Command::Nick => Ok(self),
-                Command::Quit => Ok(ConnectionState::Quit),
+                Cap if sub_command == "END" => Ok(ConnectionState::Registered),
+                Authenticate | Cap | Nick | Pass | Ping => Ok(self),
+                Quit => Ok(ConnectionState::Quit),
                 _ => Err(()),
             }
             ConnectionState::Registered => match command {
-                Command::Pass | Command::User => Err(()),
-                Command::Quit => Ok(ConnectionState::Quit),
+                Pass | User => Err(()),
+                Quit => Ok(ConnectionState::Quit),
                 _ => Ok(self),
             }
             ConnectionState::Quit => Err(()),
