@@ -1,3 +1,8 @@
+//! Asynchronous IRC message reading.
+//!
+//! This exposes a more robust alternative to tokio's `BufReader`, with better control on how lines
+//! are read.
+
 use futures::ready;
 use std::{io, marker, mem, pin, task};
 use std::future::Future;
@@ -7,19 +12,37 @@ const ABUSE_ERR: &str = "Bad client, bad! >:(";
 const UTF8_ERR: &str = "This was definitely not UTF-8...";
 const TOO_LONG_ERR: &str = "Kyaa! Your message is too long!";
 
+// TODO make this configurable
 const MAX_READ_PER_MESSAGE: u8 = 4;
 const MAX_TAG_LENGTH: usize = 4096;
 
+/// Asynchronous IRC message reader.
 pub struct IrcReader<R> {
     inner: BufReader<R>,
     message_max: usize,
 }
 
 impl<R: AsyncRead> IrcReader<R> {
+    /// Creates a new `IrcReader` with the given maximum length for messages.
+    ///
+    /// Although `message_max` allows restriction on the message length, `IrcReader` will always
+    /// allow lines of `4096 + message_max` bytes if the line starts with `@`.  This is because the
+    /// [message tag spec][1] states that tags can occupy up to 4096 bytes.  Thus, `message_max`
+    /// designates the maximum length of a message without tags (should default to 512, see RFCs
+    /// 1459 and 2812).
+    ///
+    /// [1]: https://ircv3.net/specs/extensions/message-tags.html
     pub fn new(r: R, message_max: usize) -> Self {
         Self { inner: BufReader::new(r), message_max }
     }
 
+    /// Equivalent of tokio's `AsyncBufReadExt::read_line` for IRC messages.
+    ///
+    /// Function signature can also be read like so:
+    ///
+    /// ```rust
+    /// async fn read_message(&mut self, buf: &mut String) -> io::Result<usize>
+    /// ```
     pub fn read_message<'a>(&'a mut self, buf: &'a mut String) -> ReadMessage<'a, R>
         where Self: marker::Unpin,
     {
@@ -45,7 +68,8 @@ struct ReadInfo {
     count: u8,
 }
 
-#[must_use]
+/// Future returned by `IrcReader::read_message`.
+#[must_use = "futures do nothing unless polled or .await'ed"]
 #[derive(Debug)]
 pub struct ReadMessage<'a, R> {
     reader: &'a mut BufReader<R>,
