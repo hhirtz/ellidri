@@ -72,6 +72,12 @@ impl MemberModes {
     }
 }
 
+pub struct Topic {
+    pub content: String,
+    pub who: String,
+    pub time: u64,
+}
+
 /// Channel data.
 pub struct Channel {
     /// Set of channel members, identified by their socket address, and associated with their
@@ -82,7 +88,7 @@ pub struct Channel {
     pub invites: HashSet<usize>,
 
     /// The topic.
-    pub topic: Option<String>,
+    pub topic: Option<Topic>,
 
     pub user_limit: Option<usize>,
     pub key: Option<String>,
@@ -147,7 +153,7 @@ impl Channel {
 
     pub fn list_entry(&self, msg: MessageBuffer<'_>) {
         msg.fmt_param(self.members.len())
-            .trailing_param(self.topic.as_ref().map_or("", |s| s.as_ref()));
+            .trailing_param(self.topic.as_ref().map_or("", |topic| topic.content.as_ref()));
     }
 
     pub fn is_banned(&self, nick: &str) -> bool {

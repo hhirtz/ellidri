@@ -829,13 +829,19 @@ impl StateInner {
     }
 
     /// Sends the topic of the channel `channel_name` to the given client.
-    fn send_topic(&self, rb: &mut ReplyBuffer, channel_name: &str) {
+    fn send_topic(&self, rb: &mut ReplyBuffer, channel_name: &str, send_error: bool) {
         let channel = &self.channels[u(channel_name)];
         if let Some(ref topic) = channel.topic {
             rb.reply(rpl::TOPIC, 0, |msg| {
-                msg.param(channel_name).trailing_param(topic);
+                msg.param(channel_name).trailing_param(&topic.content);
             });
-        } else {
+            rb.reply(rpl::TOPICWHOTIME, 0, |msg| {
+                msg.param(channel_name)
+                    .param(&topic.who)
+                    .fmt_param(topic.time)
+                    .trailing_param(&topic.content);
+            });
+        } else if send_error {
             rb.reply(rpl::NOTOPIC, 0, |msg| {
                 msg.param(channel_name).trailing_param(lines::NO_TOPIC);
             });

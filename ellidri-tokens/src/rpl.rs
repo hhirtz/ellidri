@@ -39,6 +39,7 @@ pub const LISTEND: &str         = "323";  // :End of list
 pub const CHANNELMODEIS: &str   = "324";  // <channel> <modes> <mode params>
 pub const NOTOPIC: &str         = "331";  // <channel> :No topic set
 pub const TOPIC: &str           = "332";  // <channel> <topic>
+pub const TOPICWHOTIME: &str    = "333";  // <channel> <nick> <setat>
 pub const INVITING: &str        = "341";  // <nick> <channel>
 pub const INVITELIST: &str      = "346";  // <channel> <invite mask>
 pub const ENDOFINVITELIST: &str = "347";  // <channel> :End of invite list

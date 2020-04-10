@@ -2,7 +2,7 @@
 //!
 //! <https://tools.ietf.org/html/rfc2812.html>
 
-use crate::channel::Channel;
+use crate::channel::{Channel, Topic};
 use crate::client::{Client, MessageQueueItem, ReplyBuffer};
 use crate::{lines, util};
 use ellidri_tokens::{Buffer, Command, mode, rpl};
@@ -247,7 +247,7 @@ impl super::StateInner {
 
                 ctx.rb.start_lr_batch();
                 self.send_join(ctx.id, &mut ctx.rb, target, client);
-                self.send_topic(&mut ctx.rb, target);
+                self.send_topic(&mut ctx.rb, target, false);
                 self.send_names(ctx.id, &mut ctx.rb, target);
                 update_idle = true;
             }
@@ -784,7 +784,15 @@ impl super::StateInner {
 
         let client = &self.clients[ctx.id];
         let topic = &topic[..topic.len().min(self.topiclen)];
-        channel.topic = if topic.is_empty() { None } else { Some(topic.to_owned()) };
+        channel.topic = if topic.is_empty() {
+            None
+        } else {
+            Some(Topic {
+                content: topic.to_owned(),
+                who: client.nick().to_owned(),
+                time: util::time(),
+            })
+        };
 
         let mut topic_notice = Buffer::new();
         topic_notice.message(client.full_name(), Command::Topic)
@@ -806,7 +814,7 @@ impl super::StateInner {
         if channel.secret {
             find_member(ctx.id, ctx.rb, channel, target)?;
         }
-        self.send_topic(ctx.rb, target);
+        self.send_topic(ctx.rb, target, true);
         Ok(())
     }
 
@@ -934,6 +942,7 @@ impl super::StateInner {
     pub fn cmd_whois(&self, ctx: CommandContext<'_>, nick: &str) -> Result {
         let (_, target_client) = find_nick(ctx.id, ctx.rb, &self.clients, &self.nicks, nick)?;
 
+        // TODO whois channels
         ctx.rb.start_lr_batch();
         ctx.rb.reply(rpl::WHOISUSER, 0, |msg| {
             msg.param(target_client.nick())
