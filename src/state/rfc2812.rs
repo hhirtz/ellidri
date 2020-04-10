@@ -316,6 +316,22 @@ impl super::StateInner {
         Ok(())
     }
 
+    // KILL
+
+    pub fn cmd_kill(&mut self, ctx: CommandContext<'_>, nick: &str, reason: &str) -> Result {
+        if !self.clients[ctx.id].operator {
+            ctx.rb.reply(rpl::ERR_NOPRIVILEDGES, 0, |msg| {
+                msg.trailing_param(lines::NO_PRIVILEDGES);
+            });
+            return Err(());
+        }
+        let (target_id, _) = find_nick(ctx.id, ctx.rb, &self.clients, &self.nicks, nick)?;
+        let target_client = self.clients.remove(target_id);
+        self.remove_client(target_id, target_client, reason, Some(reason));
+
+        Ok(())
+    }
+
     // LIST
 
     pub fn cmd_list(&self, ctx: CommandContext<'_>, targets: &str) -> Result {

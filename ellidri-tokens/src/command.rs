@@ -109,6 +109,7 @@ commands! {
     Invite   "INVITE"   2
     Join     "JOIN"     1
     Kick     "KICK"     2
+    Kill     "KILL"     2
     List     "LIST"     0
     Lusers   "LUSERS"   0
     Mode     "MODE"     1

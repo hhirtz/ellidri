@@ -458,6 +458,7 @@ impl StateInner {
             Command::Invite => self.cmd_invite(ctx, ps[0], ps[1]),
             Command::Join => self.cmd_join(ctx, ps[0], ps[1]),
             Command::Kick => self.cmd_kick(ctx, ps[0], ps[1], ps[2]),
+            Command::Kill => self.cmd_kill(ctx, ps[0], ps[1]),
             Command::List => self.cmd_list(ctx, ps[0]),
             Command::Lusers => self.cmd_lusers(ctx),
             Command::Mode => self.cmd_mode(ctx, ps[0], ps[1], &ps[2..cmp::max(2, n)]),
@@ -496,7 +497,7 @@ impl StateInner {
     }
 }
 
-fn points_of(command: Command) -> u32 {
+fn points_of(command: Command) -> u32 {  // TODO make this configurable
     match command {
         Command::Admin => 1,
         Command::Authenticate => 6,
@@ -506,6 +507,7 @@ fn points_of(command: Command) -> u32 {
         Command::Invite => 4,
         Command::Join => 4,
         Command::Kick => 2,
+        Command::Kill => 2,
         Command::List => 6,
         Command::Lusers => 2,
         Command::Mode => 2,
