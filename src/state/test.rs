@@ -6,7 +6,7 @@ use ellidri_tokens::{assert_msg, Command, Message};
 use std::cell::RefCell;
 use std::net::SocketAddr;
 use super::StateInner;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, Notify};
 
 type Queue = mpsc::UnboundedReceiver<MessageQueueItem>;
 
@@ -19,7 +19,9 @@ thread_local! {
 
 pub(crate) fn simple_state() -> StateInner {
     let config = config::State { domain: DOMAIN.to_owned(), ..config::State::sample() };
-    StateInner::new(config, auth::choose_provider(config::SaslBackend::None, None).unwrap())
+    let auth_provider = auth::choose_provider(config::SaslBackend::None, None).unwrap();
+    let rehash = std::sync::Arc::new(Notify::new());
+    StateInner::new(config, auth_provider, rehash)
 }
 
 pub(crate) fn add_client(s: &mut StateInner) -> (usize, Queue) {

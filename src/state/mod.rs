@@ -66,12 +66,16 @@ pub struct CommandContext<'a> {
 /// # use ellidri::State;
 /// # use ellidri::{auth, config, tokens};
 /// # tokio::runtime::Runtime::new().unwrap().block_on(async {
-/// // Initialize a `StateConfig` and create the state.
+/// use tokio::sync::Notify;
+/// use std::sync::Arc;
+///
+/// // Create the state
 /// let sasl_backend = auth::choose_provider(config::SaslBackend::None, None).unwrap();
+/// let rehash_notifications = Arc::new(Notify::new());
 /// let state = State::new(config::State {
 ///     domain: "ellidri.dev".to_owned(),
 ///     ..config::State::sample()
-/// }, sasl_backend);
+/// }, sasl_backend, rehash_notifications.clone());
 ///
 /// // The IP address of the client, to build the host string.
 /// let client_addr = std::net::SocketAddr::from(([127, 0, 0, 1], 12345));
@@ -84,8 +88,8 @@ pub struct CommandContext<'a> {
 /// let client_id = state.peer_joined(client_addr, msg_queue).await;
 ///
 /// // `handle_message` is used to pass messages from the client to the state.
-/// let nick = tokens::Message::parse("NICK ser\r\n").unwrap();
-/// let user = tokens::Message::parse("USER ser 0 * :ser\r\n").unwrap();
+/// let nick = tokens::Message::parse("NICK ser").unwrap();
+/// let user = tokens::Message::parse("USER ser 0 * :ser").unwrap();
 /// state.handle_message(client_id, nick).await;
 /// state.handle_message(client_id, user).await;
 ///
@@ -94,15 +98,13 @@ pub struct CommandContext<'a> {
 /// // It is safe to unwrap here while the peer is saved in the state.
 /// let msg = outgoing_msgs.recv().await.unwrap();
 ///
-/// // Outgoing messages implement `AsRef<[u8]>`, so they can be used with `std::io::Write`.
-/// // They also implement `AsRef<str>` because they are UTF-8 encoded.
-/// // Note that one call to `recv` can contain multiple IRC messages.
+/// // Outgoing messages implement `AsRef<[u8]>`, so they can be used
+/// // with `std::io::Write`. They also implement `AsRef<str>` because
+/// // they are UTF-8 encoded.  They include "\r\n" at the end.
 /// let msg: &str = msg.as_ref();
-/// let mut lines = msg.split("\r\n");
 ///
 /// // The first IRC message from the server is RPL_WELCOME.
-/// assert_eq!(lines.next().unwrap(),
-///            ":ellidri.dev 001 ser :Welcome home, ser!ser@127.0.0.1");
+/// assert_eq!(msg, ":ellidri.dev 001 ser :Welcome home, ser!~ser@127.0.0.1\r\n");
 /// # });
 /// ```
 #[derive(Clone)]

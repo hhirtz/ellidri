@@ -1028,8 +1028,7 @@ mod tests {
         test::collect(&mut buf, &mut q2);
         test::collect(&mut buf, &mut q3);
         test::assert_msgs(&buf, &[
-            (Some("c1!X@127.0.0.1"), Ok(Command::Join), &["#channel"]),
-            (Some(test::DOMAIN), Err(rpl::NOTOPIC), &["c1", "#channel", lines::NO_TOPIC]),
+            (Some("c1!~X@127.0.0.1"), Ok(Command::Join), &["#channel"]),
             (Some(test::DOMAIN), Err(rpl::NAMREPLY), &["c1", "=", "#channel", "@c1"]),
             (Some(test::DOMAIN), Err(rpl::ENDOFNAMES), &["c1", "#channel", lines::END_OF_NAMES]),
         ]);
@@ -1044,7 +1043,7 @@ mod tests {
         test::collect(&mut buf, &mut q3);
         test::assert_msgs(&buf, &[
             (Some(test::DOMAIN), Err(rpl::INVITING), &["c1", "c2", "#channel"]),
-            (Some("c1!X@127.0.0.1"), Ok(Command::Invite), &["c2", "#channel"]),
+            (Some("c1!~X@127.0.0.1"), Ok(Command::Invite), &["c2", "#channel"]),
         ]);
 
         // c1 c2 c3 all registered - c1 on channel - c2 invited
@@ -1054,9 +1053,8 @@ mod tests {
         test::collect(&mut buf, &mut q2);
         test::collect(&mut buf, &mut q3);
         test::assert_msgs(&buf, &[
-            (Some("c2!X@127.0.0.1"), Ok(Command::Join), &["#channel"]),
-            (Some("c2!X@127.0.0.1"), Ok(Command::Join), &["#channel"]),
-            (Some(test::DOMAIN), Err(rpl::NOTOPIC), &["c2", "#channel", lines::NO_TOPIC]),
+            (Some("c2!~X@127.0.0.1"), Ok(Command::Join), &["#channel"]),
+            (Some("c2!~X@127.0.0.1"), Ok(Command::Join), &["#channel"]),
             (Some(test::DOMAIN), Err(rpl::NAMREPLY), &["c2", "=", "#channel", ""]),
             (Some(test::DOMAIN), Err(rpl::ENDOFNAMES), &["c2", "#channel", lines::END_OF_NAMES]),
         ]);
@@ -1068,8 +1066,8 @@ mod tests {
         test::collect(&mut buf, &mut q2);
         test::collect(&mut buf, &mut q3);
         test::assert_msgs(&buf, &[
-            (Some("c1!X@127.0.0.1"), Ok(Command::Mode), &["#channel", "+i"]),
-            (Some("c1!X@127.0.0.1"), Ok(Command::Mode), &["#channel", "+i"]),
+            (Some("c1!~X@127.0.0.1"), Ok(Command::Mode), &["#channel", "+i"]),
+            (Some("c1!~X@127.0.0.1"), Ok(Command::Mode), &["#channel", "+i"]),
         ]);
 
         // c1 c2 c3 all registered - channel is invite-only - c1 on channel - c2 on channel
@@ -1100,7 +1098,7 @@ mod tests {
         test::collect(&mut buf, &mut q3);
         test::assert_msgs(&buf, &[
             (Some(test::DOMAIN), Err(rpl::INVITING), &["c1", "c3", "#channel"]),
-            (Some("c1!X@127.0.0.1"), Ok(Command::Invite), &["c3", "#channel"]),
+            (Some("c1!~X@127.0.0.1"), Ok(Command::Invite), &["c3", "#channel"]),
         ]);
 
         // channel is invite-only - c1 on channel - c2 on channel - c3 is invited
@@ -1110,10 +1108,9 @@ mod tests {
         test::collect(&mut buf, &mut q2);
         test::collect(&mut buf, &mut q3);
         test::assert_msgs(&buf, &[
-            (Some("c3!X@127.0.0.1"), Ok(Command::Join), &["#channel"]),
-            (Some("c3!X@127.0.0.1"), Ok(Command::Join), &["#channel"]),
-            (Some("c3!X@127.0.0.1"), Ok(Command::Join), &["#channel"]),
-            (Some(test::DOMAIN), Err(rpl::NOTOPIC), &["c3", "#channel", lines::NO_TOPIC]),
+            (Some("c3!~X@127.0.0.1"), Ok(Command::Join), &["#channel"]),
+            (Some("c3!~X@127.0.0.1"), Ok(Command::Join), &["#channel"]),
+            (Some("c3!~X@127.0.0.1"), Ok(Command::Join), &["#channel"]),
             (Some(test::DOMAIN), Err(rpl::NAMREPLY), &["c3", "=", "#channel", ""]),
             (Some(test::DOMAIN), Err(rpl::ENDOFNAMES), &["c3", "#channel", lines::END_OF_NAMES]),
         ]);
@@ -1125,9 +1122,9 @@ mod tests {
         test::collect(&mut buf, &mut q2);
         test::collect(&mut buf, &mut q3);
         test::assert_msgs(&buf, &[
-            (Some("c3!X@127.0.0.1"), Ok(Command::Part), &["#channel"]),
-            (Some("c3!X@127.0.0.1"), Ok(Command::Part), &["#channel"]),
-            (Some("c3!X@127.0.0.1"), Ok(Command::Part), &["#channel"]),
+            (Some("c3!~X@127.0.0.1"), Ok(Command::Part), &["#channel"]),
+            (Some("c3!~X@127.0.0.1"), Ok(Command::Part), &["#channel"]),
+            (Some("c3!~X@127.0.0.1"), Ok(Command::Part), &["#channel"]),
         ]);
 
         // c3 registered - channel is invite-only - c1 on channel - c2 on channel
@@ -1167,8 +1164,7 @@ mod tests {
         test::collect(&mut buf, &mut q1);
         test::collect(&mut buf, &mut q2);
         test::assert_msgs(&buf, &[
-            (Some("c1!X@127.0.0.1"), Ok(Command::Join), &["#channel"]),
-            (Some(test::DOMAIN), Err(rpl::NOTOPIC), &["c1", "#channel", lines::NO_TOPIC]),
+            (Some("c1!~X@127.0.0.1"), Ok(Command::Join), &["#channel"]),
             (Some(test::DOMAIN), Err(rpl::NAMREPLY), &["c1", "=", "#channel", "@c1"]),
             (Some(test::DOMAIN), Err(rpl::ENDOFNAMES), &["c1", "#channel", lines::END_OF_NAMES]),
         ]);
@@ -1188,7 +1184,7 @@ mod tests {
         test::collect(&mut buf, &mut q1);
         test::collect(&mut buf, &mut q2);
         test::assert_msgs(&buf, &[
-            (Some("c1!X@127.0.0.1"), Ok(Command::Mode), &["#channel", "+k", "key"]),
+            (Some("c1!~X@127.0.0.1"), Ok(Command::Mode), &["#channel", "+k", "key"]),
         ]);
         assert_eq!(state.channels[u("#channel")].key.as_ref().unwrap(), "key");
 
@@ -1199,8 +1195,7 @@ mod tests {
         test::collect(&mut buf, &mut q2);
         test::assert_msgs(&buf, &[
             (Some(test::DOMAIN), Err(rpl::ERR_BADCHANKEY), &["c2", "#channel", lines::BAD_CHAN_KEY]),
-            (Some("c2!X@127.0.0.1"), Ok(Command::Join), &["#home"]),
-            (Some(test::DOMAIN), Err(rpl::NOTOPIC), &["c2", "#home", lines::NO_TOPIC]),
+            (Some("c2!~X@127.0.0.1"), Ok(Command::Join), &["#home"]),
             (Some(test::DOMAIN), Err(rpl::NAMREPLY), &["c2", "=", "#home", "@c2"]),
             (Some(test::DOMAIN), Err(rpl::ENDOFNAMES), &["c2", "#home", lines::END_OF_NAMES]),
         ]);
