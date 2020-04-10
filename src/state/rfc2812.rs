@@ -605,15 +605,19 @@ impl super::StateInner {
             });
             return Err(());
         }
-        if self.nicks.contains_key(u(nick)) {
-            log::debug!("{}:     Already in use", ctx.id);
-            ctx.rb.reply(rpl::ERR_NICKNAMEINUSE, 0, |msg| {
-                msg.param(nick).trailing_param(lines::NICKNAME_IN_USE);
-            });
-            return Err(());
+        let client = &mut self.clients[ctx.id];
+        if let Some(&id) = self.nicks.get(u(nick)) {
+            if id != ctx.id {
+                log::debug!("{}:     Already in use", ctx.id);
+                ctx.rb.reply(rpl::ERR_NICKNAMEINUSE, 0, |msg| {
+                    msg.param(nick).trailing_param(lines::NICKNAME_IN_USE);
+                });
+                return Err(());
+            } else if client.nick() == nick {
+                return Ok(())
+            }
         }
 
-        let client = &mut self.clients[ctx.id];
         self.nicks.remove(u(client.nick()));
         self.nicks.insert(UniCase::new(nick.to_owned()), ctx.id);
 
