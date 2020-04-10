@@ -171,7 +171,7 @@ impl Config {
         where P: AsRef<path::Path>
     {
         let mut res = Self::sample();
-        let mut default_chan_mode = ModeString(String::new());
+        let mut default_chan_mode = ModeString(res.state.default_chan_mode.clone());
         let mut opers = Vec::new();
         let parser = Parser::read(path)?;
 
