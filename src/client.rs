@@ -3,6 +3,7 @@
 use crate::util;
 use ellidri_tokens::{Buffer, Command, MessageBuffer, mode, TagBuffer};
 use std::cell::RefCell;
+use std::fmt::Write;
 use std::sync::Arc;
 use tokio::sync::mpsc;
 
@@ -421,7 +422,7 @@ impl Client {
         base64::decode(&self.auth_buffer)
     }
 
-    /// Free authentication-related buffers.
+    /// Free authentication-related buffers and reset authentication state.
     pub fn auth_reset(&mut self) {
         self.auth_buffer = String::new();
         self.auth_buffer_complete = false;
@@ -434,11 +435,7 @@ impl Client {
 
     fn update_full_name(&mut self) {
         self.full_name.clear();
-        self.full_name.push_str(&self.nick);
-        self.full_name.push('!');
-        self.full_name.push_str(&self.user);
-        self.full_name.push('@');
-        self.full_name.push_str(&self.host);
+        let _ = write!(self.full_name, "{}!~{}@{}", self.nick, self.user, self.host);
     }
 
     /// The nickname of the client
@@ -573,16 +570,14 @@ impl ReplyBuffer {
     }
 
     pub fn start_batch(&mut self, name: &str) {
-        use std::fmt::Write;
-
         let new_batch = self.new_batch();
         let mut buf = Buffer::with_capacity(self.label_len + name.len() + 24);
         {
-            let mut msg = buf.tagged_message("");
-            if self.label_len != 0 {
-                msg = LABEL.with(|s| msg.tag("label", Some(&s.borrow())));
-            }
-            let mut msg = msg.prefixed_command(&self.domain, "BATCH");
+            let mut msg = if self.label_len != 0 {
+                LABEL.with(|s| buf.tagged_message("").tag("label", Some(&s.borrow())))
+            } else {
+                buf.tagged_message("")
+            }.prefixed_command(&self.domain, "BATCH");
             let _ = write!(msg.raw_param(), "+{}", new_batch);
             msg.param("labeled-response");
         }
@@ -598,8 +593,6 @@ impl ReplyBuffer {
     }
 
     pub fn end_batch(&mut self) {
-        use std::fmt::Write;
-
         let old_batch = self.batch.unwrap();
         self.batch = if old_batch == 0 {None} else {Some(old_batch - 1)};
 
