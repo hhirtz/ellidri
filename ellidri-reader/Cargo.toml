@@ -3,9 +3,16 @@ name = "ellidri-reader"
 version = "0.1.0"
 authors = ["Hubert Hirtz <hubert.hirtz@laposte.net>"]
 edition = "2018"
+description = "Asynchronous IRC message reading"
+homepage = "https://git.sr.ht/~taiite/ellidri"
+repository = "https://git.sr.ht/~taiite/ellidri"
+readme = "README.md"
+keywords = ["irc"]
+categories = ["network-programming"]
+license = "ISC"
+
 
 [dependencies]
 futures = { version = "0.3", default-features = false, features = ["std"] }
 memchr = { version = "2", default-features = false, features = ["std"] }
-#pin-project-lite = { version = "0.1", default-features = false }
 tokio = { version = "0.2", default-features = false, features = ["io-util"] }

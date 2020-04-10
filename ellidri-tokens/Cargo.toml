@@ -11,5 +11,6 @@ keywords = ["irc"]
 categories = ["network-programming"]
 license = "ISC"
 
+
 [package.metadata.docs.rs]
 targets = ["x86_64-unknown-linux-gnu"]
