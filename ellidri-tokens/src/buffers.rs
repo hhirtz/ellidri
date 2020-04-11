@@ -4,7 +4,7 @@ use std::cell::RefCell;
 
 /// Helper to build an IRC message.
 ///
-/// Use with `Buffer::message` and `ReplyBuffer::message`.
+/// Use with `Buffer::message`.
 pub struct MessageBuffer<'a> {
     buf: &'a mut String,
 }
@@ -199,7 +199,7 @@ pub struct TagBuffer<'a> {
 
 impl<'a> TagBuffer<'a> {
     /// Creates a new tag buffer.  This function is private, because it is meant to be called by
-    /// `Buffer` and `ReplyBuffer`.
+    /// `Buffer`.
     fn new(buf: &'a mut String) -> Self {
         buf.reserve(MESSAGE_LENGTH);
         let tag_start = buf.len();
@@ -266,8 +266,7 @@ impl<'a> TagBuffer<'a> {
 
 /// Helper to build IRC messages.
 ///
-/// The `Buffer` is used to ease the creation of strings representing valid IRC messages.  If you
-/// mainly need to send replies, `ReplyBuffer` might be a better fit for you.
+/// The `Buffer` is used to ease the creation of strings representing valid IRC messages.
 ///
 /// # Example
 ///
@@ -287,11 +286,6 @@ impl<'a> TagBuffer<'a> {
 /// assert_eq!(&result, ":nick!user@127.0.0.1 TOPIC #hall :Welcome to new users!\r\n\
 /// :ellidri.dev 332 nickname #hall :Welcome to new users!\r\n");
 /// ```
-///
-/// # On allocation
-///
-/// Allocation only occurs on `Buffer::message` calls.  These functions reseve `MESSAGE_LENGTH`
-/// prior to writing on the internal buffer.
 #[derive(Debug)]
 pub struct Buffer {
     buf: String,
