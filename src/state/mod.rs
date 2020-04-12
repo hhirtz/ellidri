@@ -274,6 +274,8 @@ impl StateInner {
         self.userlen = config.userlen;
         self.login_timeout = config.login_timeout;
         self.auth_provider = auth_provider;
+
+        // TODO send ISUPPORTs to clients with new values?
     }
 
     pub fn peer_joined(&mut self, addr: net::SocketAddr, queue: MessageQueue) -> usize {
@@ -907,6 +909,12 @@ fn is_valid_nickname(s: &str, max_len: usize) -> bool {
         && s.len() <= max_len
         && s.iter().all(is_valid_nickname_char)
         && s[0] != b'-' && !(b'0' <= s[0] && s[0] <= b'9')
+}
+
+/// Whether a nickname must not be taken by a regular user.
+#[must_use]
+fn is_restricted_nickname(s: &str) -> bool {
+    s.len() < 16 && s.ends_with("Serv")
 }
 
 #[cfg(test)]

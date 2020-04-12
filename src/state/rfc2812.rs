@@ -598,7 +598,7 @@ impl super::StateInner {
     // NICK
 
     pub fn cmd_nick(&mut self, ctx: CommandContext<'_>, nick: &str) -> Result {
-        if !super::is_valid_nickname(nick, self.nicklen) {
+        if !super::is_valid_nickname(nick, self.nicklen) || super::is_restricted_nickname(nick) {
             log::debug!("{}:     Bad nickname", ctx.id);
             ctx.rb.reply(rpl::ERR_ERRONEUSNICKNAME, 0, |msg| {
                 msg.param(nick).trailing_param(lines::ERRONEOUS_NICKNAME);
