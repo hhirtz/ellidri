@@ -107,6 +107,12 @@ impl super::StateInner {
                     msg.trailing_param(lines::SASL_SUCCESSFUL);
                 });
 
+                if client.capabilities().account_notify {
+                    ctx.rb.message(client.full_name(), "ACCOUNT", 0, |msg| {
+                        msg.param(&user);
+                    });
+                }
+
                 let mut account_notify = Buffer::new();
                 account_notify.message(client.full_name(), "ACCOUNT").param(&user);
 
@@ -120,6 +126,7 @@ impl super::StateInner {
                 Ok(())
             }
             Ok(None) => {
+                log::debug!("{}:     continuing authentication", ctx.id);
                 ctx.rb.send_auth_buffer(challenge);
                 Ok(())
             }
