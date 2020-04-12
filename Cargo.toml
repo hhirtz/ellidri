@@ -46,7 +46,7 @@ tokio-tls = { version = "0.3", default-features = false }
 
 # Case-insensitive HashMap.
 # Separated from the main crate because it contains unsafe code.
-ellidri-unicase = { version = "2.0.0", path = "ellidri-unicase" }
+ellidri-unicase = { version = "2.1.0", path = "ellidri-unicase" }
 
 # IRC parsing
 ellidri-reader = { version = "0.1", path = "ellidri-reader" }
