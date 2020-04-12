@@ -18,8 +18,8 @@ impl super::StateInner {
 impl super::StateInner {
     fn cmd_cap_list(&self, ctx: CommandContext<'_>) -> Result {
         let client = &self.clients[ctx.id];
-        ctx.rb.reply(Command::Cap, 0, |msg| {
-            client.capabilities().write_enabled(msg);
+        ctx.rb.message("", Command::Cap, 0, |msg| {
+            client.capabilities().write_enabled(msg.param(client.nick()));
         });
         Ok(())
     }
@@ -28,8 +28,8 @@ impl super::StateInner {
         let id = ctx.id;
         self.clients[id].set_cap_version(version);
 
-        ctx.rb.reply(Command::Cap, 0, |mut msg| {
-            msg = msg.param("LS");
+        ctx.rb.message("", Command::Cap, 0, |mut msg| {
+            msg = msg.param(self.clients[id].nick()).param("LS");
             let mut trailing = msg.raw_trailing_param();
 
             trailing.push_str(cap::ls_common());
@@ -48,14 +48,14 @@ impl super::StateInner {
     fn cmd_cap_req(&mut self, ctx: CommandContext<'_>, capabilities: &str) -> Result {
         let client = &mut self.clients[ctx.id];
         if !cap::are_supported(capabilities) {
-            ctx.rb.reply(Command::Cap, 0, |msg| {
-                msg.param("NAK").trailing_param(capabilities);
+            ctx.rb.message("", Command::Cap, 0, |msg| {
+                msg.param(client.nick()).param("NAK").trailing_param(capabilities);
             });
             return Err(());
         }
         client.update_capabilities(capabilities);
-        ctx.rb.reply(Command::Cap, 0, |msg| {
-            msg.param("ACK").trailing_param(capabilities);
+        ctx.rb.message("", Command::Cap, 0, |msg| {
+            msg.param(client.nick()).param("ACK").trailing_param(capabilities);
         });
         Ok(())
     }
