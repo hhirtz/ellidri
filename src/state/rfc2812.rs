@@ -16,16 +16,16 @@ impl super::StateInner {
 
     pub fn cmd_admin(&self, ctx: CommandContext<'_>) -> Result {
         ctx.rb.start_lr_batch();
-        ctx.rb.reply(rpl::ADMINME, 0, |msg| {
+        ctx.rb.reply(rpl::ADMINME, 1+self.domain.len() + 2+lines::ADMIN_ME.len(), |msg| {
             msg.param(&self.domain).trailing_param(lines::ADMIN_ME);
         });
-        ctx.rb.reply(rpl::ADMINLOC1, 0, |msg| {
+        ctx.rb.reply(rpl::ADMINLOC1, 2+self.org_location.len(), |msg| {
             msg.trailing_param(&self.org_location);
         });
-        ctx.rb.reply(rpl::ADMINLOC2, 0, |msg| {
+        ctx.rb.reply(rpl::ADMINLOC2, 2+self.org_name.len(), |msg| {
             msg.trailing_param(&self.org_name);
         });
-        ctx.rb.reply(rpl::ADMINMAIL, 0, |msg| {
+        ctx.rb.reply(rpl::ADMINMAIL, 2+self.org_mail.len(), |msg| {
             msg.trailing_param(&self.org_mail);
         });
 
@@ -38,17 +38,19 @@ impl super::StateInner {
         let client = &mut self.clients[ctx.id];
         if reason.is_empty() {
             client.away_message = None;
-            ctx.rb.reply(rpl::UNAWAY, 0, |msg| {
+            ctx.rb.reply(rpl::UNAWAY, 2+lines::UN_AWAY.len(), |msg| {
                 msg.trailing_param(lines::UN_AWAY);
             });
         } else {
             let away_message = reason[..reason.len().min(self.awaylen)].to_owned();
             client.away_message = Some(away_message);
-            ctx.rb.reply(rpl::NOWAWAY, 0, |msg| {
+            ctx.rb.reply(rpl::NOWAWAY, 2+lines::NOW_AWAY.len(), |msg| {
                 msg.trailing_param(lines::NOW_AWAY);
             });
         }
-        let mut away_notify = Buffer::new();
+        let capacity = 1+client.full_name().len() + 1+4 +
+            client.away_message.as_ref().map_or(0, |s| 2+s.len()) + 2;
+        let mut away_notify = Buffer::with_capacity(capacity);
         {
             let msg = away_notify.message(client.full_name(), Command::Away);
             if let Some(ref away_message) = client.away_message {
@@ -64,11 +66,11 @@ impl super::StateInner {
     pub fn cmd_info(&self, ctx: CommandContext<'_>) -> Result {
         ctx.rb.start_lr_batch();
         for line in super::SERVER_INFO.lines() {
-            ctx.rb.reply(rpl::INFO, 0, |msg| {
+            ctx.rb.reply(rpl::INFO, 2+line.len(), |msg| {
                 msg.trailing_param(line);
             });
         }
-        ctx.rb.reply(rpl::ENDOFINFO, 0, |msg| {
+        ctx.rb.reply(rpl::ENDOFINFO, 2+lines::END_OF_INFO.len(), |msg| {
             msg.trailing_param(lines::END_OF_INFO);
         });
 
@@ -83,7 +85,8 @@ impl super::StateInner {
             Some(channel) => channel,
             None => {
                 log::debug!("{}:     no such channel", ctx.id);
-                ctx.rb.reply(rpl::ERR_NOSUCHCHANNEL, 0, |msg| {
+                let capacity = 1+target.len() + 2+lines::NO_SUCH_CHANNEL.len();
+                ctx.rb.reply(rpl::ERR_NOSUCHCHANNEL, capacity, |msg| {
                     msg.param(target).trailing_param(lines::NO_SUCH_CHANNEL);
                 });
                 return Err(());
@@ -91,14 +94,16 @@ impl super::StateInner {
         };
         if !channel.can_invite(ctx.id) {
             log::debug!("{}:     not operator", ctx.id);
-            ctx.rb.reply(rpl::ERR_CHANOPRIVSNEEDED, 0, |msg| {
+            let capacity = 1+target.len() + 2+lines::CHAN_O_PRIVS_NEEDED.len();
+            ctx.rb.reply(rpl::ERR_CHANOPRIVSNEEDED, capacity, |msg| {
                 msg.param(target).trailing_param(lines::CHAN_O_PRIVS_NEEDED);
             });
             return Err(());
         }
         if channel.members.contains_key(&invited) {
             log::debug!("{}:     user on channel", ctx.id);
-            ctx.rb.reply(rpl::ERR_USERONCHANNEL, 0, |msg| {
+            let capacity = 1+nick.len() + 1+target.len() + 2+lines::USER_ON_CHANNEL.len();
+            ctx.rb.reply(rpl::ERR_USERONCHANNEL, capacity, |msg| {
                 msg.param(nick).param(target).trailing_param(lines::USER_ON_CHANNEL);
             });
             return Err(());
@@ -109,17 +114,19 @@ impl super::StateInner {
         }
 
         ctx.rb.start_lr_batch();
-        ctx.rb.reply(rpl::INVITING, 0, |msg| {
+        ctx.rb.reply(rpl::INVITING, 1+nick.len() + 1+target.len(), |msg| {
             msg.param(nick).param(target);
         });
         if let Some(away_msg) = invited_cli.away_message() {
-            ctx.rb.reply(rpl::AWAY, 0, |msg| {
+            ctx.rb.reply(rpl::AWAY, 1+nick.len() + 2+away_msg.len(), |msg| {
                 msg.param(nick).trailing_param(away_msg);
             });
         }
 
-        let mut invite = Buffer::new();
-        invite.message(self.clients[ctx.id].full_name(), Command::Invite)
+        let full_name = self.clients[ctx.id].full_name();
+        let capacity = 1+full_name.len() + 1+6 + 1+nick.len() + 1+target.len();
+        let mut invite = Buffer::with_capacity(capacity);
+        invite.message(full_name, Command::Invite)
             .param(nick)
             .param(target);
         let invite = MessageQueueItem::from(invite);
@@ -145,28 +152,31 @@ impl super::StateInner {
         }
         if channel.key.as_ref().map_or(false, |ck| key != ck) {
             log::debug!("{}:     Bad key", ctx.id);
-            ctx.rb.reply(rpl::ERR_BADCHANKEY, 0, |msg| {
+            ctx.rb.reply(rpl::ERR_BADCHANKEY, 1+target.len() + 2+lines::BAD_CHAN_KEY.len(), |msg| {
                 msg.param(target).trailing_param(lines::BAD_CHAN_KEY);
             });
             return Err(());
         }
         if channel.user_limit.map_or(false, |user_limit| user_limit <= channel.members.len()) {
             log::debug!("{}:     user limit reached", ctx.id);
-            ctx.rb.reply(rpl::ERR_CHANNELISFULL, 0, |msg| {
+            let capacity = 1+target.len() + 2+lines::CHANNEL_IS_FULL.len();
+            ctx.rb.reply(rpl::ERR_CHANNELISFULL, capacity, |msg| {
                 msg.param(target).trailing_param(lines::CHANNEL_IS_FULL);
             });
             return Err(());
         }
         if !channel.is_invited(ctx.id, client.nick()) {
             log::debug!("{}:     not invited", ctx.id);
-            ctx.rb.reply(rpl::ERR_INVITEONLYCHAN, 0, |msg| {
+            let capacity = 1+target.len() + 2+lines::INVITE_ONLY_CHAN.len();
+            ctx.rb.reply(rpl::ERR_INVITEONLYCHAN, capacity, |msg| {
                 msg.param(target).trailing_param(lines::INVITE_ONLY_CHAN);
             });
             return Err(());
         }
         if channel.is_banned(client.nick()) || channel.is_banned(client.full_name()) {
             log::debug!("{}:     Banned", ctx.id);
-            ctx.rb.reply(rpl::ERR_BANNEDFROMCHAN, 0, |msg| {
+            let capacity = 1+target.len() + 2+lines::BANNED_FROM_CHAN.len();
+            ctx.rb.reply(rpl::ERR_BANNEDFROMCHAN, capacity, |msg| {
                 msg.param(target).trailing_param(lines::BANNED_FROM_CHAN);
             });
             return Err(());
@@ -183,11 +193,14 @@ impl super::StateInner {
     }
 
     fn send_join(&self, id: usize, rb: &mut ReplyBuffer, target: &str, client: &Client) {
-        let mut join = Buffer::new();
+        let capacity = 1+client.full_name().len() + 1+4 + 1+target.len();
+        let mut join = Buffer::with_capacity(capacity);
         join.message(client.full_name(), Command::Join).param(target);
         let join = MessageQueueItem::from(join);
 
-        let mut extended_join = Buffer::new();
+        let capacity = 1+client.full_name().len() + 1+4 + 1+target.len() +
+            1+client.account().map_or(1, str::len) + 2+client.real().len();
+        let mut extended_join = Buffer::with_capacity(capacity);
         extended_join.message(client.full_name(), Command::Join)
             .param(target)
             .param(client.account().unwrap_or("*"))
@@ -203,12 +216,13 @@ impl super::StateInner {
                 member.send(join.clone());
             }
         }
-        rb.message(client.full_name(), Command::Join, 0, |msg| {
+        rb.message(client.full_name(), Command::Join, 1+target.len(), |msg| {
             msg.param(target);
         });
 
         if let Some(ref away_message) = client.away_message {
-            let mut away_notify = Buffer::new();
+            let capacity = 1+client.full_name().len() + 1+4 + 1+away_message.len();
+            let mut away_notify = Buffer::with_capacity(capacity);
             away_notify.message(client.full_name(), Command::Away).trailing_param(away_message);
             let away_notify = MessageQueueItem::from(away_notify);
 
@@ -228,7 +242,8 @@ impl super::StateInner {
         for (target, key) in super::StateInner::chan_and_keys(targets, keys) {
             if !super::is_valid_channel_name(target, self.channellen) {
                 log::debug!("{}:     Invalid channel name", ctx.id);
-                ctx.rb.reply(rpl::ERR_NOSUCHCHANNEL, 0, |msg| {
+                let capacity = 1+target.len() + 2+lines::NO_SUCH_CHANNEL.len();
+                ctx.rb.reply(rpl::ERR_NOSUCHCHANNEL, capacity, |msg| {
                     msg.param(target).trailing_param(lines::NO_SUCH_CHANNEL);
                 });
                 return Err(());
@@ -269,7 +284,8 @@ impl super::StateInner {
         let member_modes = find_member(ctx.id, ctx.rb, channel, target)?;
         if !member_modes.operator {
             log::debug!("{}:     not operator", ctx.id);
-            ctx.rb.reply(rpl::ERR_CHANOPRIVSNEEDED, 0, |msg| {
+            let capacity = 1+target.len() + 2+lines::CHAN_O_PRIVS_NEEDED.len();
+            ctx.rb.reply(rpl::ERR_CHANOPRIVSNEEDED, capacity, |msg| {
                 msg.param(target).trailing_param(lines::CHAN_O_PRIVS_NEEDED);
             });
             return Err(());
@@ -282,7 +298,8 @@ impl super::StateInner {
             Some(kicked_addrs) => kicked_addrs,
             None => {
                 log::debug!("{}:     targets not on channel", ctx.id);
-                ctx.rb.reply(rpl::ERR_USERNOTINCHANNEL, 0, |msg| {
+                let capacity = 1+nick.len() + 1+target.len() + 2+lines::USER_NOT_IN_CHANNEL.len();
+                ctx.rb.reply(rpl::ERR_USERNOTINCHANNEL, capacity, |msg| {
                     msg.param(nick).param(target).trailing_param(lines::USER_NOT_IN_CHANNEL);
                 });
                 return Err(());
@@ -291,7 +308,10 @@ impl super::StateInner {
 
         let reason = &reason[..reason.len().min(self.kicklen)];
         let client = &self.clients[ctx.id];
-        let mut kick_response = Buffer::new();
+        let capacity = 1+target.len() + 1+nick.len() +
+            if reason.is_empty() {0} else {2+reason.len()};
+        let full_capacity = capacity + 1+client.full_name().len() + 1+4 + 2;
+        let mut kick_response = Buffer::with_capacity(full_capacity);
         {
             let msg = kick_response.message(client.full_name(), Command::Kick)
                 .param(target)
@@ -305,7 +325,7 @@ impl super::StateInner {
         for member in channel.members.keys().filter(|m| **m != ctx.id) {
             self.clients[*member].send(msg.clone());
         }
-        ctx.rb.message(client.full_name(), Command::Kick, 0, |mut msg| {
+        ctx.rb.message(client.full_name(), Command::Kick, capacity, |mut msg| {
             msg = msg.param(target).param(nick);
             if !reason.is_empty() {
                 msg.trailing_param(reason);
@@ -320,7 +340,7 @@ impl super::StateInner {
 
     pub fn cmd_kill(&mut self, ctx: CommandContext<'_>, nick: &str, reason: &str) -> Result {
         if !self.clients[ctx.id].operator {
-            ctx.rb.reply(rpl::ERR_NOPRIVILEDGES, 0, |msg| {
+            ctx.rb.reply(rpl::ERR_NOPRIVILEDGES, 2+lines::NO_PRIVILEDGES.len(), |msg| {
                 msg.trailing_param(lines::NO_PRIVILEDGES);
             });
             return Err(());
@@ -342,7 +362,7 @@ impl super::StateInner {
                 if channel.secret && !client.operator && !channel.members.contains_key(&ctx.id) {
                     continue;
                 }
-                ctx.rb.reply(rpl::LIST, 0, |mut msg| {
+                ctx.rb.reply(rpl::LIST, 1+name.get().len() + 2+self.topiclen, |mut msg| {
                     msg = msg.param(name.get());
                     channel.list_entry(msg);
                 });
@@ -353,7 +373,7 @@ impl super::StateInner {
                     if channel.secret && !client.operator && !channel.members.contains_key(&ctx.id) {
                         continue;
                     }
-                    ctx.rb.reply(rpl::LIST, 0, |mut msg| {
+                    ctx.rb.reply(rpl::LIST, 1+name.len() + 2+self.topiclen, |mut msg| {
                         msg = msg.param(name);
                         channel.list_entry(msg);
                     });
@@ -361,7 +381,7 @@ impl super::StateInner {
             }
         }
 
-        ctx.rb.reply(rpl::LISTEND, 0, |msg| {
+        ctx.rb.reply(rpl::LISTEND, 2+lines::END_OF_LIST.len(), |msg| {
             msg.trailing_param(lines::END_OF_LIST);
         });
 
@@ -381,7 +401,7 @@ impl super::StateInner {
     fn cmd_mode_chan_get(&self, ctx: CommandContext<'_>, target: &str) -> Result {
         let channel = find_channel(ctx.id, ctx.rb, &self.channels, target)?;
         let id = ctx.id;
-        ctx.rb.reply(rpl::CHANNELMODEIS, 0, |mut msg| {
+        ctx.rb.reply(rpl::CHANNELMODEIS, 400, |mut msg| {
             msg = msg.param(target);
             let full_info = channel.members.contains_key(&id) || self.clients[id].operator;
             channel.modes(msg, full_info);
@@ -398,7 +418,8 @@ impl super::StateInner {
             Some(channel) => channel,
             None => {
                 log::debug!("{}:     no such channel", ctx.id);
-                ctx.rb.reply(rpl::ERR_NOSUCHCHANNEL, 0, |msg| {
+                let capacity = 1+target.len() + 2+lines::NO_SUCH_CHANNEL.len();
+                ctx.rb.reply(rpl::ERR_NOSUCHCHANNEL, capacity, |msg| {
                     msg.param(target).trailing_param(lines::NO_SUCH_CHANNEL);
                 });
                 return Err(());
@@ -407,25 +428,25 @@ impl super::StateInner {
         let member_modes = find_member(ctx.id, ctx.rb, channel, target)?;
         if !client.operator && !member_modes.can_change(modes, mode_params) {
             log::debug!("{}:     not operator", ctx.id);
-            ctx.rb.reply(rpl::ERR_CHANOPRIVSNEEDED, 0, |msg| {
+            let capacity = 1+target.len() + 2+lines::CHAN_O_PRIVS_NEEDED.len();
+            ctx.rb.reply(rpl::ERR_CHANOPRIVSNEEDED, capacity, |msg| {
                 msg.param(target).trailing_param(lines::CHAN_O_PRIVS_NEEDED);
             });
             return Err(());
         }
 
-        let reply_list = |rb: &mut ReplyBuffer, item, end, line, it: &[String]| {
+        let reply_list = |rb: &mut ReplyBuffer, item, end, line: &str, it: &[String]| {
             for i in it {
-                rb.reply(item, 0, |msg| {
+                rb.reply(item, 1+target.len() + 1+i.len(), |msg| {
                     msg.param(target).param(i);
                 });
             }
-            rb.reply(end, 0, |msg| {
+            rb.reply(end, 1+target.len() + 2+line.len(), |msg| {
                 msg.param(target).trailing_param(line);
             });
         };
 
         let clients = &self.clients;
-
         let mut applied_modes = String::new();
         let mut applied_modeparams = Vec::new();
         let mut last_applied_value = true;
@@ -442,7 +463,7 @@ impl super::StateInner {
                 reply_list(&mut ctx.rb, rpl::INVITELIST, rpl::ENDOFINVITELIST, lines::END_OF_INVITE_LIST,
                            channel.exception_mask.patterns());
             }
-            Ok(change) => match channel.apply_mode_change(change, |a| clients[*a].nick()) {
+            Ok(change) => match channel.apply_mode_change(change, |a| clients[a].nick()) {
                 Ok(true) => {
                     log::debug!("    - Applied {:?}", change);
                     let change_value = change.value();
@@ -457,20 +478,22 @@ impl super::StateInner {
                 }
                 Ok(false) => {}
                 Err(rpl::ERR_USERNOTINCHANNEL) => {
-                    ctx.rb.reply(rpl::ERR_USERNOTINCHANNEL, 0, |msg| {
-                        msg.param(change.param().unwrap())
+                    let change = change.param().unwrap();
+                    let capacity = 1+change.len() + 2+lines::USER_NOT_IN_CHANNEL.len();
+                    ctx.rb.reply(rpl::ERR_USERNOTINCHANNEL, capacity, |msg| {
+                        msg.param(change)
                             .trailing_param(lines::USER_NOT_IN_CHANNEL);
                     });
                 }
                 Err(rpl::ERR_KEYSET) => {
-                    ctx.rb.reply(rpl::ERR_KEYSET, 0, |msg| {
+                    ctx.rb.reply(rpl::ERR_KEYSET, 1+target.len() + 2+lines::KEY_SET.len(), |msg| {
                         msg.param(target).trailing_param(lines::KEY_SET);
                     });
                 }
                 Err(_) => { unreachable!(); }
             }
             Err(mode::Error::Unknown(mode, _)) => {
-                ctx.rb.reply(rpl::ERR_UNKNOWNMODE, 0, |mut msg| {
+                ctx.rb.reply(rpl::ERR_UNKNOWNMODE, 1+1 + 2+lines::UNKNOWN_MODE.len(), |mut msg| {
                     msg.raw_param().push(mode);
                     msg.trailing_param(lines::UNKNOWN_MODE);
                 });
@@ -481,24 +504,26 @@ impl super::StateInner {
         if !applied_modes.is_empty() {
             ctx.rb.start_lr_batch();
             let client = &self.clients[ctx.id];
-            let mut mode_change = Buffer::new();
+            // For now, this isn't possible to use the correct capacity due to a weird rustc bug?
+            //let capacity = 1+target.len() + 1+applied_modes.len() +
+            //    applied_modeparams.iter().map(|mp| 1 + mp.len()).sum();
+            //let full_capacity = capacity + 1+client.full_name().len() + 1+4 + 2;
+            let capacity = 0;
+            let full_capacity = 0;
+            let mut mode_change = Buffer::with_capacity(full_capacity);
             {
-                let mut msg = mode_change.message(client.full_name(), Command::Mode)
+                let msg = mode_change.message(client.full_name(), Command::Mode)
                     .param(target)
                     .param(&applied_modes);
-                for mp in &applied_modeparams {
-                    msg = msg.param(mp);
-                }
+                applied_modeparams.iter().fold(msg, |msg, mp| msg.param(mp));
             }
             let mode_change = MessageQueueItem::from(mode_change);
             for member in channel.members.keys().filter(|m| **m != ctx.id) {
                 self.clients[*member].send(mode_change.clone());
             }
-            ctx.rb.message(client.full_name(), Command::Mode, 0, |mut msg| {
+            ctx.rb.message(client.full_name(), Command::Mode, capacity, |mut msg| {
                 msg = msg.param(target).param(&applied_modes);
-                for mp in &applied_modeparams {
-                    msg = msg.param(mp);
-                }
+                applied_modeparams.iter().fold(msg, |msg, mp| msg.param(mp));
             });
         }
 
@@ -508,7 +533,8 @@ impl super::StateInner {
     fn cmd_mode_user_check(&self, ctx: &mut CommandContext<'_>, nick: &str) -> Result {
         if !self.clients[ctx.id].nick().eq_ignore_ascii_case(nick) {
             log::debug!("{}:     users don't match", ctx.id);
-            ctx.rb.reply(rpl::ERR_USERSDONTMATCH, 0, |msg| {
+            let capacity = 1+nick.len() + 2+lines::USERS_DONT_MATCH.len();
+            ctx.rb.reply(rpl::ERR_USERSDONTMATCH, capacity, |msg| {
                 msg.param(nick).trailing_param(lines::USERS_DONT_MATCH);
             });
             return Err(());
@@ -519,7 +545,7 @@ impl super::StateInner {
     fn cmd_mode_user_set(&mut self, ctx: CommandContext<'_>, target: &str, modes: &str) -> Result {
         let client = &mut self.clients[ctx.id];
 
-        let mut applied_modes = String::new();
+        let mut applied_modes = String::with_capacity(modes.len());
         for maybe_change in mode::user_query(modes) { match maybe_change {
             Ok(change) => if client.apply_mode_change(change) {
                 log::debug!("  - Applied {:?}", change);
@@ -527,7 +553,8 @@ impl super::StateInner {
                 applied_modes.push(change.symbol());
             }
             Err(mode::Error::Unknown(mode, _)) => {
-                ctx.rb.reply(rpl::ERR_UMODEUNKNOWNFLAG, 0, |mut msg| {
+                let capacity = 1+1 + 1+lines::UNKNOWN_MODE.len();
+                ctx.rb.reply(rpl::ERR_UMODEUNKNOWNFLAG, capacity, |mut msg| {
                     msg.raw_param().push(mode);
                     msg.trailing_param(lines::UNKNOWN_MODE);
                 });
@@ -535,8 +562,9 @@ impl super::StateInner {
             Err(_) => {}
         } }
         if !applied_modes.is_empty() {
-            ctx.rb.message(client.full_name(), Command::Mode, 0, |msg| {
-                msg.param(target).trailing_param(&applied_modes);
+            let capacity = 1+target.len() + 1+applied_modes.len();
+            ctx.rb.message(client.full_name(), Command::Mode, capacity, |msg| {
+                msg.param(target).param(&applied_modes);
             });
         }
 
@@ -545,7 +573,7 @@ impl super::StateInner {
 
     fn cmd_mode_user_get(&self, ctx: CommandContext<'_>) -> Result {
         let client = &self.clients[ctx.id];
-        ctx.rb.reply(rpl::UMODEIS, 0, |msg| {
+        ctx.rb.reply(rpl::UMODEIS, 10, |msg| {
             client.write_modes(msg);
         });
         Ok(())
@@ -582,7 +610,7 @@ impl super::StateInner {
 
     pub fn cmd_names(&self, mut ctx: CommandContext<'_>, targets: &str) -> Result {
         if targets.is_empty() || targets == "*" {
-            ctx.rb.reply(rpl::ENDOFNAMES, 0, |msg| {
+            ctx.rb.reply(rpl::ENDOFNAMES, 1+1 + 2+lines::END_OF_NAMES.len(), |msg| {
                 msg.param("*").trailing_param(lines::END_OF_NAMES);
             });
         } else {
@@ -600,7 +628,8 @@ impl super::StateInner {
     pub fn cmd_nick(&mut self, ctx: CommandContext<'_>, nick: &str) -> Result {
         if !super::is_valid_nickname(nick, self.nicklen) || super::is_restricted_nickname(nick) {
             log::debug!("{}:     Bad nickname", ctx.id);
-            ctx.rb.reply(rpl::ERR_ERRONEUSNICKNAME, 0, |msg| {
+            let capacity = 1+nick.len() + 2+lines::ERRONEOUS_NICKNAME.len();
+            ctx.rb.reply(rpl::ERR_ERRONEUSNICKNAME, capacity, |msg| {
                 msg.param(nick).trailing_param(lines::ERRONEOUS_NICKNAME);
             });
             return Err(());
@@ -609,7 +638,8 @@ impl super::StateInner {
         if let Some(&id) = self.nicks.get(u(nick)) {
             if id != ctx.id {
                 log::debug!("{}:     Already in use", ctx.id);
-                ctx.rb.reply(rpl::ERR_NICKNAMEINUSE, 0, |msg| {
+                let capacity = 1+nick.len() + 2+lines::NICKNAME_IN_USE.len();
+                ctx.rb.reply(rpl::ERR_NICKNAMEINUSE, capacity, |msg| {
                     msg.param(nick).trailing_param(lines::NICKNAME_IN_USE);
                 });
                 return Err(());
@@ -627,9 +657,11 @@ impl super::StateInner {
             return Ok(());
         }
 
-        let mut nick_response = Buffer::new();
+        let capacity = 1+nick.len();
+        let full_capacity = capacity + 1+client.full_name().len() + 1+4 + 2;
+        let mut nick_response = Buffer::with_capacity(full_capacity);
         nick_response.message(client.full_name(), Command::Nick).param(nick);
-        ctx.rb.message(client.full_name(), Command::Nick, 0, |msg| {
+        ctx.rb.message(client.full_name(), Command::Nick, capacity, |msg| {
             msg.param(nick);
         });
         client.set_nick(nick);
@@ -650,7 +682,7 @@ impl super::StateInner {
         // TODO oper_hosts
         if !self.opers.iter().any(|(n, p)| n == name && p == password) {
             log::debug!("{}:     Password mismatch", ctx.id);
-            ctx.rb.reply(rpl::ERR_PASSWDMISMATCH, 0, |msg| {
+            ctx.rb.reply(rpl::ERR_PASSWDMISMATCH, 2+lines::PASSWORD_MISMATCH.len(), |msg| {
                 msg.trailing_param(lines::PASSWORD_MISMATCH);
             });
             return Err(());
@@ -659,10 +691,10 @@ impl super::StateInner {
         let client = &mut self.clients[ctx.id];
         client.operator = true;
         ctx.rb.start_lr_batch();
-        ctx.rb.prefixed_message(Command::Mode, 0, |msg| {
+        ctx.rb.prefixed_message(Command::Mode, 1+client.nick().len() + 1+2, |msg| {
             msg.param(client.nick()).param("+o");
         });
-        ctx.rb.reply(rpl::YOUREOPER, 0, |msg| {
+        ctx.rb.reply(rpl::YOUREOPER, 2+lines::YOURE_OPER.len(), |msg| {
             msg.trailing_param(lines::YOURE_OPER);
         });
 
@@ -681,7 +713,8 @@ impl super::StateInner {
                 Some(channel) => channel,
                 None => {
                     log::debug!("{}:     Not on channel", ctx.id);
-                    ctx.rb.reply(rpl::ERR_NOTONCHANNEL, 0, |msg| {
+                    let capacity = 1+target.len() + 2+lines::NOT_ON_CHANNEL.len();
+                    ctx.rb.reply(rpl::ERR_NOTONCHANNEL, capacity, |msg| {
                         msg.param(target).trailing_param(lines::NOT_ON_CHANNEL);
                     });
                     res = Err(());
@@ -693,12 +726,15 @@ impl super::StateInner {
             if channel.members.is_empty() {
                 self.channels.remove(u(target));
             } else {
-                let mut part_notice = Buffer::new();
-
                 channel.members.remove(&ctx.id);
+
+                let mut part_notice = Buffer::new();
+                let capacity = 1+client.full_name().len() + 1+4 + 1+target.len() + 2;
                 if reason.is_empty() {
+                    part_notice.reserve(capacity);
                     part_notice.message(client.full_name(), Command::Part).param(target);
                 } else {
+                    part_notice.reserve(capacity + 2+reason.len());
                     part_notice.message(client.full_name(), Command::Part)
                         .param(target)
                         .trailing_param(reason);
@@ -709,7 +745,8 @@ impl super::StateInner {
                 }
             }
 
-            ctx.rb.message(client.full_name(), Command::Part, 0, |mut msg| {
+            let capacity = 1+target.len() + if reason.is_empty() {0} else {2+reason.len()};
+            ctx.rb.message(client.full_name(), Command::Part, capacity, |mut msg| {
                 msg = msg.param(target);
                 if !reason.is_empty() {
                     msg.trailing_param(reason);
@@ -733,7 +770,7 @@ impl super::StateInner {
     // PING
 
     pub fn cmd_ping(&mut self, ctx: CommandContext<'_>, payload: &str) -> Result {
-        ctx.rb.prefixed_message(Command::Pong, 0, |msg| {
+        ctx.rb.prefixed_message(Command::Pong, 2+payload.len(), |msg| {
             msg.trailing_param(payload);
         });
         Ok(())
@@ -758,13 +795,13 @@ impl super::StateInner {
 
     pub fn cmd_rehash(&self, ctx: CommandContext<'_>) -> Result {
         if self.clients[ctx.id].operator {
-            ctx.rb.reply(rpl::REHASHING, 0, |msg| {
+            ctx.rb.reply(rpl::REHASHING, 1+2 + 2+lines::REHASHING.len(), |msg| {
                 msg.param("--").trailing_param(lines::REHASHING);
             });
             self.rehash.notify();
             Ok(())
         } else {
-            ctx.rb.reply(rpl::ERR_NOPRIVILEDGES, 0, |msg| {
+            ctx.rb.reply(rpl::ERR_NOPRIVILEDGES, 2+lines::NO_PRIVILEDGES.len(), |msg| {
                 msg.trailing_param(lines::NO_PRIVILEDGES);
             });
             Err(())
@@ -774,8 +811,9 @@ impl super::StateInner {
     // TIME
 
     pub fn cmd_time(&self, ctx: CommandContext<'_>) -> Result {
-        ctx.rb.reply(rpl::TIME, 0, |msg| {
-            msg.param(&self.domain).trailing_param(&util::time_str());
+        let time = util::time_str();
+        ctx.rb.reply(rpl::TIME, 1+self.domain.len() + 2+time.len(), |msg| {
+            msg.param(&self.domain).trailing_param(&time);
         });
         Ok(())
     }
@@ -787,7 +825,8 @@ impl super::StateInner {
             Some(channel) => channel,
             None => {
                 log::debug!("{}:     no such channel", ctx.id);
-                ctx.rb.reply(rpl::ERR_NOSUCHCHANNEL, 0, |msg| {
+                let capacity = 1+target.len() + 2+lines::NO_SUCH_CHANNEL.len();
+                ctx.rb.reply(rpl::ERR_NOSUCHCHANNEL, capacity, |msg| {
                     msg.param(target).trailing_param(lines::NO_SUCH_CHANNEL);
                 });
                 return Err(());
@@ -796,7 +835,8 @@ impl super::StateInner {
         let member_modes = find_member(ctx.id, ctx.rb, channel, target)?;
         if !member_modes.operator && channel.topic_restricted {
             log::debug!("{}:     not operator", ctx.id);
-            ctx.rb.reply(rpl::ERR_CHANOPRIVSNEEDED, 0, |msg| {
+            let capacity = 1+target.len() + 2+lines::CHAN_O_PRIVS_NEEDED.len();
+            ctx.rb.reply(rpl::ERR_CHANOPRIVSNEEDED, capacity, |msg| {
                 msg.param(target).trailing_param(lines::CHAN_O_PRIVS_NEEDED);
             });
             return Err(());
@@ -814,7 +854,9 @@ impl super::StateInner {
             })
         };
 
-        let mut topic_notice = Buffer::new();
+        let capacity = 1+target.len() + 2+topic.len();
+        let full_capacity = capacity + 1+client.full_name().len() + 1+5 + 2;
+        let mut topic_notice = Buffer::with_capacity(full_capacity);
         topic_notice.message(client.full_name(), Command::Topic)
             .param(target)
             .trailing_param(topic);
@@ -822,7 +864,7 @@ impl super::StateInner {
         for member in channel.members.keys().filter(|m| **m != ctx.id) {
             self.clients[*member].send(topic_notice.clone());
         }
-        ctx.rb.message(client.full_name(), Command::Topic, 0, |msg| {
+        ctx.rb.message(client.full_name(), Command::Topic, capacity, |msg| {
             msg.param(target).trailing_param(topic);
         });
 
@@ -854,7 +896,7 @@ impl super::StateInner {
         let client = &mut self.clients[ctx.id];
         if self.password.is_some() && !client.has_given_password {
             log::debug!("{}:     Password mismatch", ctx.id);
-            ctx.rb.reply(rpl::ERR_PASSWDMISMATCH, 0, |msg| {
+            ctx.rb.reply(rpl::ERR_PASSWDMISMATCH, 2+lines::PASSWORD_MISMATCH.len(), |msg| {
                 msg.trailing_param(lines::PASSWORD_MISMATCH);
             });
             let client = self.clients.remove(ctx.id);
@@ -871,7 +913,8 @@ impl super::StateInner {
 
     pub fn cmd_version(&self, ctx: CommandContext<'_>) -> Result {
         ctx.rb.start_lr_batch();
-        ctx.rb.reply(rpl::VERSION, 0, |msg| {
+        let capacity = 1+crate::server_version!().len() + 1+self.domain.len();
+        ctx.rb.reply(rpl::VERSION, capacity, |msg| {
             msg.param(crate::server_version!()).param(&self.domain);
         });
         self.send_i_support(ctx.rb);
@@ -897,7 +940,9 @@ impl super::StateInner {
                     {
                         continue;
                     }
-                    ctx.rb.reply(rpl::WHOREPLY, 0, |mut msg| {
+                    let capacity = 1+mask.len() + 1+c.user().len() + 1+c.host().len() +
+                        1+self.domain.len() + 1+c.nick().len() + 1+6 + 2+2+c.real().len();
+                    ctx.rb.reply(rpl::WHOREPLY, capacity, |mut msg| {
                         msg = msg.param(mask)
                             .param(c.user())
                             .param(c.host())
@@ -932,7 +977,9 @@ impl super::StateInner {
                 if !c.invisible || a == ctx.id || channel_name.is_some() || client.operator {
                     let client = &self.clients[ctx.id];
                     let channel_name = channel_name.map_or("*", UniCase::get);
-                    ctx.rb.reply(rpl::WHOREPLY, 0, |mut msg| {
+                    let capacity = 1+mask.len() + 1+c.user().len() + 1+c.host().len() +
+                        1+self.domain.len() + 1+c.nick().len() + 1+6 + 2+c.real().len();
+                    ctx.rb.reply(rpl::WHOREPLY, capacity, |mut msg| {
                         msg = msg.param(channel_name)
                             .param(c.user())
                             .param(c.host())
@@ -950,7 +997,7 @@ impl super::StateInner {
                 }
             }
         }
-        ctx.rb.reply(rpl::ENDOFWHO, 0, |msg| {
+        ctx.rb.reply(rpl::ENDOFWHO, 1+mask.len() + 2+lines::END_OF_WHO.len(), |msg| {
             msg.param(mask).trailing_param(lines::END_OF_WHO);
         });
 
@@ -964,28 +1011,33 @@ impl super::StateInner {
 
         // TODO whois channels
         ctx.rb.start_lr_batch();
-        ctx.rb.reply(rpl::WHOISUSER, 0, |msg| {
+        let capacity = 1+target_client.nick().len() + 1+target_client.user().len() +
+            1+target_client.host().len() + 1+1 + 2+target_client.real().len();
+        ctx.rb.reply(rpl::WHOISUSER, capacity, |msg| {
             msg.param(target_client.nick())
                 .param(target_client.user())
                 .param(target_client.host())
                 .param("*")
                 .trailing_param(target_client.real());
         });
-        ctx.rb.reply(rpl::WHOISSERVER, 0, |msg| {
+        let capacity = 1+target_client.nick().len() + 1+self.domain.len() + 2+self.org_name.len();
+        ctx.rb.reply(rpl::WHOISSERVER, capacity, |msg| {
             msg.param(target_client.nick()).param(&self.domain).trailing_param(&self.org_name);
         });
-        ctx.rb.reply(rpl::WHOISIDLE, 0, |msg| {
+        let capacity = 1+target_client.nick().len() + 1+10 + 1+10 + 2+lines::WHOIS_IDLE.len();
+        ctx.rb.reply(rpl::WHOISIDLE, capacity, |msg| {
             msg.param(target_client.nick())
                 .fmt_param(target_client.idle_time())
                 .fmt_param(target_client.signon_time())
                 .trailing_param(lines::WHOIS_IDLE);
         });
         if let Some(away_msg) = target_client.away_message() {
-            ctx.rb.reply(rpl::AWAY, 0, |msg| {
+            ctx.rb.reply(rpl::AWAY, 1+target_client.nick().len() + 2+away_msg.len(), |msg| {
                 msg.param(target_client.nick()).trailing_param(away_msg);
             });
         }
-        ctx.rb.reply(rpl::ENDOFWHOIS, 0, |msg| {
+        let capacity = 1+target_client.nick().len() + 2+lines::END_OF_WHOIS.len();
+        ctx.rb.reply(rpl::ENDOFWHOIS, capacity, |msg| {
             msg.param(target_client.nick()).trailing_param(lines::END_OF_WHOIS);
         });
 

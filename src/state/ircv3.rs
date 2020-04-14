@@ -18,7 +18,8 @@ impl super::StateInner {
 impl super::StateInner {
     fn cmd_cap_list(&self, ctx: CommandContext<'_>) -> Result {
         let client = &self.clients[ctx.id];
-        ctx.rb.message("", Command::Cap, 0, |msg| {
+        let capacity = 1+client.nick().len() + 2+cap::ls_common().len();
+        ctx.rb.message("", Command::Cap, capacity, |msg| {
             client.capabilities().write_enabled(msg.param(client.nick()));
         });
         Ok(())
@@ -28,8 +29,10 @@ impl super::StateInner {
         let id = ctx.id;
         self.clients[id].set_cap_version(version);
 
-        ctx.rb.message("", Command::Cap, 0, |mut msg| {
-            msg = msg.param(self.clients[id].nick()).param("LS");
+        let nick = &self.clients[id].nick();
+        let capacity = 1+nick.len() + 1+2 + 2+cap::ls_common().len() + 20;
+        ctx.rb.message("", Command::Cap, capacity, |mut msg| {
+            msg = msg.param(nick).param("LS");
             let mut trailing = msg.raw_trailing_param();
 
             trailing.push_str(cap::ls_common());
@@ -47,14 +50,15 @@ impl super::StateInner {
 
     fn cmd_cap_req(&mut self, ctx: CommandContext<'_>, capabilities: &str) -> Result {
         let client = &mut self.clients[ctx.id];
+        let capacity = 1+client.nick().len() + 1+3 + 2+capabilities.len();
         if !cap::are_supported(capabilities) {
-            ctx.rb.message("", Command::Cap, 0, |msg| {
+            ctx.rb.message("", Command::Cap, capacity, |msg| {
                 msg.param(client.nick()).param("NAK").trailing_param(capabilities);
             });
             return Err(());
         }
         client.update_capabilities(capabilities);
-        ctx.rb.message("", Command::Cap, 0, |msg| {
+        ctx.rb.message("", Command::Cap, capacity, |msg| {
             msg.param(client.nick()).param("ACK").trailing_param(capabilities);
         });
         Ok(())
@@ -68,7 +72,8 @@ impl super::StateInner {
             "REQ" => self.cmd_cap_req(ctx, *params.get(1).unwrap_or(&"")),
             _ => {
                 log::debug!("{}:     Bad command", ctx.id);
-                ctx.rb.reply(rpl::ERR_INVALIDCAPCMD, 0, |msg| {
+                let capacity = 1+params[0].len() + 2+lines::UNKNOWN_COMMAND.len();
+                ctx.rb.reply(rpl::ERR_INVALIDCAPCMD, capacity, |msg| {
                     msg.param(params[0]).trailing_param(lines::UNKNOWN_COMMAND);
                 });
                 Err(())
@@ -86,7 +91,7 @@ impl super::StateInner {
             Ok(decoded) => decoded,
             Err(err) => {
                 log::debug!("{}:     bad base64: {}", ctx.id, err);
-                ctx.rb.reply(rpl::ERR_SASLFAIL, 0, |msg| {
+                ctx.rb.reply(rpl::ERR_SASLFAIL, 2+lines::SASL_FAILED.len(), |msg| {
                     msg.trailing_param(lines::SASL_FAILED);
                 });
                 client.auth_reset();
@@ -99,21 +104,23 @@ impl super::StateInner {
             Ok(Some(user)) => {
                 log::debug!("{}:     now authenticated", ctx.id);
 
-                ctx.rb.reply(rpl::LOGGEDIN, 0, |msg| {
+                let capacity = 2+2*client.nick().len() + 1+client.full_name().len() + 1+user.len();
+                ctx.rb.reply(rpl::LOGGEDIN, capacity + 9, |msg| {
                     let msg = msg.param(client.nick()).param(client.full_name()).param(&user);
                     lines::logged_in(msg, &user);
                 });
-                ctx.rb.reply(rpl::SASLSUCCESS, 0, |msg| {
+                ctx.rb.reply(rpl::SASLSUCCESS, 2+lines::SASL_SUCCESSFUL.len(), |msg| {
                     msg.trailing_param(lines::SASL_SUCCESSFUL);
                 });
 
                 if client.capabilities().account_notify {
-                    ctx.rb.message(client.full_name(), "ACCOUNT", 0, |msg| {
+                    ctx.rb.message(client.full_name(), "ACCOUNT", 1+user.len(), |msg| {
                         msg.param(&user);
                     });
                 }
 
-                let mut account_notify = Buffer::new();
+                let capacity = 1+client.full_name().len() + 1+7 + 1+user.len() + 2;
+                let mut account_notify = Buffer::with_capacity(capacity);
                 account_notify.message(client.full_name(), "ACCOUNT").param(&user);
 
                 client.log_in(user);
@@ -132,7 +139,7 @@ impl super::StateInner {
             }
             Err(err) => {
                 log::debug!("{}:     bad response: {:?}", ctx.id, err);
-                ctx.rb.reply(rpl::ERR_SASLFAIL, 0, |msg| {
+                ctx.rb.reply(rpl::ERR_SASLFAIL, 2+lines::SASL_FAILED.len(), |msg| {
                     msg.trailing_param(lines::SASL_FAILED);
                 });
                 client.auth_reset();
@@ -145,14 +152,14 @@ impl super::StateInner {
         let client = &mut self.clients[ctx.id];
         if client.account().is_some() {
             log::debug!("{}:     is already logged in", ctx.id);
-            ctx.rb.reply(rpl::ERR_SASLALREADY, 0, |msg| {
+            ctx.rb.reply(rpl::ERR_SASLALREADY, 2+lines::SASL_ALREADY.len(), |msg| {
                 msg.trailing_param(lines::SASL_ALREADY);
             });
             client.auth_reset();
             return Err(());
         }
         if payload == "*" && client.auth_id().is_some() {
-            ctx.rb.reply(rpl::ERR_SASLABORTED, 0, |msg| {
+            ctx.rb.reply(rpl::ERR_SASLABORTED, 2+lines::SASL_ABORTED.len(), |msg| {
                 msg.trailing_param(lines::SASL_ABORTED);
             });
             client.auth_reset();
@@ -163,7 +170,7 @@ impl super::StateInner {
                 Ok(true) => self.continue_auth(id, ctx),
                 Ok(false) => Ok(()),
                 Err(()) => {
-                    ctx.rb.reply(rpl::ERR_SASLTOOLONG, 0, |msg| {
+                    ctx.rb.reply(rpl::ERR_SASLTOOLONG, 2+lines::SASL_TOO_LONG.len(), |msg| {
                         msg.trailing_param(lines::SASL_TOO_LONG);
                     });
                     log::debug!("{}:     sasl too long", ctx.id);
@@ -176,14 +183,14 @@ impl super::StateInner {
                 Ok(id) => id,
                 Err(auth::Error::ProviderUnavailable) => {
                     log::debug!("{}:     sasl unavailable for {:?}", ctx.id, payload);
-                    ctx.rb.reply(rpl::ERR_SASLFAIL, 0, |msg| {
+                    ctx.rb.reply(rpl::ERR_SASLFAIL, 2+lines::SASL_FAILED.len(), |msg| {
                         msg.trailing_param(lines::SASL_FAILED);
                     });
                     return Err(());
                 }
                 Err(_) => {
                     log::debug!("{}:     unknown mechanism {:?}", ctx.id, payload);
-                    ctx.rb.reply(rpl::SASLMECHS, 0, |mut msg| {
+                    ctx.rb.reply(rpl::SASLMECHS, 1+20 + 2+lines::SASL_MECHS.len(), |mut msg| {
                         self.auth_provider.write_mechanisms(msg.raw_param());
                         msg.trailing_param(lines::SASL_MECHS);
                     });

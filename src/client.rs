@@ -3,6 +3,7 @@
 use crate::util;
 use ellidri_tokens::{Buffer, Command, MessageBuffer, mode, TagBuffer};
 use std::cell::RefCell;
+use std::cmp::Ordering;
 use std::fmt::Write;
 use std::sync::Arc;
 use tokio::sync::mpsc;
@@ -628,16 +629,20 @@ impl ReplyBuffer {
         where C: Into<Command>,
               F: FnOnce(MessageBuffer<'_>),
     {
-        NICK.with(|s| self.prefixed_message(command, capacity, |msg| {
-            map(msg.param(&s.borrow()));
-        }));
+        NICK.with(|s| {
+            let nick = &s.borrow();
+            self.prefixed_message(command, capacity + 1 + nick.len(), |msg| {
+                map(msg.param(nick));
+            });
+        });
     }
 
     pub fn prefixed_message<C, F>(&mut self, command: C, capacity: usize, map: F)
         where C: Into<Command>,
               F: FnOnce(MessageBuffer<'_>),
     {
-        send_message(&self.queue, &mut self.label_len, self.batch, &self.domain, command, capacity, map);
+        send_message(&self.queue, &mut self.label_len, self.batch, &self.domain, command,
+                     capacity, map);
     }
 
     pub fn message<C, F>(&mut self, prefix: &str, command: C, capacity: usize, map: F)
@@ -650,14 +655,15 @@ impl ReplyBuffer {
     pub fn tagged_message<F>(&mut self, client_tags: &str, capacity: usize, map: F)
         where F: FnOnce(TagBuffer<'_>),
     {
-        send_tagged_message(&self.queue, &mut self.label_len, self.batch, client_tags, capacity, map);
+        send_tagged_message(&self.queue, &mut self.label_len, self.batch, client_tags,
+                            capacity, map);
     }
 
     pub fn send_auth_buffer<T>(&mut self, buf: T)
         where T: AsRef<[u8]>,
     {
         if buf.as_ref().is_empty() {
-            self.message("", Command::Authenticate,0, |msg| {
+            self.message("", Command::Authenticate, 2, |msg| {
                 msg.param("+");
             });
             return;
@@ -670,14 +676,15 @@ impl ReplyBuffer {
             // NOPANIC
             // i < encoded.len() && (max == encoded.len() || max == i + x), x > 0  ==>  i < max
             // max <= encoded.len()
+            // Also encoded is base64 so it's safe to slice.
             let chunk = &encoded[i..max];
-            self.message("", Command::Authenticate,0, |msg| {
+            self.message("", Command::Authenticate, 1 + chunk.len(), |msg| {
                 msg.param(chunk);
             });
             i = max;
         }
         if i % AUTHENTICATE_CHUNK_LEN == 0 {
-            self.message("", Command::Authenticate,0, |msg| {
+            self.message("", Command::Authenticate, 2, |msg| {
                 msg.param("+");
             });
         }
@@ -689,11 +696,17 @@ impl ReplyBuffer {
         new_batch
     }
 }
+
 fn send_message<C, F>(queue: &MessageQueue, label_len: &mut usize, batch: Option<u8>,
-                      prefix: &str, command: C, capacity: usize, map: F)
+                      prefix: &str, command: C, mut capacity: usize, map: F)
     where C: Into<Command>,
           F: FnOnce(MessageBuffer<'_>),
 {
+    let command = command.into();
+    capacity += command.as_str().len();
+    if !prefix.is_empty() {
+        capacity += 1 + prefix.len() + 1;
+    }
     send_tagged_message(queue, label_len, batch, "", capacity, |msg| {
         map(msg.prefixed_command(prefix, command))
     })
@@ -703,7 +716,7 @@ fn send_tagged_message<F>(queue: &MessageQueue, label_len: &mut usize, batch: Op
                           client_tags: &str, capacity: usize, map: F)
     where F: FnOnce(TagBuffer<'_>),
 {
-    let capacity = 0.min(*label_len + capacity);
+    let capacity = capacity + *label_len + 2;
     let mut buf = Buffer::with_capacity(capacity);
     {
         let mut msg = buf.tagged_message(client_tags);
@@ -717,12 +730,16 @@ fn send_tagged_message<F>(queue: &MessageQueue, label_len: &mut usize, batch: Op
         if cfg!(debug_assertions) {
             map(msg);
             let len = buf.len();
-            if capacity < len {
-                log::debug!("Reallocated message (from cap {} to len {}):\n{:?}",
+            match len.cmp(&capacity) {
+                Ordering::Greater => {
+                    log::debug!("Reallocated message (from cap {} to len {}):\n{:?}",
                                 capacity, len, buf.get());
-            } else if len < capacity / 2 {
-                log::debug!("Buffer used less than half of its capacity ({}, used {}):\n{:?}",
+                }
+                Ordering::Less => {
+                    log::debug!("Unused buffer capacity ({}, used {}):\n{:?}",
                                 capacity, len, buf.get());
+                }
+                Ordering::Equal => {}
             }
         } else {
             map(msg);

@@ -343,7 +343,7 @@ impl StateInner {
         let mut rb = client.reply(label);
 
         if MAX_TAG_DATA_LENGTH < msg.tags.len() {
-            rb.reply(rpl::ERR_INPUTTOOLONG, 96, |msg| {
+            rb.reply(rpl::ERR_INPUTTOOLONG, 2+lines::INPUT_TOO_LONG.len(), |msg| {
                 msg.trailing_param(lines::INPUT_TOO_LONG);
             });
             return Ok(3);
@@ -353,11 +353,12 @@ impl StateInner {
             Ok(cmd) => cmd,
             Err(unknown) => {
                 if client.is_registered() {
-                    rb.reply(rpl::ERR_UNKNOWNCOMMAND, 2, |msg| {
+                    let capacity = 1+unknown.len() + 2+lines::UNKNOWN_COMMAND.len();
+                    rb.reply(rpl::ERR_UNKNOWNCOMMAND, capacity, |msg| {
                         msg.param(unknown).trailing_param(lines::UNKNOWN_COMMAND);
                     });
                 } else {
-                    rb.reply(rpl::ERR_NOTREGISTERED, 2, |msg| {
+                    rb.reply(rpl::ERR_NOTREGISTERED, 2+lines::NOT_REGISTERED.len(), |msg| {
                         msg.trailing_param(lines::NOT_REGISTERED);
                     });
                 }
@@ -367,11 +368,13 @@ impl StateInner {
 
         if !client.capabilities().is_capable_of(command) {
             if client.is_registered() {
-                rb.reply(rpl::ERR_UNKNOWNCOMMAND, 0, |msg| {
-                    msg.param(command.as_str()).trailing_param(lines::UNKNOWN_COMMAND);
+                let command = command.as_str();
+                let capacity = 1+command.len() + 2+lines::UNKNOWN_COMMAND.len();
+                rb.reply(rpl::ERR_UNKNOWNCOMMAND, capacity, |msg| {
+                    msg.param(command).trailing_param(lines::UNKNOWN_COMMAND);
                 });
             } else {
-                rb.reply(rpl::ERR_NOTREGISTERED, 0, |msg| {
+                rb.reply(rpl::ERR_NOTREGISTERED, 2+lines::NOT_REGISTERED.len(), |msg| {
                     msg.trailing_param(lines::NOT_REGISTERED);
                 });
             }
@@ -381,23 +384,25 @@ impl StateInner {
         if !msg.has_enough_params() {
             match command {
                 Command::Nick | Command::Whois => {
-                    rb.reply(rpl::ERR_NONICKNAMEGIVEN, 0, |msg| {
+                    rb.reply(rpl::ERR_NONICKNAMEGIVEN, 2+lines::NEED_MORE_PARAMS.len(), |msg| {
                         msg.trailing_param(lines::NEED_MORE_PARAMS);
                     });
                 }
                 Command::PrivMsg | Command::Notice | Command::TagMsg if msg.num_params == 0 => {
-                    rb.reply(rpl::ERR_NORECIPIENT, 0, |msg| {
+                    rb.reply(rpl::ERR_NORECIPIENT, 2+lines::NEED_MORE_PARAMS.len(), |msg| {
                         msg.trailing_param(lines::NEED_MORE_PARAMS);
                     });
                 }
                 Command::PrivMsg | Command::Notice if msg.num_params == 1 => {
-                    rb.reply(rpl::ERR_NOTEXTTOSEND, 0, |msg| {
+                    rb.reply(rpl::ERR_NOTEXTTOSEND, 2+lines::NEED_MORE_PARAMS.len(), |msg| {
                         msg.trailing_param(lines::NEED_MORE_PARAMS);
                     });
                 }
                 _ => {
-                    rb.reply(rpl::ERR_NEEDMOREPARAMS, 0, |msg| {
-                        msg.param(command.as_str()).trailing_param(lines::NEED_MORE_PARAMS);
+                    let command = command.as_str();
+                    let capacity = 1+command.len() + 2+lines::NEED_MORE_PARAMS.len();
+                    rb.reply(rpl::ERR_NEEDMOREPARAMS, capacity, |msg| {
+                        msg.param(command).trailing_param(lines::NEED_MORE_PARAMS);
                     });
                 }
             }
@@ -406,11 +411,11 @@ impl StateInner {
 
         if !client.can_issue_command(command, msg.params[0]) {
             if client.is_registered() {
-                rb.reply(rpl::ERR_ALREADYREGISTRED, 0, |msg| {
+                rb.reply(rpl::ERR_ALREADYREGISTRED, 2+lines::ALREADY_REGISTERED.len(), |msg| {
                     msg.trailing_param(lines::ALREADY_REGISTERED);
                 });
             } else {
-                rb.reply(rpl::ERR_NOTREGISTERED, 0, |msg| {
+                rb.reply(rpl::ERR_NOTREGISTERED, 2+lines::NOT_REGISTERED.len(), |msg| {
                     msg.trailing_param(lines::NOT_REGISTERED);
                 });
             }
@@ -541,15 +546,16 @@ fn points_of(command: Command) -> u32 {  // TODO make this configurable
 
 /// Returns `Ok(channel)` when `name` is an existing channel name.  Otherwise returns `Err(())` and
 /// send an error to the client.
-fn find_channel<'a>(id: usize, rb: &mut ReplyBuffer, channels: &'a ChannelMap, name: &str)
+fn find_channel<'a>(id: usize, rb: &mut ReplyBuffer, channels: &'a ChannelMap, channel_name: &str)
                     -> Result<&'a Channel, ()>
 {
-    match channels.get(u(name)) {
+    match channels.get(u(channel_name)) {
         Some(channel) => Ok(channel),
         None => {
             log::debug!("{}:         no such channel", id);
-            rb.reply(rpl::ERR_NOSUCHCHANNEL, 0, |msg| {
-                msg.param(name).trailing_param(lines::NO_SUCH_CHANNEL);
+            let capacity = 1+channel_name.len() + 2+lines::NO_SUCH_CHANNEL.len();
+            rb.reply(rpl::ERR_NOSUCHCHANNEL, capacity, |msg| {
+                msg.param(channel_name).trailing_param(lines::NO_SUCH_CHANNEL);
             });
             Err(())
         }
@@ -567,7 +573,8 @@ fn find_member(id: usize, rb: &mut ReplyBuffer, channel: &Channel,
         Some(modes) => Ok(*modes),
         None => {
             log::debug!("{}:         not on channel", id);
-            rb.reply(rpl::ERR_NOTONCHANNEL, 0, |msg| {
+            let capacity = 1+channel_name.len() + 2+lines::NOT_ON_CHANNEL.len();
+            rb.reply(rpl::ERR_NOTONCHANNEL, capacity, |msg| {
                 msg.param(channel_name).trailing_param(lines::NOT_ON_CHANNEL);
             });
             Err(())
@@ -585,7 +592,7 @@ fn find_nick<'a>(id: usize, rb: &mut ReplyBuffer, clients: &'a ClientMap, nicks:
         .filter(|(_, c)| c.is_registered())
         .ok_or_else(|| {
             log::debug!("{}:         nick doesn't exist", id);
-            rb.reply(rpl::ERR_NOSUCHNICK, 0, |msg| {
+            rb.reply(rpl::ERR_NOSUCHNICK, 1+nick.len() + 2+lines::NO_SUCH_NICK.len(), |msg| {
                 msg.param(nick).trailing_param(lines::NO_SUCH_NICK);
             });
         })
@@ -605,9 +612,11 @@ impl StateInner {
     {
         let msgid = util::new_message_id();
         let time = util::time_precise();
+        let capacity = ctx.client_tags.len() + from.full_name().len() +
+            target.len() + content.map_or(0, str::len) + 30;
 
         if from.capabilities().echo_message && from.capabilities().has_message_tags() {
-            ctx.rb.tagged_message(ctx.client_tags, 0, |msg| {
+            ctx.rb.tagged_message(ctx.client_tags, capacity, |msg| {
                 let msg = msg.tag("msgid", Some(&msgid))
                     .tag("time", Some(&time))
                     .prefixed_command(from.full_name(), cmd)
@@ -617,7 +626,7 @@ impl StateInner {
                 }
             });
         } else if from.capabilities().echo_message {
-            ctx.rb.message(from.full_name(), cmd, 0, |mut msg| {
+            ctx.rb.message(from.full_name(), cmd, capacity, |mut msg| {
                 msg = msg.param(target);
                 if let Some(content) = content {
                     msg.trailing_param(content);
@@ -625,7 +634,7 @@ impl StateInner {
             });
         }
 
-        let mut buf = Buffer::new();
+        let mut buf = Buffer::with_capacity(capacity);
         let mut tags_len = 0;
         {
             let msg_buf = buf.tagged_message(ctx.client_tags)
@@ -649,8 +658,9 @@ impl StateInner {
         let client = &self.clients[ctx.id];
 
         if content == Some("") {
-            ctx.rb.reply(rpl::ERR_NOTEXTTOSEND, 0, |msg| {
-                msg.trailing_param(lines::NEED_MORE_PARAMS);
+            let capacity = 1+cmd.as_str().len() + 2+lines::NEED_MORE_PARAMS.len();
+            ctx.rb.reply(rpl::ERR_NOTEXTTOSEND, capacity, |msg| {
+                msg.param(cmd.as_str()).trailing_param(lines::NEED_MORE_PARAMS);
             });
             return Err(());
         }
@@ -659,7 +669,8 @@ impl StateInner {
             let channel = find_channel(ctx.id, &mut ctx.rb, &self.channels, target)?;
             if !channel.can_talk(ctx.id) {
                 log::debug!("{}:     can't send to channel", ctx.id);
-                ctx.rb.reply(rpl::ERR_CANNOTSENDTOCHAN, 0, |msg| {
+                let capacity = 1+target.len() + 2+lines::CANNOT_SEND_TO_CHAN.len();
+                ctx.rb.reply(rpl::ERR_CANNOTSENDTOCHAN, capacity, |msg| {
                     msg.param(target).trailing_param(lines::CANNOT_SEND_TO_CHAN);
                 });
                 return Err(());
@@ -687,7 +698,7 @@ impl StateInner {
 
             target_client.send(msg);
             if let Some(ref away_msg) = target_client.away_message {
-                ctx.rb.reply(rpl::AWAY, 0, |msg| {
+                ctx.rb.reply(rpl::AWAY, 1+target.len() + 2+away_msg.len(), |msg| {
                     msg.param(target).trailing_param(away_msg);
                 });
             }
@@ -715,7 +726,7 @@ impl StateInner {
     }
 
     fn send_i_support(&self, rb: &mut ReplyBuffer) {
-        rb.reply(rpl::ISUPPORT, 0, |msg| {
+        rb.reply(rpl::ISUPPORT, 222, |msg| {
             msg.param("CASEMAPPING=ascii")
                 .param("CHANLIMIT=#:,&:")
                 .param("CHANTYPES=#&")
@@ -730,7 +741,7 @@ impl StateInner {
                 .trailing_param(lines::I_SUPPORT);
         });
 
-        rb.reply(rpl::ISUPPORT, 0, |mut msg| {
+        rb.reply(rpl::ISUPPORT, 100, |mut msg| {
             let _ = write!(msg.raw_param(), "AWAYLEN={}", self.awaylen);
             let _ = write!(msg.raw_param(), "CHANNELLEN={}", self.channellen);
             let _ = write!(msg.raw_param(), "KICKLEN={}", self.kicklen);
@@ -742,7 +753,7 @@ impl StateInner {
     }
 
     fn send_lusers(&self, rb: &mut ReplyBuffer) {
-        rb.reply(rpl::LUSERCLIENT, 0, |msg| {
+        rb.reply(rpl::LUSERCLIENT, 42, |msg| {
             lines::luser_client(msg, self.clients.len())
         });
 
@@ -757,41 +768,42 @@ impl StateInner {
             }
         });
         if 0 < op {
-            rb.reply(rpl::LUSEROP, 0, |msg| {
+            rb.reply(rpl::LUSEROP, 9 + lines::LUSER_OP.len(), |msg| {
                 msg.fmt_param(op).trailing_param(lines::LUSER_OP);
             });
         }
         if 0 < unknown {
-            rb.reply(rpl::LUSERUNKNOWN, 0, |msg| {
+            rb.reply(rpl::LUSERUNKNOWN, 9 + lines::LUSER_UNKNOWN.len(), |msg| {
                 msg.fmt_param(unknown).trailing_param(lines::LUSER_UNKNOWN);
             });
         }
         if !self.channels.is_empty() {
             let n = self.channels.values().filter(|c| !c.secret).count();
-            rb.reply(rpl::LUSERCHANNELS, 0, |msg| {
+            rb.reply(rpl::LUSERCHANNELS, 9 + lines::LUSER_CHANNELS.len(), |msg| {
                 msg.fmt_param(n).trailing_param(lines::LUSER_CHANNELS);
             });
         }
-        rb.reply(rpl::LUSERME, 0, |msg| {
+        rb.reply(rpl::LUSERME, 40, |msg| {
             lines::luser_me(msg, self.clients.len())
         });
     }
 
     fn send_motd(&self, rb: &mut ReplyBuffer) {
         if let Some(ref motd) = self.motd {
-            rb.reply(rpl::MOTDSTART, 0, |msg| lines::motd_start(msg, &self.domain));
+            let capacity = self.domain.len() + 25;
+            rb.reply(rpl::MOTDSTART, capacity, |msg| lines::motd_start(msg, &self.domain));
             for line in motd.lines() {
-                rb.reply(rpl::MOTD, 0, |mut msg| {
+                rb.reply(rpl::MOTD, 2+2+line.len(), |mut msg| {
                     let trailing = msg.raw_trailing_param();
                     trailing.push_str("- ");
                     trailing.push_str(line);
                 });
             }
-            rb.reply(rpl::ENDOFMOTD, 0, |msg| {
+            rb.reply(rpl::ENDOFMOTD, 2+lines::END_OF_MOTD.len(), |msg| {
                 msg.trailing_param(lines::END_OF_MOTD);
             });
         } else {
-            rb.reply(rpl::ERR_NOMOTD, 0, |msg| {
+            rb.reply(rpl::ERR_NOMOTD, 2+lines::NO_MOTD.len(), |msg| {
                 msg.trailing_param(lines::NO_MOTD);
             });
         }
@@ -810,7 +822,7 @@ impl StateInner {
         if !channel.members.is_empty() {
             let client_caps = self.clients[id].capabilities().clone();
 
-            rb.reply(rpl::NAMREPLY, 0, |mut msg| {
+            rb.reply(rpl::NAMREPLY, 400, |mut msg| {
                 msg = msg.param(channel.symbol()).param(channel_name);
                 let trailing = msg.raw_trailing_param();
                 for (member, modes) in &channel.members {
@@ -829,7 +841,7 @@ impl StateInner {
                 trailing.pop();  // Remove last space, not ':' since !channel.members.is_empty()
             });
         }
-        rb.reply(rpl::ENDOFNAMES, 0, |msg| {
+        rb.reply(rpl::ENDOFNAMES, 1+channel_name.len() + 2+lines::END_OF_NAMES.len(), |msg| {
             msg.param(channel_name).trailing_param(lines::END_OF_NAMES);
         });
     }
@@ -838,17 +850,16 @@ impl StateInner {
     fn send_topic(&self, rb: &mut ReplyBuffer, channel_name: &str, send_error: bool) {
         let channel = &self.channels[u(channel_name)];
         if let Some(ref topic) = channel.topic {
-            rb.reply(rpl::TOPIC, 0, |msg| {
+            rb.reply(rpl::TOPIC, 1+channel_name.len() + 2+topic.content.len(), |msg| {
                 msg.param(channel_name).trailing_param(&topic.content);
             });
-            rb.reply(rpl::TOPICWHOTIME, 0, |msg| {
+            rb.reply(rpl::TOPICWHOTIME, 1+channel_name.len() + 1+topic.who.len() + 1+10, |msg| {
                 msg.param(channel_name)
                     .param(&topic.who)
-                    .fmt_param(topic.time)
-                    .trailing_param(&topic.content);
+                    .fmt_param(topic.time);
             });
         } else if send_error {
-            rb.reply(rpl::NOTOPIC, 0, |msg| {
+            rb.reply(rpl::NOTOPIC, 1+channel_name.len() + 2+lines::NO_TOPIC.len(), |msg| {
                 msg.param(channel_name).trailing_param(lines::NO_TOPIC);
             });
         }
@@ -857,16 +868,21 @@ impl StateInner {
     /// Sends welcome messages. Called when a client has completed its registration.
     fn send_welcome(&self, id: usize, rb: &mut ReplyBuffer) {
         let client = &self.clients[id];
-        rb.reply(rpl::WELCOME, 0, |msg| {
+        rb.reply(rpl::WELCOME, client.full_name().len() + 16, |msg| {
             lines::welcome(msg, client.full_name());
         });
-        rb.reply(rpl::YOURHOST, 0, |msg| {
+        let capacity = self.domain.len() + crate::server_version!().len() + 32;
+        rb.reply(rpl::YOURHOST, capacity, |msg| {
             lines::your_host(msg, &self.domain, crate::server_version!());
         });
-        rb.reply(rpl::CREATED, 0, |msg| {
+        let capacity = self.created_at.len() + 33;
+        rb.reply(rpl::CREATED, capacity, |msg| {
             lines::created(msg, &self.created_at);
         });
-        rb.reply(rpl::MYINFO, 0, |msg| {
+        let capacity = 1+self.domain.len() + 1+crate::server_version!().len() +
+            1+mode::USER_MODES.len() + 1+mode::SIMPLE_CHAN_MODES.len() +
+            1+mode::EXTENDED_CHAN_MODES.len();
+        rb.reply(rpl::MYINFO, capacity, |msg| {
             msg.param(&self.domain)
                 .param(crate::server_version!())
                 .param(mode::USER_MODES)
