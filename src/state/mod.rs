@@ -869,7 +869,7 @@ impl StateInner {
     fn send_welcome(&self, id: usize, rb: &mut ReplyBuffer) {
         let client = &self.clients[id];
         rb.reply(rpl::WELCOME, client.full_name().len() + 16, |msg| {
-            lines::welcome(msg, client.full_name());
+            lines::welcome(msg, client.nick());
         });
         let capacity = self.domain.len() + crate::server_version!().len() + 32;
         rb.reply(rpl::YOURHOST, capacity, |msg| {
