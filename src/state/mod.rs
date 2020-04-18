@@ -104,7 +104,7 @@ pub struct CommandContext<'a> {
 /// let msg: &str = msg.as_ref();
 ///
 /// // The first IRC message from the server is RPL_WELCOME.
-/// assert_eq!(msg, ":ellidri.dev 001 ser :Welcome home, ser!~ser@127.0.0.1\r\n");
+/// assert_eq!(msg, ":ellidri.dev 001 ser :Welcome home, ser\r\n");
 /// # });
 /// ```
 #[derive(Clone)]
