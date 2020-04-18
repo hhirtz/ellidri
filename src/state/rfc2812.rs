@@ -955,7 +955,9 @@ impl super::StateInner {
                         } else if let Some(symbol) = modes.symbol() {
                             param.push(symbol);
                         }
-                        msg.trailing_param(c.real());
+                        let trailing = msg.raw_trailing_param();
+                        trailing.push_str("0 ");
+                        trailing.push_str(c.real());
                     });
                 }
             }
@@ -992,7 +994,9 @@ impl super::StateInner {
                         } else if let Some(symbol) = member.symbol() {
                             param.push(symbol);
                         }
-                        msg.trailing_param(c.real());
+                        let trailing = msg.raw_trailing_param();
+                        trailing.push_str("0 ");
+                        trailing.push_str(c.real());
                     });
                 }
             }
