@@ -108,7 +108,7 @@ Patches are welcome!  Here are some links to get started:
 
 - Documentation: <https://docs.rs/ellidri> (please note!  This documentation
   only shows public items, but private items are also documented!  Developpers
-  can generate the documentation by hand the command below)
+  can generate the documentation by hand with the command below)
 - Git repository: <https://git.sr.ht/~taiite/ellidri>
 - Submit PRs on [Github][gh] or send patches to the mailing list:
   <https://lists.sr.ht/~taiite/public-inbox>
