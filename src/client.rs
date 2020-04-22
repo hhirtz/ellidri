@@ -29,16 +29,6 @@ impl AsRef<str> for MessageQueueItem {
     }
 }
 
-impl AsRef<[u8]> for MessageQueueItem {
-    /// # Panics
-    ///
-    /// This function panics when `self.start` is greater than the content's length.
-    fn as_ref(&self) -> &[u8] {
-        let s: &str = self.as_ref();
-        s.as_bytes()
-    }
-}
-
 pub type MessageQueue = mpsc::UnboundedSender<MessageQueueItem>;
 
 /// A state machine that represent the connection with a client. It keeps track of what message the

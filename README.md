@@ -31,6 +31,7 @@ have their own `README.md`.
 
 - RFC [1459][r1] and [2812][r2] compliance (almost! see [#1][i1])
 - IRCv3 support
+- IRC over WebSockets
 - Configurable via a file that can be reloaded at runtime
 - SASL support with SQLite and PostgreSQL
 - kawaii messages
@@ -101,6 +102,17 @@ ellidri --config /path/to/the.configuration.file
 
 An example configuration file with all settings and their defaults can be found
 in `doc/ellidri.conf`.
+
+You can reload the configuration file at runtime, without disconnecting any
+user, with the following command:
+
+```shell
+# With systemd
+systemctl reload ellidri
+
+# Otherwise
+killall -s USR1 ellidri
+```
 
 ## Contributing
 

@@ -15,7 +15,7 @@ use crate::client::{Client, MessageQueue, MessageQueueItem, ReplyBuffer};
 use ellidri_tokens::{Buffer, Command, Message, mode, rpl, tags};
 use ellidri_unicase::{u, UniCase};
 use slab::Slab;
-use std::{cmp, fs, io, net};
+use std::{cmp, fmt, fs, net};
 use std::collections::{HashMap, HashSet};
 use std::fmt::Write as _;
 use std::sync::Arc;
@@ -143,7 +143,9 @@ impl State {
     ///
     /// If the peer has quit unexpctedly, `err` should be set to `Some` and reflect the cause of
     /// the quit, so that other peers can be correctly informed.
-    pub async fn peer_quit(&self, id: usize, err: Option<io::Error>) {
+    pub async fn peer_quit<E>(&self, id: usize, err: Option<E>)
+        where E: fmt::Display,
+    {
         self.0.lock().await.peer_quit(id, err);
     }
 
@@ -287,7 +289,9 @@ impl StateInner {
         self.clients.insert(client)
     }
 
-    pub fn peer_quit(&mut self, id: usize, err: Option<io::Error>) {
+    pub fn peer_quit<E>(&mut self, id: usize, err: Option<E>)
+        where E: fmt::Display,
+    {
         log::debug!("{}: Disconnected", id);
         if !self.clients.contains(id) {
             return;

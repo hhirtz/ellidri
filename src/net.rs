@@ -60,8 +60,6 @@ fn build_acceptor(p: &path::Path) -> Result<TlsAcceptor, Box<dyn Error + 'static
 }
 
 /// Returns a future that listens, accepts and handles incoming connections.
-///
-/// TODO
 pub async fn listen(addr: SocketAddr, shared: State, mut acceptor: Option<Arc<TlsAcceptor>>,
                     mut stop: mpsc::Sender<SocketAddr>,
                     mut commands: mpsc::Receiver<control::Command>)
@@ -204,13 +202,15 @@ async fn handle<S>(conn: S, peer_addr: SocketAddr, shared: State)
         use io::AsyncWriteExt as _;
 
         while let Some(msg) = outgoing_msgs.recv().await {
-            writer.write_all(msg.as_ref()).await?;
+            writer.write_all(msg.as_ref().as_bytes()).await?;
         }
         Ok(())
     };
 
-    let res = future::try_join(incoming, outgoing).await;
-    shared.peer_quit(peer_id, res.err()).await;
+    futures::pin_mut!(incoming, outgoing);
+
+    let res = future::select(incoming, outgoing).await;
+    shared.peer_quit(peer_id, res.factor_first().0.err()).await;
 }
 
 /// Handle a line from the client.
@@ -228,4 +228,41 @@ async fn login_timeout(peer_id: usize, shared: State) {
     let timeout = shared.login_timeout().await;
     time::delay_for(time::Duration::from_millis(timeout)).await;
     shared.remove_if_unregistered(peer_id).await;
+}
+
+#[cfg(feature = "websocket")]
+use futures_util::future::TryFutureExt;
+use futures_util::stream::StreamExt;
+
+#[cfg(feature = "websocket")]
+pub async fn handle_ws(ws: warp::ws::WebSocket, peer_addr: SocketAddr, shared: State) {
+    let (writer, mut reader) = ws.split();
+    let (msg_queue, outgoing_msgs) = sync::mpsc::unbounded_channel();
+    let peer_id = shared.peer_joined(peer_addr, msg_queue).await;
+    tokio::spawn(login_timeout(peer_id, shared.clone()));
+
+    let incoming = async {
+        rate_limit!(1024, 16, async {
+            match reader.next().await {
+                Some(Ok(msg)) if msg.is_text() => {
+                    Ok(handle_buffer(peer_id, msg.to_str().unwrap(), &shared).await)
+                }
+                Some(Ok(_)) => Ok(Some(1)),
+                Some(Err(err)) => Err(err.to_string()),
+                None => Err(lines::CONNECTION_RESET.to_string()),
+            }
+        })
+    };
+
+    let outgoing = outgoing_msgs
+        .map(|msg| {
+            // TODO avoid clone
+            Ok(warp::ws::Message::text(msg.as_ref()))
+        })
+        .forward(writer)
+        .map_err(|err| err.to_string());
+
+    futures::pin_mut!(incoming, outgoing);
+    let res = future::select(incoming, outgoing).await;
+    shared.peer_quit(peer_id, res.factor_first().0.err()).await;
 }

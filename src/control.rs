@@ -214,6 +214,25 @@ impl Control {
         let signals = crate::util::PendingStream;  // TODO support non-UNIX signals?
 
         let Self { config_path, shared, stop, mut failures, rehash, mut bindings } = self;
+
+        #[cfg(feature = "websocket")]
+        {
+            use warp::Filter;
+            let shared_clone = shared.clone();
+            let shared_clone = warp::any().map(move || shared_clone.clone());
+            let ws = warp::path::end()
+                .and(warp::ws())
+                .and(warp::addr::remote())
+                .and(shared_clone)
+                .map(|ws: warp::ws::Ws, peer_addr: Option<SocketAddr>, shared| {
+                    ws
+                        .max_message_size(4096 + 512)
+                        .on_upgrade(move |socket| net::handle_ws(socket, peer_addr.unwrap(), shared))
+                });
+
+            tokio::spawn(warp::serve(ws).run(([127, 0, 0, 1], 8080)));
+        }
+
         loop {
             futures::select! {
                 addr = failures.recv().fuse() => match addr {
