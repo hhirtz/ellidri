@@ -913,9 +913,9 @@ impl super::StateInner {
 
     pub fn cmd_version(&self, ctx: CommandContext<'_>) -> Result {
         ctx.rb.start_lr_batch();
-        let capacity = 1+crate::server_version!().len() + 1+self.domain.len();
+        let capacity = 1+super::SERVER_VERSION.len() + 1+self.domain.len();
         ctx.rb.reply(rpl::VERSION, capacity, |msg| {
-            msg.param(crate::server_version!()).param(&self.domain);
+            msg.param(super::SERVER_VERSION).param(&self.domain);
         });
         self.send_i_support(ctx.rb);
         Ok(())

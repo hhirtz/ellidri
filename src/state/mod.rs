@@ -26,8 +26,7 @@ mod rfc2812;
 #[cfg(test)]
 mod test;
 
-#[macro_export]
-macro_rules! server_version(() => {concat!(env!("CARGO_PKG_NAME"), "-", env!("CARGO_PKG_VERSION"))});
+const SERVER_VERSION: &str = concat!(env!("CARGO_PKG_NAME"), "-", env!("CARGO_PKG_VERSION"));
 
 /// Information about ellidri from an IRC client perspective.
 ///
@@ -879,20 +878,20 @@ impl StateInner {
         rb.reply(rpl::WELCOME, client.full_name().len() + 16, |msg| {
             lines::welcome(msg, client.nick());
         });
-        let capacity = self.domain.len() + crate::server_version!().len() + 32;
+        let capacity = self.domain.len() + SERVER_VERSION.len() + 32;
         rb.reply(rpl::YOURHOST, capacity, |msg| {
-            lines::your_host(msg, &self.domain, crate::server_version!());
+            lines::your_host(msg, &self.domain, SERVER_VERSION);
         });
         let capacity = self.created_at.len() + 33;
         rb.reply(rpl::CREATED, capacity, |msg| {
             lines::created(msg, &self.created_at);
         });
-        let capacity = 1+self.domain.len() + 1+crate::server_version!().len() +
+        let capacity = 1+self.domain.len() + 1+SERVER_VERSION.len() +
             1+mode::USER_MODES.len() + 1+mode::SIMPLE_CHAN_MODES.len() +
             1+mode::EXTENDED_CHAN_MODES.len();
         rb.reply(rpl::MYINFO, capacity, |msg| {
             msg.param(&self.domain)
-                .param(crate::server_version!())
+                .param(SERVER_VERSION)
                 .param(mode::USER_MODES)
                 .param(mode::SIMPLE_CHAN_MODES)
                 .param(mode::EXTENDED_CHAN_MODES);
