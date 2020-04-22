@@ -70,6 +70,7 @@ pub struct State {
 
     pub awaylen: usize,
     pub channellen: usize,
+    pub keylen: usize,
     pub kicklen: usize,
     pub namelen: usize,
     pub nicklen: usize,
@@ -140,6 +141,7 @@ impl State {
             org_mail: "--unspecified--".to_owned(),
             awaylen: 300,
             channellen: 50,
+            keylen: 24,
             kicklen: 300,
             namelen: 64,
             nicklen: 32,
@@ -188,6 +190,7 @@ impl Config {
             .unique_setting("password",          false, |value| res.state.password = Some(value))?
             .unique_setting("awaylen",           false, |value| res.state.awaylen = value)?
             .unique_setting("channellen",        false, |value| res.state.channellen = value)?
+            .unique_setting("keylen",            false, |value| res.state.keylen = value)?
             .unique_setting("kicklen",           false, |value| res.state.kicklen = value)?
             .unique_setting("namelen",           false, |value| res.state.namelen = value)?
             .unique_setting("nicklen",           false, |value| res.state.nicklen = value)?

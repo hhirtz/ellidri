@@ -129,7 +129,7 @@ impl Channel {
             topic_restricted: false,
         };
         for change in mode::simple_channel_query(modes).filter_map(Result::ok) {
-            channel.apply_mode_change(change, |_| "").unwrap();
+            channel.apply_mode_change(change, usize::max_value(), |_| "").unwrap();
         }
         channel
     }
@@ -208,7 +208,7 @@ impl Channel {
     }
 
     // TODO use MessageBuffer
-    pub fn apply_mode_change<'a, F>(&mut self, change: mode::ChannelChange<'_>,
+    pub fn apply_mode_change<'a, F>(&mut self, change: mode::ChannelChange<'_>, keylen: usize,
                                     nick_of: F) -> Result<bool, &'static str>
         where F: Fn(usize) -> &'a str
     {
@@ -241,7 +241,7 @@ impl Channel {
                     return Err(rpl::ERR_KEYSET);
                 } else {
                     applied = true;
-                    self.key = Some(key.to_owned());
+                    self.key = Some(key[..key.len().min(keylen)].to_owned());
                 }
             } else if self.key.is_some() {
                 applied = true;

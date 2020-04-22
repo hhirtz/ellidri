@@ -463,7 +463,7 @@ impl super::StateInner {
                 reply_list(&mut ctx.rb, rpl::INVITELIST, rpl::ENDOFINVITELIST, lines::END_OF_INVITE_LIST,
                            channel.exception_mask.patterns());
             }
-            Ok(change) => match channel.apply_mode_change(change, |a| clients[a].nick()) {
+            Ok(change) => match channel.apply_mode_change(change, self.keylen, |a| clients[a].nick()) {
                 Ok(true) => {
                     log::debug!("    - Applied {:?}", change);
                     let change_value = change.value();

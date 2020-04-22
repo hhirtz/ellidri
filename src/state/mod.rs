@@ -204,6 +204,7 @@ pub(crate) struct StateInner {
     /// Limits in number of characters for user input.
     awaylen: usize,
     channellen: usize,
+    keylen: usize,
     kicklen: usize,
     namelen: usize,
     nicklen: usize,
@@ -247,6 +248,7 @@ impl StateInner {
             opers: config.opers,
             awaylen: config.awaylen,
             channellen: config.channellen,
+            keylen: config.keylen,
             kicklen: config.kicklen,
             namelen: config.namelen,
             nicklen: config.nicklen,
@@ -268,6 +270,7 @@ impl StateInner {
         self.opers = config.opers;
         self.awaylen = config.awaylen;
         self.channellen = config.channellen;
+        self.keylen = config.keylen;
         self.kicklen = config.kicklen;
         self.namelen = config.namelen;
         self.topiclen = config.topiclen;
@@ -741,9 +744,10 @@ impl StateInner {
                 .trailing_param(lines::I_SUPPORT);
         });
 
-        rb.reply(rpl::ISUPPORT, 100, |mut msg| {
+        rb.reply(rpl::ISUPPORT, 110, |mut msg| {
             let _ = write!(msg.raw_param(), "AWAYLEN={}", self.awaylen);
             let _ = write!(msg.raw_param(), "CHANNELLEN={}", self.channellen);
+            let _ = write!(msg.raw_param(), "KEYLEN={}", self.keylen);
             let _ = write!(msg.raw_param(), "KICKLEN={}", self.kicklen);
             let _ = write!(msg.raw_param(), "NAMELEN={}", self.namelen);
             let _ = write!(msg.raw_param(), "NICKLEN={}", self.nicklen);
