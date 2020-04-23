@@ -32,11 +32,14 @@ fn convert_mask(dest: &mut String, mask: &str) {
     dest.reserve(mask.len());
     for c in mask.chars() {
         match c {
-            '*' | '?' => dest.push('.'),
-            c if regex_syntax::is_meta_character(c) => dest.push('\\'),
-            _ => {},
+            '*' => dest.push_str(".*"),
+            '?' => dest.push('.'),
+            c if regex_syntax::is_meta_character(c) => {
+                dest.push('\\');
+                dest.push(c);
+            }
+            c => dest.push(c),
         }
-        dest.push(c);
     }
 }
 
