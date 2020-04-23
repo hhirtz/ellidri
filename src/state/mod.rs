@@ -654,7 +654,7 @@ impl StateInner {
             }
         }
         let mut msg = MessageQueueItem::from(buf);
-        msg.start = tags_len;
+        msg.set_start(tags_len);
         msg
     }
 

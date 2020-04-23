@@ -9,14 +9,26 @@ use std::sync::Arc;
 use tokio::sync::mpsc;
 
 #[derive(Clone, Debug)]
-pub struct MessageQueueItem {
-    pub start: usize,
-    buf: Arc<String>,
+pub enum MessageQueueItem {
+    Data {
+        start: usize,
+        buf: Arc<String>,
+    },
+    Flush,
+}
+
+impl MessageQueueItem {
+    pub fn set_start(&mut self, s: usize) {
+        match self {
+            Self::Data { start, .. } => *start = s,
+            _ => {},
+        }
+    }
 }
 
 impl From<Buffer> for MessageQueueItem {
     fn from(val: Buffer) -> Self {
-        Self { start: 0, buf: Arc::new(val.build()) }
+        Self::Data { start: 0, buf: Arc::new(val.build()) }
     }
 }
 
@@ -25,7 +37,10 @@ impl AsRef<str> for MessageQueueItem {
     ///
     /// This function panics when `self.start` is greater than the content's length.
     fn as_ref(&self) -> &str {
-        &self.buf[self.start..]
+        match self {
+            Self::Data { start, buf } => &buf[*start..],
+            Self::Flush => "",
+        }
     }
 }
 
@@ -337,7 +352,7 @@ impl Client {
     {
         let mut msg = msg.into();
         if self.capabilities.has_message_tags() {
-            msg.start = 0;
+            msg.set_start(0);
         }
         let _ = self.queue.send(msg);
     }
@@ -613,6 +628,7 @@ impl ReplyBuffer {
             // This is a labeled-response batch, end it.
             self.end_batch();
         }
+        let _ = self.queue.send(MessageQueueItem::Flush);
     }
 
     pub fn reply<C, F>(&mut self, command: C, capacity: usize, map: F)

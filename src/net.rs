@@ -179,8 +179,9 @@ macro_rules! rate_limit {
 async fn handle<S>(conn: S, peer_addr: SocketAddr, shared: State)
     where S: io::AsyncRead + io::AsyncWrite
 {
-    let (reader, mut writer) = io::split(conn);
+    let (reader, writer) = io::split(conn);
     let mut reader = IrcReader::new(reader, 512);
+    let mut writer = io::BufWriter::new(writer);
     let (msg_queue, mut outgoing_msgs) = sync::mpsc::unbounded_channel();
     let peer_id = shared.peer_joined(peer_addr, msg_queue).await;
     tokio::spawn(login_timeout(peer_id, shared.clone()));
@@ -200,9 +201,13 @@ async fn handle<S>(conn: S, peer_addr: SocketAddr, shared: State)
 
     let outgoing = async {
         use io::AsyncWriteExt as _;
+        use crate::client::MessageQueueItem::*;
 
         while let Some(msg) = outgoing_msgs.recv().await {
-            writer.write_all(msg.as_ref().as_bytes()).await?;
+            match msg {
+                Data { start, buf } => writer.write_all(buf[start..].as_bytes()).await?,
+                Flush => writer.flush().await?,
+            }
         }
         Ok(())
     };
