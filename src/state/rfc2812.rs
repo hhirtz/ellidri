@@ -974,6 +974,33 @@ impl super::StateInner {
         }
     }
 
+    fn who_regex(&self, rb: &mut ReplyBuffer, issuer_id: usize, issuer: &Client, mask: &str,
+                 o: bool)
+    {
+        let regex = util::mask_to_regex(mask);
+        if mask.as_bytes()[0] == b'#' || mask.as_bytes()[0] == b'&' {
+            for (name, ch) in &self.channels {
+                if !regex.is_match(name.get()) {
+                    continue;
+                }
+                for (member, modes) in &ch.members {
+                    let c = &self.clients[*member];
+                    if o && !c.operator {
+                        continue;
+                    }
+                    self.who_line(rb, issuer, c, name.get(), *modes);
+                }
+            }
+        } else {
+            for (nick, id) in &self.nicks {
+                if !regex.is_match(nick.get()) {
+                    continue;
+                }
+                self.who_user(rb, issuer_id, issuer, *id, o);
+            }
+        }
+    }
+
     pub fn cmd_who(&self, mut ctx: CommandContext<'_>, mask: &str, o: &str) -> Result
     {
         let mask = if mask.is_empty() {"*"} else {mask};
@@ -1008,6 +1035,10 @@ impl super::StateInner {
             for &target_id in self.nicks.values() {
                 self.who_user(&mut ctx.rb, ctx.id, client, target_id, o);
             }
+        } else if client.operator {
+            // "WHO <mask>" where mask contains *s and ?s, reserved for operators.
+            ctx.rb.start_lr_batch();
+            self.who_regex(&mut ctx.rb, ctx.id, client, mask, o);
         }
         ctx.rb.reply(rpl::ENDOFWHO, 1+mask.len() + 2+lines::END_OF_WHO.len(), |msg| {
             msg.param(mask).trailing_param(lines::END_OF_WHO);
