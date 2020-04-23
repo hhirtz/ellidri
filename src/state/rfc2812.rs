@@ -2,7 +2,7 @@
 //!
 //! <https://tools.ietf.org/html/rfc2812.html>
 
-use crate::channel::{Channel, Topic};
+use crate::channel::{Channel, MemberModes, Topic};
 use crate::client::{Client, MessageQueueItem, ReplyBuffer};
 use crate::{lines, util};
 use ellidri_tokens::{Buffer, Command, mode, rpl};
@@ -923,82 +923,90 @@ impl super::StateInner {
 
     // WHO
 
-    pub fn cmd_who(&self, ctx: CommandContext<'_>, mask: &str, o: &str) -> Result
+    fn who_line(&self, rb: &mut ReplyBuffer, issuer: &Client, target: &Client, channel: &str,
+                modes: MemberModes)
+    {
+        let capacity = 1+channel.len() + 1+target.user().len() + 1+target.host().len() +
+            1+self.domain.len() + 1+target.nick().len() + 1+6 + 2+2+target.real().len();
+        rb.reply(rpl::WHOREPLY, capacity, |mut msg| {
+            msg = msg.param(channel)
+                .param(target.user())
+                .param(target.host())
+                .param(&self.domain)
+                .param(target.nick());
+            let param = msg.raw_param();
+            param.push(if target.away_message().is_some() { 'G' } else { 'H' });
+            if issuer.capabilities().multi_prefix {
+                modes.all_symbols(param);
+            } else if let Some(symbol) = modes.symbol() {
+                param.push(symbol);
+            }
+            let trailing = msg.raw_trailing_param();
+            trailing.push_str("0 ");
+            trailing.push_str(target.real());
+        });
+    }
+
+    fn who_user(&self, rb: &mut ReplyBuffer, issuer_id: usize, issuer: &Client, target_id: usize,
+                o: bool)
+    {
+        let c = &self.clients[target_id];
+        if (!o || c.operator) && c.is_registered() {
+            // The target has registered, and matches the filter "o".  Will now find a channel
+            // to display for the WHOREPLY.
+            let mut channel_name = None;
+            let mut member = Default::default();
+            for (name, ch) in &self.channels {
+                if let Some(member_modes) = ch.members.get(&target_id) {
+                    if !(c.invisible && ch.secret) || ch.members.contains_key(&issuer_id) {
+                        // The client can see the channel.
+                        channel_name = Some(name.as_ref());
+                        member = *member_modes;
+                        break;
+                    }
+                }
+            }
+            if !c.invisible || target_id == issuer_id || channel_name.is_some() || issuer.operator {
+                // The client can see the target.
+                let channel_name = channel_name.map_or("*", UniCase::get);
+                self.who_line(rb, issuer, c, channel_name, member);
+            }
+        }
+    }
+
+    pub fn cmd_who(&self, mut ctx: CommandContext<'_>, mask: &str, o: &str) -> Result
     {
         let mask = if mask.is_empty() {"*"} else {mask};
         let o = o == "o";  // best line
         let client = &self.clients[ctx.id];
 
         if let Some(channel) = self.channels.get(u(mask)) {
+            // "WHO <channel>"
             ctx.rb.start_lr_batch();
             let in_channel = channel.members.contains_key(&ctx.id);
             if !channel.secret || in_channel || client.operator {
+                // The client can see the channel.
                 for (member, modes) in &channel.members {
                     let c = &self.clients[*member];
                     if (o && !c.operator) ||
                         (!client.operator && c.invisible && !in_channel && *member != ctx.id)
                     {
+                        // Either the target isn't an operator while the client filtered for
+                        // operators, or the client cannot see the member.
                         continue;
                     }
-                    let capacity = 1+mask.len() + 1+c.user().len() + 1+c.host().len() +
-                        1+self.domain.len() + 1+c.nick().len() + 1+6 + 2+2+c.real().len();
-                    ctx.rb.reply(rpl::WHOREPLY, capacity, |mut msg| {
-                        msg = msg.param(mask)
-                            .param(c.user())
-                            .param(c.host())
-                            .param(&self.domain)
-                            .param(c.nick());
-                        let param = msg.raw_param();
-                        param.push(if c.away_message().is_some() { 'G' } else { 'H' });
-                        if client.capabilities().multi_prefix {
-                            modes.all_symbols(param);
-                        } else if let Some(symbol) = modes.symbol() {
-                            param.push(symbol);
-                        }
-                        let trailing = msg.raw_trailing_param();
-                        trailing.push_str("0 ");
-                        trailing.push_str(c.real());
-                    });
+                    self.who_line(&mut ctx.rb, client, c, mask, *modes);
                 }
             }
-        } else if let Some(&a) = self.nicks.get(u(mask)) {
+        } else if let Some(&target_id) = self.nicks.get(u(mask)) {
+            // "WHO <nickname>"
             ctx.rb.start_lr_batch();
-            let c = &self.clients[a];
-            if (!o || c.operator) && c.is_registered() {
-                let mut channel_name = None;
-                let mut member = Default::default();
-                for (name, ch) in &self.channels {
-                    if let Some(member_modes) = ch.members.get(&a) {
-                        if !c.invisible || ch.members.contains_key(&ctx.id) {
-                            channel_name = Some(name.as_ref());
-                            member = *member_modes;
-                            break;
-                        }
-                    }
-                }
-                if !c.invisible || a == ctx.id || channel_name.is_some() || client.operator {
-                    let client = &self.clients[ctx.id];
-                    let channel_name = channel_name.map_or("*", UniCase::get);
-                    let capacity = 1+mask.len() + 1+c.user().len() + 1+c.host().len() +
-                        1+self.domain.len() + 1+c.nick().len() + 1+6 + 2+c.real().len();
-                    ctx.rb.reply(rpl::WHOREPLY, capacity, |mut msg| {
-                        msg = msg.param(channel_name)
-                            .param(c.user())
-                            .param(c.host())
-                            .param(&self.domain)
-                            .param(c.nick());
-                        let param = msg.raw_param();
-                        param.push(if c.away_message().is_some() { 'G' } else { 'H' });
-                        if client.capabilities().multi_prefix {
-                            member.all_symbols(param);
-                        } else if let Some(symbol) = member.symbol() {
-                            param.push(symbol);
-                        }
-                        let trailing = msg.raw_trailing_param();
-                        trailing.push_str("0 ");
-                        trailing.push_str(c.real());
-                    });
-                }
+            self.who_user(&mut ctx.rb, ctx.id, client, target_id, o);
+        } else if mask == "*" && client.operator {
+            // "WHO *", reserved for operators.
+            ctx.rb.start_lr_batch();
+            for &target_id in self.nicks.values() {
+                self.who_user(&mut ctx.rb, ctx.id, client, target_id, o);
             }
         }
         ctx.rb.reply(rpl::ENDOFWHO, 1+mask.len() + 2+lines::END_OF_WHO.len(), |msg| {
