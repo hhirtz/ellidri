@@ -237,6 +237,7 @@ async fn login_timeout(peer_id: usize, shared: State) {
 
 #[cfg(feature = "websocket")]
 use futures_util::future::TryFutureExt;
+#[cfg(feature = "websocket")]
 use futures_util::stream::StreamExt;
 
 #[cfg(feature = "websocket")]

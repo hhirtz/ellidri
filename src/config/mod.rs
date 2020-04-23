@@ -121,7 +121,6 @@ pub mod db {
 #[derive(Default)]
 pub struct Config {
     pub bindings: Vec<Binding>,
-    #[cfg(feature = "websocket")]
     pub ws_endpoint: Option<net::SocketAddr>,
     pub workers: usize,
     pub state: State,
@@ -162,7 +161,6 @@ impl Config {
                     tls_identity: None,
                 }
             ],
-            #[cfg(feature = "websocket")]
             ws_endpoint: None,
             workers: 0,
             state: State::sample(),
@@ -206,8 +204,7 @@ impl Config {
         parser = parser
             .unique_setting("db_url", db_needed, |value| res.db_url = Some(value))?;
 
-        #[cfg(feature = "websocket")]
-        {
+        if cfg!(feature = "websocket") {
             parser = parser
                 .unique_setting("ws_endpoint", false, |value| res.ws_endpoint = Some(value))?;
         }
