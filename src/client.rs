@@ -19,9 +19,8 @@ pub enum MessageQueueItem {
 
 impl MessageQueueItem {
     pub fn set_start(&mut self, s: usize) {
-        match self {
-            Self::Data { start, .. } => *start = s,
-            _ => {},
+        if let Self::Data { start, .. } = self {
+            *start = s;
         }
     }
 }
@@ -628,7 +627,6 @@ impl ReplyBuffer {
             // This is a labeled-response batch, end it.
             self.end_batch();
         }
-        let _ = self.queue.send(MessageQueueItem::Flush);
     }
 
     pub fn reply<C, F>(&mut self, command: C, capacity: usize, map: F)
@@ -700,6 +698,12 @@ impl ReplyBuffer {
         let new_batch = self.batch.map_or(0, |old_batch| old_batch + 1);
         self.batch = Some(new_batch);
         new_batch
+    }
+}
+
+impl Drop for ReplyBuffer {
+    fn drop(&mut self) {
+        let _ = self.queue.send(MessageQueueItem::Flush);
     }
 }
 

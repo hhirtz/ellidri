@@ -606,13 +606,6 @@ fn find_nick<'a>(id: usize, rb: &mut ReplyBuffer, clients: &'a ClientMap, nicks:
 
 // Send utilities
 impl StateInner {
-    /// Sends the given message to the given client.
-    fn send(&self, id: usize, msg: MessageQueueItem) {
-        if let Some(client) = self.clients.get(id) {
-            client.send(msg);
-        }
-    }
-
     fn build_message(&self, ctx: &mut CommandContext<'_>, from: &Client, cmd: Command, target: &str,
                      content: Option<&str>) -> MessageQueueItem
     {
@@ -693,6 +686,7 @@ impl StateInner {
                         continue;
                     }
                     client.send(msg.clone());
+                    client.send(MessageQueueItem::Flush);
                 }
             }
         } else {
@@ -703,6 +697,7 @@ impl StateInner {
             let msg = self.build_message(&mut ctx, client, cmd, target, content);
 
             target_client.send(msg);
+            target_client.send(MessageQueueItem::Flush);
             if let Some(ref away_msg) = target_client.away_message {
                 ctx.rb.reply(rpl::AWAY, 1+target.len() + 2+away_msg.len(), |msg| {
                     msg.param(target).trailing_param(away_msg);
@@ -727,7 +722,9 @@ impl StateInner {
         let iter = noticed.into_iter()
             .filter(|&id| from != id && filter(id, &self.clients[id]));
         for id in iter {
-            self.send(id, msg.clone());
+            let c = &self.clients[id];
+            c.send(msg.clone());
+            c.send(MessageQueueItem::Flush);
         }
     }
 
