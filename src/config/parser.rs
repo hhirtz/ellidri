@@ -1,4 +1,4 @@
-use std::{fs, path, str};
+use std::{fs, net, path, str};
 use std::collections::{BTreeMap, HashMap};
 use std::ops::Range;
 use super::{Binding, db, Error, Result, SaslBackend};
@@ -48,6 +48,10 @@ impl TypeName for usize {
 
 impl TypeName for String {
     fn type_name() -> String { "a string".to_owned() }
+}
+
+impl TypeName for net::SocketAddr {
+    fn type_name() -> String { "a socket address".to_owned() }
 }
 
 impl TypeName for Binding {

@@ -11,8 +11,8 @@ IRCd, for short).  You will especially find:
   efficiently parse IRC messages and mode strings,
 - ellidri-unicase, providing a wrapper around strings to make them
   case-insensitive regarding IRC's different case mappings,
-- an IRC server, ellidri, that aims to be simple to setup, widely compatible,
-  feature complete and scalable.
+- an IRC server, ellidri, that aims to be simple to setup, feature complete and
+  scalable.
 
 To discuss about ellidri and cie, join the IRC channel: [#ellidri on
 freenode][irc]!  There is also a test server running at [ellidri.org][org], if

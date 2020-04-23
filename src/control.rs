@@ -76,6 +76,24 @@ struct LoadedBinding<F> {
     future: F,
 }
 
+/// A WebSocket binding.
+struct WsBinding {
+    /// The local address.
+    pub addr: SocketAddr,
+
+    /// A channel to stop the binding.
+    pub stop: Arc<Notify>,
+}
+
+impl WsBinding {
+    pub fn new(addr: SocketAddr) -> Self {
+        Self {
+            addr,
+            stop: Arc::new(Notify::new()),
+        }
+    }
+}
+
 /// Reads the configuration file and initialize the relevant authentication provider.
 fn load_config(config_path: &str) -> config::Result<(config::Config, Box<dyn auth::Provider>)> {
     let cfg = config::Config::from_file(config_path).map_err(|err| {
@@ -170,6 +188,11 @@ pub struct Control {
     /// It is shared with `Control.shared`, which pings on this channel when REHASH is received.
     rehash: Arc<Notify>,
 
+    /// The WebSocket binding.
+    ///
+    /// TLS support must be provided by a reverse proxy.
+    ws: Option<WsBinding>,
+
     /// The list of socket addresses (IP address + TCP port) of the running binding tasks.
     ///
     /// `Control` keeps track of this in several ways:
@@ -196,7 +219,16 @@ impl Control {
         let mut runtime = create_runtime(cfg.workers);
         let shared = State::new(cfg.state, auth_provider, rehash.clone());
         let bindings = load_bindings(cfg.bindings, &shared, &stop, &mut runtime);
-        (runtime, Self { config_path, shared, stop, failures, rehash, bindings })
+        let control = Self {
+            config_path,
+            shared,
+            stop,
+            failures,
+            rehash,
+            ws: cfg.ws_endpoint.map(WsBinding::new),
+            bindings
+        };
+        (runtime, control)
     }
 
     /// Lets `Control` do its things.
@@ -213,25 +245,18 @@ impl Control {
         #[cfg(not(unix))]
         let signals = crate::util::PendingStream;  // TODO support non-UNIX signals?
 
-        let Self { config_path, shared, stop, mut failures, rehash, mut bindings } = self;
+        let Self {
+            config_path,
+            shared,
+            stop,
+            mut failures,
+            rehash,
+            mut ws,
+            mut bindings
+        } = self;
 
         #[cfg(feature = "websocket")]
-        {
-            use warp::Filter;
-            let shared_clone = shared.clone();
-            let shared_clone = warp::any().map(move || shared_clone.clone());
-            let ws = warp::path::end()
-                .and(warp::ws())
-                .and(warp::addr::remote())
-                .and(shared_clone)
-                .map(|ws: warp::ws::Ws, peer_addr: Option<SocketAddr>, shared| {
-                    ws
-                        .max_message_size(4096 + 512)
-                        .on_upgrade(move |socket| net::handle_ws(socket, peer_addr.unwrap(), shared))
-                });
-
-            tokio::spawn(warp::serve(ws).run(([127, 0, 0, 1], 8080)));
-        }
+        ws.as_ref().map(|ws| spawn_ws(ws, shared.clone()));
 
         loop {
             futures::select! {
@@ -250,14 +275,42 @@ impl Control {
                     }
                 },
                 _ = rehash.notified().fuse() => {
-                    do_rehash(&config_path, &shared, &stop, &mut bindings).await;
+                    do_rehash(&config_path, &shared, &stop, &mut bindings, &mut ws).await;
                 },
                 _ = signals.recv().fuse() => {
-                    do_rehash(&config_path, &shared, &stop, &mut bindings).await;
+                    do_rehash(&config_path, &shared, &stop, &mut bindings, &mut ws).await;
                 },
             }
         }
     }
+}
+
+#[cfg(feature = "websocket")]
+fn spawn_ws(ws: &WsBinding, shared: State) {
+    use warp::Filter;
+
+    let shared = warp::any().map(move || shared.clone());
+    let server = warp::path::end()
+        .and(warp::ws())
+        .and(warp::addr::remote())
+        .and(shared)
+        .map(|ws: warp::ws::Ws, peer_addr: Option<SocketAddr>, shared| {
+            ws
+                .max_message_size(4096 + 512)
+                .on_upgrade(move |socket| {
+                    net::handle_ws(socket, peer_addr.unwrap(), shared)
+                })
+        });
+
+    let ws_stop = ws.stop.clone();
+    let addr = ws.addr;
+    let (_, server) = warp::serve(server)
+        .bind_with_graceful_shutdown(addr, async move {
+            log::info!("Binding {} online, accepting WebSocket connections", addr);
+            ws_stop.notified().await;
+            log::info!("Binding {} now offline", addr);
+        });
+    tokio::spawn(server);
 }
 
 /// Reloads the configuration at `config_path`.
@@ -269,7 +322,8 @@ impl Control {
 /// - Add new bindings, or send them a command to listen for raw TCP or TLS connections,
 /// - Update the shared state.
 async fn do_rehash(config_path: &str, shared: &State, stop: &mpsc::Sender<SocketAddr>,
-                   bindings: &mut Vec<(SocketAddr, mpsc::Sender<Command>)>)
+                   bindings: &mut Vec<(SocketAddr, mpsc::Sender<Command>)>,
+                   ws: &mut Option<WsBinding>)
 {
     log::info!("Reloading configuration from {:?}", config_path);
     let reloaded = task::block_in_place(|| {
@@ -309,6 +363,19 @@ async fn do_rehash(config_path: &str, shared: &State, stop: &mpsc::Sender<Socket
         } else {
             tokio::spawn(new_b.future);
             bindings.push((new_b.address, new_b.handle));
+        }
+    }
+
+    #[cfg(feature = "websocket")]
+    match cfg.ws_endpoint {
+        Some(ws_endpoint) => if ws.as_ref().map_or(true, |ws| ws.addr != ws_endpoint) {
+            *ws = Some(WsBinding::new(ws_endpoint));
+        }
+        None => {
+            if let Some(ws) = &ws {
+                ws.stop.notify();
+            }
+            *ws = None;
         }
     }
 

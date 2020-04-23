@@ -4,7 +4,6 @@
 //!
 //! [1]: https://git.sr.ht/~taiite/ellidri/tree/master/doc/ellidri.conf
 
-// TODO use bind_to 0.0.0.0:6697 .  to generate a certificate
 use self::parser::{Parser, ModeString, Oper};
 use std::{fmt, io, net, path};
 use std::ops::Range;
@@ -122,6 +121,8 @@ pub mod db {
 #[derive(Default)]
 pub struct Config {
     pub bindings: Vec<Binding>,
+    #[cfg(feature = "websocket")]
+    pub ws_endpoint: Option<net::SocketAddr>,
     pub workers: usize,
     pub state: State,
     pub sasl_backend: SaslBackend,
@@ -161,6 +162,8 @@ impl Config {
                     tls_identity: None,
                 }
             ],
+            #[cfg(feature = "websocket")]
+            ws_endpoint: None,
             workers: 0,
             state: State::sample(),
             sasl_backend: SaslBackend::None,
@@ -175,9 +178,9 @@ impl Config {
         let mut res = Self::sample();
         let mut default_chan_mode = ModeString(res.state.default_chan_mode.clone());
         let mut opers = Vec::new();
-        let parser = Parser::read(path)?;
+        let mut parser = Parser::read(path)?;
 
-        let parser = parser
+        parser = parser
             .setting("bind_to", |values| res.bindings = values)?
             .setting("oper",    |values| opers = values)?
             .unique_setting("workers",           false, |value| res.workers = value)?
@@ -200,8 +203,14 @@ impl Config {
             .unique_setting("sasl_backend",      false, |value| res.sasl_backend = value)?;
 
         let db_needed = res.sasl_backend == SaslBackend::Database;
-        let parser = parser
+        parser = parser
             .unique_setting("db_url", db_needed, |value| res.db_url = Some(value))?;
+
+        #[cfg(feature = "websocket")]
+        {
+            parser = parser
+                .unique_setting("ws_endpoint", false, |value| res.ws_endpoint = Some(value))?;
+        }
 
         parser.check_unknown_settings()?;
 
