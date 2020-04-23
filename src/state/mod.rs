@@ -58,54 +58,6 @@ pub struct CommandContext<'a> {
 /// The API is designed with `async` support only, because this type heavily relies on [tokio][1].
 ///
 /// [1]: https://tokio.rs
-///
-/// # Example
-///
-/// ```rust
-/// # use ellidri::State;
-/// # use ellidri::{auth, config, tokens};
-/// # tokio::runtime::Runtime::new().unwrap().block_on(async {
-/// use tokio::sync::Notify;
-/// use std::sync::Arc;
-///
-/// // Create the state
-/// let sasl_backend = auth::choose_provider(config::SaslBackend::None, None).unwrap();
-/// let rehash_notifications = Arc::new(Notify::new());
-/// let state = State::new(config::State {
-///     domain: "ellidri.dev".to_owned(),
-///     ..config::State::sample()
-/// }, sasl_backend, rehash_notifications.clone());
-///
-/// // The IP address of the client, to build the host string.
-/// let client_addr = std::net::SocketAddr::from(([127, 0, 0, 1], 12345));
-///
-/// // The state uses a MPSC queue and pushes the messages meant to be sent
-/// // to the client onto the queue.
-/// let (msg_queue, mut outgoing_msgs) = tokio::sync::mpsc::unbounded_channel();
-///
-/// // Each client is identified by an integer.
-/// let client_id = state.peer_joined(client_addr, msg_queue).await;
-///
-/// // `handle_message` is used to pass messages from the client to the state.
-/// let nick = tokens::Message::parse("NICK ser").unwrap();
-/// let user = tokens::Message::parse("USER ser 0 * :ser").unwrap();
-/// state.handle_message(client_id, nick).await;
-/// state.handle_message(client_id, user).await;
-///
-/// // The user has registered, so the state should have pushed
-/// // the welcome message, the motd, etc. onto the queue.
-/// // It is safe to unwrap here while the peer is saved in the state.
-/// let msg = outgoing_msgs.recv().await.unwrap();
-///
-/// // Outgoing messages implement `AsRef<[u8]>`, so they can be used
-/// // with `std::io::Write`. They also implement `AsRef<str>` because
-/// // they are UTF-8 encoded.  They include "\r\n" at the end.
-/// let msg: &str = msg.as_ref();
-///
-/// // The first IRC message from the server is RPL_WELCOME.
-/// assert_eq!(msg, ":ellidri.dev 001 ser :Welcome home, ser\r\n");
-/// # });
-/// ```
 #[derive(Clone)]
 pub struct State(Arc<Mutex<StateInner>>);
 
