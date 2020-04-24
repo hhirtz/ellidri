@@ -680,7 +680,7 @@ impl super::StateInner {
 
     pub fn cmd_oper(&mut self, ctx: CommandContext<'_>, name: &str, password: &str) -> Result {
         // TODO oper_hosts
-        if !self.opers.iter().any(|(n, p)| n == name && p == password) {
+        if !self.opers.iter().any(|o| o.name == name && o.password == password) {
             log::debug!("{}:     Password mismatch", ctx.id);
             ctx.rb.reply(rpl::ERR_PASSWDMISMATCH, 2+lines::PASSWORD_MISMATCH.len(), |msg| {
                 msg.trailing_param(lines::PASSWORD_MISMATCH);

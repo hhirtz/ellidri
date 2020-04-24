@@ -158,13 +158,13 @@ impl<M> Provider for DbProvider<M>
     }
 }
 
-fn choose_db_provider(url: db::Url) -> Result<Box<dyn Provider>, Box<dyn std::error::Error>> {
-    match url.0 {
+fn choose_db_provider(db_cfg: db::Info) -> Result<Box<dyn Provider>, Box<dyn std::error::Error>> {
+    match db_cfg.driver {
         #[cfg(feature = "sqlite")]
         db::Driver::Sqlite => {
-            log::info!("Loading SQLite database at {:?}", url.1);
+            log::info!("Loading SQLite database at {:?}", db_cfg.url);
 
-            let manager = r2d2_sqlite::SqliteConnectionManager::file(&url.1);
+            let manager = r2d2_sqlite::SqliteConnectionManager::file(db_cfg.url);
             let provider = DbProvider::try_from(manager)?;
 
             let conn = provider.pool.get()?;
@@ -178,7 +178,7 @@ fn choose_db_provider(url: db::Url) -> Result<Box<dyn Provider>, Box<dyn std::er
         #[cfg(feature = "postgres")]
         db::Driver::Postgres => {
             let no_tls = r2d2_postgres::postgres::NoTls;
-            let config = url.1.parse()?;
+            let config = db_cfg.url.parse()?;
 
             log::info!("Loading PostgreSQL database at {:?}", config);
 
@@ -190,12 +190,12 @@ fn choose_db_provider(url: db::Url) -> Result<Box<dyn Provider>, Box<dyn std::er
     }
 }
 
-/// Returns the first available provider given the `backend` type and the database URL `db_url`.
-pub fn choose_provider(backend: SaslBackend, db_url: Option<db::Url>)
+/// Returns the first available provider given the `backend` type and the database URL `db_cfg`.
+pub fn choose_provider(backend: SaslBackend, db_cfg: Option<db::Info>)
     -> Result<Box<dyn Provider>, Box<dyn std::error::Error>>
 {
     match backend {
         SaslBackend::None => Ok(Box::new(DummyProvider)),
-        SaslBackend::Database => choose_db_provider(db_url.unwrap()),
+        SaslBackend::Database => choose_db_provider(db_cfg.unwrap()),
     }
 }

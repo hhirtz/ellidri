@@ -1,0 +1,21 @@
+# ellidri example configuration file
+#
+# This file is an example of what a production-ready server could use as
+# configuration for ellidri.  If you want to tweak settings futher, see
+# `config_full.yaml`.
+
+
+# Change this to your domain name.
+domain: irc.ellidri.org
+
+bindings:
+    - address: 127.0.0.1:6667
+
+    - address: 0.0.0.0:6697
+      tls_identity: /etc/ellidri.d/identity.p12
+
+org_name:     ellidri-org
+org_location: Europe
+org_mail:     Contact: support@ellidri.org
+
+motd_file: /etc/motd

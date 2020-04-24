@@ -102,7 +102,7 @@ fn load_config(config_path: &str) -> config::Result<(config::Config, Box<dyn aut
     })?;
 
     let sasl_backend = cfg.sasl_backend;
-    let auth_provider = auth::choose_provider(sasl_backend, cfg.db_url.clone())
+    let auth_provider = auth::choose_provider(sasl_backend, cfg.database.clone())
         .unwrap_or_else(|err| {
             log::warn!("Failed to initialize the {} SASL backend: {}", sasl_backend, err);
             Box::new(auth::DummyProvider)

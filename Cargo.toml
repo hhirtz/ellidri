@@ -64,6 +64,10 @@ clap = { version = "2.33", default-features = false }
 env_logger = { version = "0.7", default-features = false }
 log = { version = "0.4", default-features = false, features = ["max_level_trace", "release_max_level_info"] }
 
+# Configuration
+serde = { version = "1", default-features = false, features = ["derive", "std"] }
+serde_yaml = { version = "0.8", default-features = false }
+
 # Time string generation (@time message tag and RPL_TIME reply)
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 

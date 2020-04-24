@@ -1,3 +1,0 @@
-Sample MOTD file
-
-For ellidri

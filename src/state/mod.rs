@@ -152,7 +152,7 @@ pub(crate) struct StateInner {
     default_chan_mode: String,
 
     /// A list of (name, password) that are valid OPER parameters.
-    opers: Vec<(String, String)>,
+    opers: Vec<config::Oper>,
 
     /// Limits in number of characters for user input.
     awaylen: usize,
