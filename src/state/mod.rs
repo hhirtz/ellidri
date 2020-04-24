@@ -34,6 +34,7 @@ const SERVER_VERSION: &str = concat!(env!("CARGO_PKG_NAME"), "-", env!("CARGO_PK
 const SERVER_INFO: &str = include_str!("info.txt");
 
 const MAX_TAG_DATA_LENGTH: usize = 4094;
+const MAX_LABEL_LENGTH: usize = 64;
 
 type ChannelMap = HashMap<UniCase<String>, Channel>;
 type ClientMap = Slab<Client>;
@@ -292,12 +293,17 @@ impl StateInner {
             Some(client) => client,
             None => return Err(()),
         };
+
         let label = if client.capabilities().has_labeled_response() {
-            let label = tags(msg.tags).find(|tag| tag.key == "label").and_then(|tag| tag.value);
-            label.unwrap_or("")
+            tags(msg.tags)
+                .find(|tag| tag.key == "label")
+                .and_then(|tag| tag.value)
+                .filter(|label| label.len() <= MAX_LABEL_LENGTH)
+                .unwrap_or("")
         } else {
             ""
         };
+
         let mut rb = client.reply(label);
 
         if MAX_TAG_DATA_LENGTH < msg.tags.len() {
