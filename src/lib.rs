@@ -24,7 +24,7 @@ pub use crate::config::Config;
 use crate::control::Control;
 pub use crate::state::State;
 pub use ellidri_tokens as tokens;
-use std::{env, process};
+use std::env;
 
 pub mod auth;
 mod channel;
@@ -59,21 +59,8 @@ pub fn start() {
         .arg(clap::Arg::with_name("CONFIG_FILE")
             .long("--config")
             .value_name("CONFIG_FILE")
-            .help("ellidri's configuration file")
-            .required_unless("DOMAIN")
-            .conflicts_with("DOMAIN"))
-        .arg(clap::Arg::with_name("DOMAIN")
-            .long("--domain")
-            .value_name("DOMAIN")
-            .help("ellidri's effective domain name (unimplemented)")
-            .required_unless("CONFIG_FILE")
-            .conflicts_with("CONFIG_FILE"))
+            .help("ellidri's configuration file"))
         .get_matches();
-
-    if matches.is_present("DOMAIN") {
-        eprintln!("At the moment, --domain is unimplemented.  Please use --config instead.");
-        process::exit(1);
-    }
 
     let config_path = matches.value_of("CONFIG_FILE").unwrap();
     let (mut runtime, control) = Control::new(config_path);
