@@ -18,9 +18,9 @@ impl super::StateInner {
 impl super::StateInner {
     fn cmd_cap_list(&self, ctx: CommandContext<'_>) -> Result {
         let client = &self.clients[ctx.id];
-        let capacity = 1+client.nick().len() + 2+cap::ls_common().len();
-        ctx.rb.message("", Command::Cap, capacity, |msg| {
-            client.capabilities().write_enabled(msg.param(client.nick()));
+        let capacity = 2+cap::ls_common().len();
+        ctx.rb.reply(Command::Cap, capacity, |msg| {
+            client.capabilities().write_enabled(msg);
         });
         Ok(())
     }
@@ -29,10 +29,9 @@ impl super::StateInner {
         let id = ctx.id;
         self.clients[id].set_cap_version(version);
 
-        let nick = &self.clients[id].nick();
-        let capacity = 1+nick.len() + 1+2 + 2+cap::ls_common().len() + 20;
-        ctx.rb.message("", Command::Cap, capacity, |mut msg| {
-            msg = msg.param(nick).param("LS");
+        let capacity = 1+2 + 2+cap::ls_common().len() + 20;
+        ctx.rb.reply(Command::Cap, capacity, |mut msg| {
+            msg = msg.param("LS");
             let mut trailing = msg.raw_trailing_param();
 
             trailing.push_str(cap::ls_common());
@@ -50,16 +49,16 @@ impl super::StateInner {
 
     fn cmd_cap_req(&mut self, ctx: CommandContext<'_>, capabilities: &str) -> Result {
         let client = &mut self.clients[ctx.id];
-        let capacity = 1+client.nick().len() + 1+3 + 2+capabilities.len();
+        let capacity = 1+3 + 2+capabilities.len();
         if !cap::are_supported(capabilities) {
-            ctx.rb.message("", Command::Cap, capacity, |msg| {
-                msg.param(client.nick()).param("NAK").trailing_param(capabilities);
+            ctx.rb.reply(Command::Cap, capacity, |msg| {
+                msg.param("NAK").trailing_param(capabilities);
             });
             return Err(());
         }
         client.update_capabilities(capabilities);
-        ctx.rb.message("", Command::Cap, capacity, |msg| {
-            msg.param(client.nick()).param("ACK").trailing_param(capabilities);
+        ctx.rb.reply(Command::Cap, capacity, |msg| {
+            msg.param("ACK").trailing_param(capabilities);
         });
         Ok(())
     }
