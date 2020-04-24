@@ -1,0 +1,23 @@
+[Unit]
+Description=ellidri, the kawai IRC server
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+User=ellidri
+Group=ellidri
+Type=simple
+KillMode=process
+ExecStart=/usr/bin/ellidri --config /etc/ellidri.yaml
+ExecReload=/bin/kill -USR1 $MAINPID
+ProtectSystem=yes
+NoNewPrivileges=yes
+ProtectKernelTunables=yes
+ProtectControlGroups=yes
+ProtectKernelModules=yes
+Restart=on-failure
+
+#MemoryMax=16M
+
+[Install]
+WantedBy=multi-user.target

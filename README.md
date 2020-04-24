@@ -78,41 +78,8 @@ development and for release.  The executable is generated at
 
 ## Usage
 
-ellidri must be started with a configuration file, for example:
+See `doc/setup-guide.md` for a step-by-step guide to have a working setup.
 
-```conf
-# Configuration file
-domain  your.domain.tld
-
-# Bind to an address and port.
-bind_to 127.0.0.1:6667
-
-# TLS-enabled port, with a PKCS12 archive.
-bind_to 0.0.0.0:6697 /var/lib/ellidri/identity.p12
-
-# Default is /etc/motd
-motd_file  custom_motd.txt
-```
-
-And start ellidri with the `--config` argument like so:
-
-```
-ellidri --config /path/to/the.configuration.file
-```
-
-An example configuration file with all settings and their defaults can be found
-in `doc/ellidri.conf`.
-
-You can reload the configuration file at runtime, without disconnecting any
-user, with the following command:
-
-```shell
-# With systemd
-systemctl reload ellidri
-
-# Otherwise
-killall -s USR1 ellidri
-```
 
 ## Contributing
 
