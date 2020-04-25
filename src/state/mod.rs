@@ -305,6 +305,7 @@ impl StateInner {
         };
 
         let mut rb = client.reply(label);
+        let is_operator = client.operator;
 
         if MAX_TAG_DATA_LENGTH < msg.tags.len() {
             rb.reply(rpl::ERR_INPUTTOOLONG, 2+lines::INPUT_TOO_LONG.len(), |msg| {
@@ -408,7 +409,7 @@ impl StateInner {
         };
         rb.end_lr();
 
-        Ok(used_points)
+        Ok(if is_operator {1} else {used_points})
     }
 
     fn handle_message_inner<'a>(&mut self, id: usize, rb: &'a mut ReplyBuffer, msg: Message<'a>) -> HandlerResult {
