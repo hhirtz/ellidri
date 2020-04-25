@@ -149,12 +149,12 @@
 #
 # Examples:
 #database:
-#   - driver: sqlite
-#     url: /var/lib/ellidri/ellidri.db
+#    driver: sqlite
+#    url: /var/lib/ellidri/ellidri.db
 #
 #database:
-#   - driver: postgres
-#   - url: host=/run/postgresql,localhost database=ellidri sslmode=prefer
+#    driver: postgres
+#    url: host=/run/postgresql,localhost database=ellidri sslmode=prefer
 
 
 # Misc settings

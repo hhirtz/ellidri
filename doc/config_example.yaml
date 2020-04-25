@@ -16,6 +16,6 @@ bindings:
 
 org_name:     ellidri-org
 org_location: Europe
-org_mail:     Contact: support@ellidri.org
+org_mail:     Contact support@ellidri.org
 
 motd_file: /etc/motd
