@@ -26,6 +26,27 @@ pub enum Error {
     UnsupportedMechanism,
 }
 
+#[cfg(any(feature = "sqlite", feature = "postgres"))]
+impl From<r2d2::Error> for Error {
+    fn from(_: r2d2::Error) -> Self {
+        Self::ProviderUnavailable
+    }
+}
+
+#[cfg(feature = "sqlite")]
+impl From<rusqlite::Error> for Error {
+    fn from(_: rusqlite::Error) -> Self {
+        Self::ProviderUnavailable
+    }
+}
+
+#[cfg(feature = "postgres")]
+impl From<tokio_postgres::Error> for Error {
+    fn from(_: tokio_postgres::Error) -> Self {
+        Self::ProviderUnavailable
+    }
+}
+
 /// Trait implemented by SASL authentication providers.
 pub trait Provider: Send + Sync {
     /// Whether the SASL backend is available.
@@ -76,15 +97,11 @@ pub trait Plain {
 #[cfg(feature = "sqlite")]
 impl Plain for r2d2::Pool<r2d2_sqlite::SqliteConnectionManager> {
     fn plain(&self, user: &str, pass: &str) -> Result<(), Error> {
-        let conn = self.get().map_err(|_| Error::ProviderUnavailable)?;
-        let mut stmt = conn.prepare("SELECT username FROM users WHERE username = ? AND password = ?")
-            .map_err(|_| Error::ProviderUnavailable)?;
-        let mut rows = stmt.query(&[user, pass])
-            .map_err(|_| Error::ProviderUnavailable)?;
-        rows.next()
-            .map_err(|_| Error::ProviderUnavailable)?
-            .ok_or(Error::ProviderUnavailable)?;
-
+        let conn = self.get()?;
+        let mut stmt =
+            conn.prepare("SELECT username FROM users WHERE username = ? AND password = ?")?;
+        let mut rows = stmt.query(&[user, pass])?;
+        rows.next()?.ok_or(Error::ProviderUnavailable)?;
         Ok(())
     }
 }
@@ -97,10 +114,9 @@ impl<T> Plain for r2d2::Pool<r2d2_postgres::PostgresConnectionManager<T>>
           <T::TlsConnect as tokio_postgres::tls::TlsConnect<tokio_postgres::Socket>>::Future: Send,
 {
     fn plain(&self, user: &str, pass: &str) -> Result<(), Error> {
-        let mut conn = self.get().map_err(|_| Error::ProviderUnavailable)?;
+        let mut conn = self.get()?;
         conn.query_one("SELECT username FROM users WHERE username = ? AND password = ?",
-                       &[&user, &pass])
-            .map_err(|_| Error::ProviderUnavailable)?;
+                       &[&user, &pass])?;
         Ok(())
     }
 }
