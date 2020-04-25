@@ -215,6 +215,7 @@ impl Config {
         Self {
             is_unsafe: is_unsafe(),
             bindings: bindings(),
+            #[cfg(feature = "websocket")]
             ws_endpoint: None,
             workers: 0,
             state: State::sample(),

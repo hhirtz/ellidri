@@ -225,7 +225,10 @@ impl Control {
             stop,
             failures,
             rehash,
+            #[cfg(feature = "websocket")]
             ws: cfg.ws_endpoint.map(WsBinding::new),
+            #[cfg(not(feature = "websocket"))]
+            ws: None,
             bindings
         };
         (runtime, control)
