@@ -1,8 +1,5 @@
 # kawaii
 
-[![builds.sr.ht status](https://builds.sr.ht/~taiite/ellidri.svg)](https://builds.sr.ht/~taiite/ellidri?)
-[![crates.io](https://img.shields.io/crates/v/ellidri.svg)](https://crates.io/crates/ellidri)
-
 This repository contains some crates that may be helpful to the IRC smith of the
 21st century!  They were built around ellidri, a modern [IRC server][ircd] (or
 IRCd, for short).  You will especially find:
