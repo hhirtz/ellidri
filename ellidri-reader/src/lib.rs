@@ -12,7 +12,6 @@ const ABUSE_ERR: &str = "Bad client, bad! >:(";
 const UTF8_ERR: &str = "This was definitely not UTF-8...";
 const TOO_LONG_ERR: &str = "Kyaa! Your message is too long!";
 
-// TODO make this configurable
 const MAX_READ_PER_MESSAGE: u8 = 4;
 const MAX_TAG_LENGTH: usize = 4096;
 
@@ -116,7 +115,6 @@ fn read_line<R>(mut reader: pin::Pin<&mut BufReader<R>>, cx: &mut task::Context<
             return task::Poll::Ready(Err(io::Error::new(io::ErrorKind::TimedOut, TOO_LONG_ERR)));
         }
         let (done, used) = {
-            // TODO prevent spam +inf times "\r" or "\n"
             let available = ready!(reader.as_mut().poll_fill_buf(cx))?;
 
             if n.limit == 0 && !available.is_empty() {

@@ -133,7 +133,6 @@ pub const WHOIS_IDLE: &str =
 
 // Welcome messages
 
-// TODO Your host is self.domain
 pub fn your_host(mut r: MessageBuffer<'_>, host: &str, version: &str) {
     let trailing = r.raw_trailing_param();
     trailing.push_str("Your host is ");

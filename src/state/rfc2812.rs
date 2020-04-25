@@ -679,7 +679,6 @@ impl super::StateInner {
     // OPER
 
     pub fn cmd_oper(&mut self, ctx: CommandContext<'_>, name: &str, password: &str) -> Result {
-        // TODO oper_hosts
         if !self.opers.iter().any(|o| o.name == name && o.password == password) {
             log::debug!("{}:     Password mismatch", ctx.id);
             ctx.rb.reply(rpl::ERR_PASSWDMISMATCH, 2+lines::PASSWORD_MISMATCH.len(), |msg| {
@@ -1052,7 +1051,6 @@ impl super::StateInner {
     pub fn cmd_whois(&self, ctx: CommandContext<'_>, nick: &str) -> Result {
         let (_, target_client) = find_nick(ctx.id, ctx.rb, &self.clients, &self.nicks, nick)?;
 
-        // TODO whois channels
         ctx.rb.start_lr_batch();
         let capacity = 1+target_client.nick().len() + 1+target_client.user().len() +
             1+target_client.host().len() + 1+1 + 2+target_client.real().len();

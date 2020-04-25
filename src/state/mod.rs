@@ -133,7 +133,6 @@ pub(crate) struct StateInner {
     /// Map that associates a socket address to each client.
     clients: ClientMap,
 
-    // TODO WHOWAS: make it point to nick history
     nicks: NicksMap,
 
     /// HashMap to associate the name of each channel with their metadata.
@@ -231,8 +230,6 @@ impl StateInner {
         self.userlen = config.userlen;
         self.login_timeout = config.login_timeout;
         self.auth_provider = auth_provider;
-
-        // TODO send ISUPPORTs to clients with new values?
     }
 
     pub fn peer_joined(&mut self, addr: net::SocketAddr, queue: MessageQueue) -> usize {
@@ -263,8 +260,7 @@ impl StateInner {
     /// - remove the client from `StateInner::clients`,
     /// - remove the client from each channel it was in,
     /// - send a QUIT message to all cilents in these channels,
-    /// - TODO: remove the client from channel invites (TODO: store invites in client instead of
-    ///   channel),
+    /// - TODO: remove the client from channel invites
     /// - remove empty channels
     fn remove_client(&mut self, id: usize, client: Client, err: &str, reason: Option<&str>) {
         let mut response = Buffer::new();
@@ -463,7 +459,6 @@ impl StateInner {
     pub fn remove_if_unregistered(&mut self, id: usize) {
         if let Some(client) = self.clients.get(id) {
             if !client.is_registered() {
-                // TODO centralized way of removing clients
                 self.nicks.remove(u(client.nick()));
                 self.clients.remove(id);
             }
@@ -471,10 +466,10 @@ impl StateInner {
     }
 }
 
-fn points_of(command: Command) -> u32 {  // TODO make this configurable
+fn points_of(command: Command) -> u32 {
     match command {
         Command::Admin => 1,
-        Command::Authenticate => 6,
+        Command::Authenticate => 8,
         Command::Away => 4,
         Command::Cap => 1,
         Command::Info => 2,
@@ -489,7 +484,7 @@ fn points_of(command: Command) -> u32 {  // TODO make this configurable
         Command::Names => 2,
         Command::Nick => 4,
         Command::Notice => 4,
-        Command::Oper => 6,
+        Command::Oper => 8,
         Command::Part => 4,
         Command::Pass => 2,
         Command::Ping => 1,
@@ -720,7 +715,6 @@ impl StateInner {
             lines::luser_client(msg, self.clients.len())
         });
 
-        // TODO store the count to avoid .iter()
         let (op, unknown) = self.clients.iter().fold((0, 0), |(op, unknown), (_, client)| {
             if !client.is_registered() {
                 (op, unknown + 1)

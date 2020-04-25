@@ -207,7 +207,6 @@ impl Channel {
         }
     }
 
-    // TODO use MessageBuffer
     pub fn apply_mode_change<'a, F>(&mut self, change: mode::ChannelChange<'_>, keylen: usize,
                                     nick_of: F) -> Result<bool, &'static str>
         where F: Fn(usize) -> &'a str
@@ -308,7 +307,6 @@ impl Channel {
                 }
             },
             ChangeVoice(value, param) => {
-                // TODO don't allow halfop to change voice of halfop/operator/etc
                 let mut has_it = false;
                 for (member, modes) in &mut self.members {
                     if nick_of(*member) == param {

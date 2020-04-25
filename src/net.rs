@@ -262,7 +262,6 @@ pub async fn handle_ws(ws: warp::ws::WebSocket, peer_addr: SocketAddr, shared: S
 
     let outgoing = outgoing_msgs
         .map(|msg| {
-            // TODO avoid clone
             Ok(warp::ws::Message::text(msg.as_ref()))
         })
         .forward(writer)

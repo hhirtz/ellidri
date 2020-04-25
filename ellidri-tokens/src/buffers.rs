@@ -156,7 +156,6 @@ impl<'a> MessageBuffer<'a> {
 impl Drop for MessageBuffer<'_> {
     /// Auto-magically append "\r\n" when the `MessageBuffer` is dropped.
     fn drop(&mut self) {
-        // TODO move this into Buffer (with checks for "\n" at the end of the buffer or something)
         self.buf.push('\r');
         self.buf.push('\n');
     }

@@ -69,7 +69,6 @@ impl Provider for DummyProvider {
     }
 }
 
-// TODO better name
 pub trait Plain {
     fn plain(&self, user: &str, pass: &str) -> Result<(), Error>;
 }

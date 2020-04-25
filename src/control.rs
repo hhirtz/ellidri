@@ -243,7 +243,7 @@ impl Control {
         });
 
         #[cfg(not(unix))]
-        let signals = crate::util::PendingStream;  // TODO support non-UNIX signals?
+        let signals = crate::util::PendingStream;
 
         let Self {
             config_path,
