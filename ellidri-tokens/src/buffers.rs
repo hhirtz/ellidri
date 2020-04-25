@@ -10,9 +10,7 @@ pub struct MessageBuffer<'a> {
 }
 
 impl<'a> MessageBuffer<'a> {
-    fn with_prefix<C>(buf: &'a mut String, prefix: &str, command: C) -> Self
-        where C: Into<Command>
-    {
+    fn with_prefix(buf: &'a mut String, prefix: &str, command: impl Into<Command>) -> Self {
         if !prefix.is_empty() {
             buf.push(':');
             buf.push_str(prefix);
@@ -71,9 +69,7 @@ impl<'a> MessageBuffer<'a> {
     ///
     /// assert_eq!(&response.build(), "PRIVMSG   #space  42\r\n");
     /// ```
-    pub fn fmt_param<T>(self, param: T) -> Self
-        where T: fmt::Display
-    {
+    pub fn fmt_param(self, param: &dyn fmt::Display) -> Self {
         use std::fmt::Write as _;
 
         self.buf.push(' ');
@@ -165,9 +161,7 @@ thread_local! {
     static UNESCAPED_VALUE: RefCell<String> = RefCell::new(String::new());
 }
 
-fn write_escaped<T>(buf: &mut String, value: T)
-    where T: fmt::Display
-{
+fn write_escaped(buf: &mut String, value: &dyn fmt::Display) {
     use fmt::Write;
 
     UNESCAPED_VALUE.with(|s| {
@@ -215,9 +209,7 @@ impl<'a> TagBuffer<'a> {
     }
 
     /// Adds a new tag to the buffer, with the given `key` and `value`.
-    pub fn tag<T>(self, key: &str, value: Option<T>) -> Self
-        where T: fmt::Display
-    {
+    pub fn tag(self, key: &str, value: Option<&dyn fmt::Display>) -> Self {
         if !self.is_empty() {
             self.buf.push(';');
         }
@@ -251,9 +243,7 @@ impl<'a> TagBuffer<'a> {
     }
 
     /// Starts building a message with the given prefix and command.
-    pub fn prefixed_command<C>(self, prefix: &str, cmd: C) -> MessageBuffer<'a>
-        where C: Into<Command>
-    {
+    pub fn prefixed_command(self, prefix: &str, cmd: impl Into<Command>) -> MessageBuffer<'a> {
         if self.is_empty() {
             self.buf.pop();
         } else {
@@ -366,9 +356,7 @@ impl Buffer {
     ///
     /// assert_eq!(&response.build(), ":unneeded_prefix ADMIN\r\n");
     /// ```
-    pub fn message<C>(&mut self, prefix: &str, command: C) -> MessageBuffer<'_>
-        where C: Into<Command>
-    {
+    pub fn message(&mut self, prefix: &str, command: impl Into<Command>) -> MessageBuffer<'_> {
         MessageBuffer::with_prefix(&mut self.buf, prefix, command)
     }
 

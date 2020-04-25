@@ -1068,8 +1068,8 @@ impl super::StateInner {
         let capacity = 1+target_client.nick().len() + 1+10 + 1+10 + 2+lines::WHOIS_IDLE.len();
         ctx.rb.reply(rpl::WHOISIDLE, capacity, |msg| {
             msg.param(target_client.nick())
-                .fmt_param(target_client.idle_time())
-                .fmt_param(target_client.signon_time())
+                .fmt_param(&target_client.idle_time())
+                .fmt_param(&target_client.signon_time())
                 .trailing_param(lines::WHOIS_IDLE);
         });
         if let Some(away_msg) = target_client.away_message() {

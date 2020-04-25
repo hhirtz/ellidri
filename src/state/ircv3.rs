@@ -133,7 +133,7 @@ impl super::StateInner {
             }
             Ok(None) => {
                 log::debug!("{}:     continuing authentication", ctx.id);
-                ctx.rb.send_auth_buffer(challenge);
+                ctx.rb.send_auth_buffer(&challenge);
                 Ok(())
             }
             Err(err) => {
@@ -196,7 +196,7 @@ impl super::StateInner {
                     return Err(());
                 }
             };
-            ctx.rb.send_auth_buffer(challenge);
+            ctx.rb.send_auth_buffer(&challenge);
             client.auth_set_id(id);
             Ok(())
         }

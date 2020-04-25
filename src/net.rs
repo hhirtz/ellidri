@@ -23,8 +23,8 @@ pub struct TlsIdentityStore {
 
 impl TlsIdentityStore {
     /// Retrieves the acceptor at `path`, or get it from the cache if it has already been built.
-    pub fn acceptor<P>(&mut self, file: P) -> Result<Arc<TlsAcceptor>, Box<dyn Error + 'static>>
-        where P: AsRef<path::Path> + Into<path::PathBuf>,
+    pub fn acceptor(&mut self, file: impl AsRef<path::Path> + Into<path::PathBuf>)
+        -> Result<Arc<TlsAcceptor>, Box<dyn Error + 'static>>
     {
         if let Some(acceptor) = self.acceptors.get(file.as_ref()) {
             Ok(acceptor.clone())
@@ -176,12 +176,11 @@ macro_rules! rate_limit {
 }
 
 /// Returns a future that handles an IRC connection.
-async fn handle<S>(conn: S, peer_addr: SocketAddr, shared: State)
-    where S: io::AsyncRead + io::AsyncWrite
-{
+async fn handle(conn: impl io::AsyncRead + io::AsyncWrite, peer_addr: SocketAddr, shared: State) {
     let (reader, writer) = io::split(conn);
     let mut reader = IrcReader::new(reader, 512);
     let mut writer = io::BufWriter::new(writer);
+
     let (msg_queue, mut outgoing_msgs) = sync::mpsc::unbounded_channel();
     let peer_id = shared.peer_joined(peer_addr, msg_queue).await;
     tokio::spawn(login_timeout(peer_id, shared.clone()));

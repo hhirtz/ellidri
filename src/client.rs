@@ -346,9 +346,7 @@ impl Client {
     /// Add a message to the client message queue.
     ///
     /// Use this function to send messages to the client.
-    pub fn send<M>(&self, msg: M)
-        where M: Into<MessageQueueItem>
-    {
+    pub fn send(&self, msg: impl Into<MessageQueueItem>) {
         let mut msg = msg.into();
         if self.capabilities.has_message_tags() {
             msg.set_start(0);
@@ -629,9 +627,8 @@ impl ReplyBuffer {
         }
     }
 
-    pub fn reply<C, F>(&mut self, command: C, capacity: usize, map: F)
-        where C: Into<Command>,
-              F: FnOnce(MessageBuffer<'_>),
+    pub fn reply(&mut self, command: impl Into<Command>, capacity: usize,
+                 map: impl FnOnce(MessageBuffer<'_>))
     {
         NICK.with(|s| {
             let nick = &s.borrow();
@@ -641,32 +638,28 @@ impl ReplyBuffer {
         });
     }
 
-    pub fn prefixed_message<C, F>(&mut self, command: C, capacity: usize, map: F)
-        where C: Into<Command>,
-              F: FnOnce(MessageBuffer<'_>),
+    pub fn prefixed_message(&mut self, command: impl Into<Command>, capacity: usize,
+                            map: impl FnOnce(MessageBuffer<'_>))
     {
         send_message(&self.queue, &mut self.label_len, self.batch, &self.domain, command,
                      capacity, map);
     }
 
-    pub fn message<C, F>(&mut self, prefix: &str, command: C, capacity: usize, map: F)
-        where C: Into<Command>,
-              F: FnOnce(MessageBuffer<'_>),
+    pub fn message(&mut self, prefix: &str, command: impl Into<Command>, capacity: usize,
+                   map: impl FnOnce(MessageBuffer<'_>))
     {
         send_message(&self.queue, &mut self.label_len, self.batch, prefix, command, capacity, map);
     }
 
-    pub fn tagged_message<F>(&mut self, client_tags: &str, capacity: usize, map: F)
-        where F: FnOnce(TagBuffer<'_>),
+    pub fn tagged_message(&mut self, client_tags: &str, capacity: usize,
+                          map: impl FnOnce(TagBuffer<'_>))
     {
         send_tagged_message(&self.queue, &mut self.label_len, self.batch, client_tags,
                             capacity, map);
     }
 
-    pub fn send_auth_buffer<T>(&mut self, buf: T)
-        where T: AsRef<[u8]>,
-    {
-        if buf.as_ref().is_empty() {
+    pub fn send_auth_buffer(&mut self, buf: &[u8]) {
+        if buf.is_empty() {
             self.message("", Command::Authenticate, 2, |msg| {
                 msg.param("+");
             });
@@ -707,10 +700,9 @@ impl Drop for ReplyBuffer {
     }
 }
 
-fn send_message<C, F>(queue: &MessageQueue, label_len: &mut usize, batch: Option<u8>,
-                      prefix: &str, command: C, mut capacity: usize, map: F)
-    where C: Into<Command>,
-          F: FnOnce(MessageBuffer<'_>),
+fn send_message(queue: &MessageQueue, label_len: &mut usize, batch: Option<u8>, prefix: &str,
+                command: impl Into<Command>, mut capacity: usize,
+                map: impl FnOnce(MessageBuffer<'_>))
 {
     let command = command.into();
     capacity += command.as_str().len();
@@ -722,9 +714,8 @@ fn send_message<C, F>(queue: &MessageQueue, label_len: &mut usize, batch: Option
     })
 }
 
-fn send_tagged_message<F>(queue: &MessageQueue, label_len: &mut usize, batch: Option<u8>,
-                          client_tags: &str, capacity: usize, map: F)
-    where F: FnOnce(TagBuffer<'_>),
+fn send_tagged_message(queue: &MessageQueue, label_len: &mut usize, batch: Option<u8>,
+                       client_tags: &str, capacity: usize, map: impl FnOnce(TagBuffer<'_>))
 {
     let capacity = capacity + *label_len + 2;
     let mut buf = Buffer::with_capacity(capacity);
@@ -735,7 +726,7 @@ fn send_tagged_message<F>(queue: &MessageQueue, label_len: &mut usize, batch: Op
             *label_len = 0;
         }
         if let Some(batch) = batch {
-            msg = msg.tag("batch", Some(batch));
+            msg = msg.tag("batch", Some(&batch));
         }
         if cfg!(debug_assertions) {
             map(msg);

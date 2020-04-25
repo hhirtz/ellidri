@@ -209,9 +209,7 @@ pub struct Control {
 
 impl Control {
     /// Generates, from the given configuration file path, a new `Control` and a new tokio runtime.
-    pub fn new<S>(config_path: S) -> (rt::Runtime, Self)
-        where S: Into<String>,
-    {
+    pub fn new(config_path: impl Into<String>) -> (rt::Runtime, Self) {
         let config_path = config_path.into();
         let (stop, failures) = mpsc::channel(8);
         let rehash = Arc::new(Notify::new());

@@ -225,9 +225,7 @@ impl Config {
     }
 
     /// Reads the configuration file at the given path.
-    pub fn from_file<P>(path: P) -> Result<Self>
-        where P: AsRef<path::Path>
-    {
+    pub fn from_file(path: impl AsRef<path::Path>) -> Result<Self> {
         let contents = fs::read_to_string(path)?;
         let res = serde_yaml::from_str(&contents)?;
         Ok(res)

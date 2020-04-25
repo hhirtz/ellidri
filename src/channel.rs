@@ -152,7 +152,7 @@ impl Channel {
     }
 
     pub fn list_entry(&self, msg: MessageBuffer<'_>) {
-        msg.fmt_param(self.members.len())
+        msg.fmt_param(&self.members.len())
             .trailing_param(self.topic.as_ref().map_or("", |topic| topic.content.as_ref()));
     }
 
@@ -199,7 +199,7 @@ impl Channel {
 
         if full_info {
             if let Some(user_limit) = self.user_limit {
-                out = out.fmt_param(user_limit);
+                out = out.fmt_param(&user_limit);
             }
             if let Some(ref key) = self.key {
                 out.param(&key);
@@ -207,9 +207,8 @@ impl Channel {
         }
     }
 
-    pub fn apply_mode_change<'a, F>(&mut self, change: mode::ChannelChange<'_>, keylen: usize,
-                                    nick_of: F) -> Result<bool, &'static str>
-        where F: Fn(usize) -> &'a str
+    pub fn apply_mode_change<'a>(&mut self, change: mode::ChannelChange<'_>, keylen: usize,
+                                 nick_of: impl Fn(usize) -> &'a str) -> Result<bool, &'static str>
     {
         use mode::ChannelChange::*;
 

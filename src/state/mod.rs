@@ -95,9 +95,7 @@ impl State {
     ///
     /// If the peer has quit unexpctedly, `err` should be set to `Some` and reflect the cause of
     /// the quit, so that other peers can be correctly informed.
-    pub async fn peer_quit<E>(&self, id: usize, err: Option<E>)
-        where E: fmt::Display,
-    {
+    pub async fn peer_quit(&self, id: usize, err: Option<impl fmt::Display>) {
         self.0.lock().await.peer_quit(id, err);
     }
 
@@ -238,9 +236,7 @@ impl StateInner {
         self.clients.insert(client)
     }
 
-    pub fn peer_quit<E>(&mut self, id: usize, err: Option<E>)
-        where E: fmt::Display,
-    {
+    pub fn peer_quit(&mut self, id: usize, err: Option<impl fmt::Display>) {
         log::debug!("{}: Disconnected", id);
         if !self.clients.contains(id) {
             return;
@@ -408,7 +404,9 @@ impl StateInner {
         Ok(if is_operator {1} else {used_points})
     }
 
-    fn handle_message_inner<'a>(&mut self, id: usize, rb: &'a mut ReplyBuffer, msg: Message<'a>) -> HandlerResult {
+    fn handle_message_inner<'a>(&mut self, id: usize, rb: &'a mut ReplyBuffer, msg: Message<'a>)
+        -> HandlerResult
+    {
         let command = msg.command.unwrap();
         let ps = msg.params;
         let n = msg.num_params;
@@ -663,11 +661,10 @@ impl StateInner {
         Ok(())
     }
 
-    fn send_notification<T, F>(&self, from: usize, msg: T, mut filter: F)
-        where T: Into<MessageQueueItem>,
-              F: FnMut(usize, &Client) -> bool,
+    fn send_notification(&self, from: usize, buf: Buffer,
+                         mut filter: impl FnMut(usize, &Client) -> bool)
     {
-        let msg = msg.into();
+        let msg = MessageQueueItem::from(buf);
         let mut noticed = self.channels.values()
             .filter(|channel| channel.members.contains_key(&from))
             .flat_map(|channel| channel.members.keys().cloned())
@@ -726,18 +723,18 @@ impl StateInner {
         });
         if 0 < op {
             rb.reply(rpl::LUSEROP, 9 + lines::LUSER_OP.len(), |msg| {
-                msg.fmt_param(op).trailing_param(lines::LUSER_OP);
+                msg.fmt_param(&op).trailing_param(lines::LUSER_OP);
             });
         }
         if 0 < unknown {
             rb.reply(rpl::LUSERUNKNOWN, 9 + lines::LUSER_UNKNOWN.len(), |msg| {
-                msg.fmt_param(unknown).trailing_param(lines::LUSER_UNKNOWN);
+                msg.fmt_param(&unknown).trailing_param(lines::LUSER_UNKNOWN);
             });
         }
         if !self.channels.is_empty() {
             let n = self.channels.values().filter(|c| !c.secret).count();
             rb.reply(rpl::LUSERCHANNELS, 9 + lines::LUSER_CHANNELS.len(), |msg| {
-                msg.fmt_param(n).trailing_param(lines::LUSER_CHANNELS);
+                msg.fmt_param(&n).trailing_param(lines::LUSER_CHANNELS);
             });
         }
         rb.reply(rpl::LUSERME, 40, |msg| {
@@ -813,7 +810,7 @@ impl StateInner {
             rb.reply(rpl::TOPICWHOTIME, 1+channel_name.len() + 1+topic.who.len() + 1+10, |msg| {
                 msg.param(channel_name)
                     .param(&topic.who)
-                    .fmt_param(topic.time);
+                    .fmt_param(&topic.time);
             });
         } else if send_error {
             rb.reply(rpl::NOTOPIC, 1+channel_name.len() + 2+lines::NO_TOPIC.len(), |msg| {
