@@ -160,11 +160,11 @@ macro_rules! rate_limit {
                     millis as u32
                 };
 
-                used_points = used_points.saturating_sub(millis / rate * 4);
+                used_points = used_points.saturating_sub(millis / rate);
                 last_round += elapsed;
 
                 if burst < used_points {
-                    let wait_millis = (used_points - burst) / 4 * rate;
+                    let wait_millis = (used_points - burst) * rate;
                     let wait = time::Duration::from_millis(wait_millis as u64);
                     time::delay_for(wait).await;
                     used_points = burst;
@@ -188,7 +188,7 @@ async fn handle<S>(conn: S, peer_addr: SocketAddr, shared: State)
 
     let incoming = async {
         let mut buf = String::new();
-        rate_limit!(1024, 16, async {
+        rate_limit!(250, 16, async {
             buf.clear();
             let n = reader.read_message(&mut buf).await?;
             if n == 0 {
