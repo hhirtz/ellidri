@@ -3,6 +3,10 @@
 //! This library provides helpers to tokenize and build IRC messages, while keeping the number of
 //! allocations minimal.
 
+#![forbid(unsafe_code)]
+#![warn(clippy::all, rust_2018_idioms)]
+#![allow(clippy::filter_map, clippy::find_map, clippy::shadow_unrelated, clippy::use_self)]
+
 pub use buffers::{Buffer, MessageBuffer, TagBuffer};
 pub use command::Command;
 pub use message::{
