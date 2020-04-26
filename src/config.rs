@@ -41,11 +41,30 @@ impl fmt::Display for Error {
     }
 }
 
+impl fmt::Display for SaslBackend {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::None => write!(f, "none"),
+            Self::Database => write!(f, "database"),
+        }
+    }
+}
+
+/// TLS-related and needed information for TLS bindings.
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+pub struct Tls {
+    pub certificate: path::PathBuf,
+    pub key: path::PathBuf,
+    #[serde(default = "require_certificates")]
+    pub require_certificates: bool,
+}
+
 /// Listening address + port + optional TLS settings.
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 pub struct Binding {
     pub address: net::SocketAddr,
-    pub tls_identity: Option<path::PathBuf>,
+    #[serde(flatten)]
+    pub tls: Option<Tls>,
 }
 
 /// OPER credentials
@@ -131,7 +150,7 @@ pub mod db {
 /// The whole configuration.
 #[derive(Deserialize, Serialize)]
 pub struct Config {
-    #[serde(rename = "unsafe", default = "is_unsafe")]
+    #[serde(rename = "unsafe", default)]
     pub is_unsafe: bool,
 
     #[serde(rename = "bind_to", default = "bindings")]
@@ -152,28 +171,19 @@ pub struct Config {
     pub database: Option<db::Info>,
 }
 
-impl fmt::Display for SaslBackend {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::None => write!(f, "none"),
-            Self::Database => write!(f, "database"),
-        }
-    }
-}
-
-fn is_unsafe() -> bool { false }
+fn require_certificates() -> bool { true }
 
 fn bindings() -> Vec<Binding> {
     vec![Binding {
         address: net::SocketAddr::from(([127, 0, 0, 1], 6667)),
-        tls_identity: None,
+        tls: None,
     }]
 }
 
 fn sasl_backend() -> SaslBackend { SaslBackend::None }
 
 fn domain() -> String { String::from("ellidri.localdomain") }
-fn default_chan_mode() -> String { String::from("+nt") }
+fn default_chan_mode() -> String { String::from("+nst") }
 fn motd_file() -> String { String::from("/etc/motd") }
 fn org() -> String { String::from("unspecified") }
 fn awaylen() -> usize { 300 }
