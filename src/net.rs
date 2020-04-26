@@ -50,7 +50,7 @@ fn build_acceptor(p: &path::Path) -> Result<TlsAcceptor, Box<dyn Error + 'static
             err
         })?;
     let acceptor = native_tls::TlsAcceptor::builder(identity)
-        .min_protocol_version(Some(native_tls::Protocol::Tlsv11))
+        .min_protocol_version(Some(native_tls::Protocol::Tlsv12))
         .build()
         .map_err(|err| {
             log::error!("Failed to initialize TLS: {}", err);
