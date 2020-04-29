@@ -57,7 +57,7 @@ pub enum Command {
     UsePlain,
 
     /// Ask the binding task to listen for TLS connections with the given acceptor.
-    UseTls(Arc<tokio_tls::TlsAcceptor>),
+    UseTls(Arc<tokio_rustls::TlsAcceptor>),
 }
 
 /// A binding task that is ready to be spawned on the runtime.
@@ -67,7 +67,7 @@ struct LoadedBinding<F> {
 
     /// Either `None` when the binding listens for raw TCP connections, or `Some(acceptor)` when the
     /// bindings listens for TLS connections with `acceptor`.
-    acceptor: Option<Arc<tokio_tls::TlsAcceptor>>,
+    acceptor: Option<Arc<tokio_rustls::TlsAcceptor>>,
 
     /// The sending end of the channel that brings commands to the task.
     handle: mpsc::Sender<Command>,
@@ -143,10 +143,10 @@ fn load_bindings(bindings: Vec<config::Binding>, shared: &State, stop: &mpsc::Se
     let mut res = Vec::with_capacity(bindings.len());
     let mut store = net::TlsIdentityStore::default();
 
-    for config::Binding { address, tls_identity } in bindings {
+    for config::Binding { address, tls } in bindings {
         let (handle, commands) = mpsc::channel(8);
-        if let Some(identity_path) = tls_identity {
-            let acceptor = match store.acceptor(identity_path) {
+        if let Some(config::Tls { certificate, key, .. }) = tls {
+            let acceptor = match store.acceptor(certificate, key) {
                 Ok(acceptor) => acceptor,
                 Err(_) => process::exit(1),
             };
@@ -423,10 +423,10 @@ fn reload_bindings(bindings: &[config::Binding], shared: &State, stop: &mpsc::Se
     let mut res = Vec::with_capacity(bindings.len());
     let mut store = net::TlsIdentityStore::default();
 
-    for config::Binding { address, tls_identity } in bindings {
+    for config::Binding { address, tls } in bindings {
         let (handle, commands) = mpsc::channel(8);
-        if let Some(identity_path) = tls_identity {
-            let acceptor = match store.acceptor(identity_path) {
+        if let Some(config::Tls { certificate, key, .. }) = tls {
+            let acceptor = match store.acceptor(certificate, key) {
                 Ok(acceptor) => acceptor,
                 Err(_) => continue,
             };

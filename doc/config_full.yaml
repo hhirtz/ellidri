@@ -44,7 +44,8 @@ bindings:
     # A plain-text binding on localhost, port 6667
     - address: 127.0.0.1:6667
 
-    # A TLS binding with the given chain of certificates and key.
+    # A TLS binding with the given chain of certificates and key, both must be
+    # RSA or ECDSA.
     - address: 0.0.0.0:6697
       certificate: /etc/ellidri.d/fullchain.pem
       key: /etc/ellidri.d/privkey.pem

@@ -1,62 +1,94 @@
 use crate::{control, lines, State};
+
 use ellidri_reader::IrcReader;
 use ellidri_tokens::Message;
+
 use futures::future;
 use futures::FutureExt;
-use std::{fs, path, str};
+
+use std::{fs, str};
 use std::collections::HashMap;
 use std::error::Error;
 use std::net::SocketAddr;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
+
 use tokio::{io, net, sync, time};
 use tokio::sync::mpsc;
-use tokio_tls::TlsAcceptor;
+
+use tokio_rustls::TlsAcceptor;
+use tokio_rustls::rustls::{NoClientAuth, ServerConfig};
+use tokio_rustls::rustls::internal::pemfile;
 
 const KEEPALIVE_SECS: u64 = 75;
 const TLS_TIMEOUT_SECS: u64 = 30;
 
-/// `TlsAcceptor` cache, to avoid reading the same identity file several times.
+/// `TlsAcceptor` cache, to avoid reading the same files several times.
 #[derive(Default)]
 pub struct TlsIdentityStore {
-    acceptors: HashMap<path::PathBuf, Arc<TlsAcceptor>>,
+    acceptors: HashMap<PathBuf, Arc<TlsAcceptor>>,
 }
 
 impl TlsIdentityStore {
     /// Retrieves the acceptor at `path`, or get it from the cache if it has already been built.
-    pub fn acceptor(&mut self, file: impl AsRef<path::Path> + Into<path::PathBuf>)
+    pub fn acceptor<P1, P2>(&mut self, cert: P1, key: P2)
         -> Result<Arc<TlsAcceptor>, Box<dyn Error + 'static>>
+        where P1: AsRef<Path> + Into<PathBuf>,
+              P2: AsRef<Path> + Into<PathBuf>,
     {
-        if let Some(acceptor) = self.acceptors.get(file.as_ref()) {
+        if let Some(acceptor) = self.acceptors.get(cert.as_ref()) {
             Ok(acceptor.clone())
         } else {
-            let acceptor = Arc::new(build_acceptor(file.as_ref())?);
-            self.acceptors.insert(file.into(), acceptor.clone());
+            let acceptor = Arc::new(build_acceptor(cert.as_ref(), key.as_ref())?);
+            self.acceptors.insert(cert.into(), acceptor.clone());
             Ok(acceptor)
         }
     }
 }
 
 /// Read the file at `p`, parse the identity and builds a `TlsAcceptor` object.
-fn build_acceptor(p: &path::Path) -> Result<TlsAcceptor, Box<dyn Error + 'static>> {
-    log::info!("Loading TLS identity from {:?}", p.display());
-    let der = fs::read(p)
+fn build_acceptor(certfile: &Path, keyfile: &Path) -> Result<TlsAcceptor, Box<dyn Error + 'static>> {
+    let mut config = ServerConfig::new(NoClientAuth::new());
+
+    log::info!("Loading TLS certificate from {:?}", certfile.display());
+    let cert = fs::read(certfile)
         .map_err(|err| {
-            log::error!("Failed to read {:?}: {}", p.display(), err);
+            log::error!("Failed to read {:?}: {}", certfile.display(), err);
             err
         })?;
-    let identity = native_tls::Identity::from_pkcs12(&der, "")
+    let cert = pemfile::certs(&mut cert.as_ref())
+        .map_err(|_| {
+            log::error!("Failed to parse {:?}", certfile.display());
+            ""
+        })?;
+
+    log::info!("Loading TLS private key from {:?}", keyfile.display());
+    let key = fs::read(keyfile)
         .map_err(|err| {
-            log::error!("Failed to parse {:?}: {}", p.display(), err);
+            log::error!("Failed to read {:?}: {}", keyfile.display(), err);
             err
         })?;
-    let acceptor = native_tls::TlsAcceptor::builder(identity)
-        .min_protocol_version(Some(native_tls::Protocol::Tlsv12))
-        .build()
+    let key = {
+        let mut keys = pemfile::pkcs8_private_keys(&mut key.as_ref())
+            .map_err(|_| {
+                log::error!("Failed to parse {:?}", keyfile.display());
+                ""
+            })?;
+        if keys.is_empty() {
+            log::error!("No key found in {:?}", keyfile.display());
+            return Err(Box::new(io::Error::new(io::ErrorKind::Other, "")));
+        }
+        keys.remove(0)
+    };
+
+    config.set_single_cert(cert, key)
         .map_err(|err| {
-            log::error!("Failed to initialize TLS: {}", err);
+            log::error!("Failed to associate {:?} with {:?}: {}",
+                        certfile.display(), keyfile.display(), err);
             err
         })?;
-    Ok(TlsAcceptor::from(acceptor))
+
+    Ok(TlsAcceptor::from(Arc::new(config)))
 }
 
 /// Returns a future that listens, accepts and handles incoming connections.

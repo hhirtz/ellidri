@@ -153,7 +153,7 @@ pub struct Config {
     #[serde(rename = "unsafe", default)]
     pub is_unsafe: bool,
 
-    #[serde(rename = "bind_to", default = "bindings")]
+    #[serde(default = "bindings")]
     pub bindings: Vec<Binding>,
 
     #[cfg(feature = "websocket")]
@@ -223,7 +223,7 @@ impl State {
 impl Config {
     pub fn sample() -> Self {
         Self {
-            is_unsafe: is_unsafe(),
+            is_unsafe: false,
             bindings: bindings(),
             #[cfg(feature = "websocket")]
             ws_endpoint: None,
