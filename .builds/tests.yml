@@ -1,8 +1,6 @@
 image: alpine/3.11
 packages:
     - cargo
-    - openssl
-    - openssl-dev
 sources:
     - https://git.sr.ht/~taiite/ellidri
 tasks:

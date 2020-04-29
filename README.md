@@ -58,7 +58,6 @@ Prerequisites:
   Cargo: <https://rustup.rs/>
 - SQLite 3 (if the `sqlite` feature is enabled)
 - PostgreSQL client libraries (if the `postgres` feature is enabled)
-- On Linux, the OpenSSL library and its development files
 
 Install ellidri with `cargo install ellidri`, or with the [AUR package][aur].
 
