@@ -146,15 +146,11 @@ impl<M> Provider for DbProvider<M>
         self.pool.get().is_ok()
     }
 
-    fn write_mechanisms(&self, buf: &mut String) {
-        buf.push_str("PLAIN");
+    fn write_mechanisms(&self, _buf: &mut String) {
     }
 
-    fn start_auth(&self, mechanism: &str, _: &mut Vec<u8>) -> Result<usize, Error> {
-        if mechanism != "PLAIN" {
-            return Err(Error::UnsupportedMechanism);
-        }
-        Ok(0)
+    fn start_auth(&self, _mechanism: &str, _: &mut Vec<u8>) -> Result<usize, Error> {
+        Err(Error::UnsupportedMechanism)
     }
 
     fn next_challenge(&self, _: usize, response: &[u8], _: &mut Vec<u8>)

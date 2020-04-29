@@ -404,6 +404,7 @@ impl StateInner {
         Ok(if is_operator {1} else {used_points})
     }
 
+    /// Actually execute the command.
     fn handle_message_inner<'a>(&mut self, id: usize, rb: &'a mut ReplyBuffer, msg: Message<'a>)
         -> HandlerResult
     {
