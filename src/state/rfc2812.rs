@@ -654,6 +654,7 @@ impl super::StateInner {
         if !client.is_registered() {
             log::debug!("{}:     Is not registered", ctx.id);
             client.set_nick(nick);
+            ReplyBuffer::set_nick(nick);
             return Ok(());
         }
 
