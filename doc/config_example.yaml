@@ -12,8 +12,17 @@ bindings:
     - address: 127.0.0.1:6667
 
     - address: 0.0.0.0:6697
-      tls_identity: /etc/ellidri.d/identity.p12
 
+      # Change these to point to valid certificate/key files.
+      certificate: /etc/letsencrypt/live/example.com/fullchain.pem
+      key: /etc/letsencrypt/live/example.com/privkey.pem
+
+      # You may set this to true to force clients to send a certificate too.  By
+      # default it is false.
+      require_certificates: false
+
+# Change these to match information about the organisation running the server.
+# Clients can obtain this information with the /admin command.
 org_name:     ellidri-org
 org_location: Europe
 org_mail:     Contact support@ellidri.org

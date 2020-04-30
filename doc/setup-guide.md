@@ -28,7 +28,7 @@ Some Linux distributions already have ellidri packaged:
 
 If you have installed ellidri through one of these packages, you can skip the
 second step.  Otherwise, you can download the latest release here:
-<https://github.com/hhirtz/ellidri/releases>.
+<https://git.sr.ht/~taiite/ellidri/refs>.
 
 You can also install ellidri from source.  Instructions are in `README.md` at
 the root of the repository.
@@ -38,8 +38,10 @@ the root of the repository.
 
 If you haven't installed ellidri through one of the previous packages, you need
 to create a systemd unit, or a init script (this guide only covers systemd
-usage).  You may find one in the repository, at `doc/ellidri.service`.  Download
-this file and move it to `/etc/systemd/system/ellidri.service`.
+usage).  You may find one in the repository, at [`doc/ellidri.service`][unit].
+Download this file and move it to `/etc/systemd/system/ellidri.service`.
+
+[unit]: https://git.sr.ht/~taiite/ellidri/tree/master/doc/ellidri.service
 
 
 ## 3. Create a user on your system
@@ -50,7 +52,7 @@ do so, use the following command:
     useradd -r -s /usr/bin/nologin ellidri
 
 
-## 4. Generate or localize your certificates
+## 4. Generate or locate your certificates
 
 If you want your installation to be public (i.e. available from the Internet),
 you'll need a valid certificate.  You can obtain one from Let's Encrypt for
@@ -62,14 +64,16 @@ By default, certbot installs certificates at
 
 ## 5. Write ellidri's configuration file
 
-Copy `doc/config_example.yaml` to `/etc/ellidri.yaml` and modify its contents to
-your liking.  `domain` should be the same as the domain of the certificate
-you've got from step 4.
+Copy [`doc/config_example.yaml`][config] to `/etc/ellidri.yaml` and modify its
+contents to your liking.  `domain` should be the same as the domain of the
+certificate you've got from step 4.
 
 You can now start ellidri with `systemctl start ellidri`.
 
 After any change you make to the configuration file, you can apply them with
 `systemctl reload ellidri`.
+
+[config]: https://git.sr.ht/~taiite/ellidri/tree/master/doc/config_example.yaml
 
 
 ## 6. Enable SASL with SQLite

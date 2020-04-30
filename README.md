@@ -74,7 +74,10 @@ development and for release.  The executable is generated at
 
 ## Usage
 
-See `doc/setup-guide.md` for a step-by-step guide to have a working setup.
+See [`doc/setup-guide.md`][setup] for a step-by-step guide to have a working
+setup.
+
+[setup]: https://git.sr.ht/~taiite/ellidri/tree/master/doc/setup-guide.md
 
 
 ## Contributing
@@ -82,7 +85,7 @@ See `doc/setup-guide.md` for a step-by-step guide to have a working setup.
 Patches are welcome!  Here are some links to get started:
 
 - Documentation: <https://docs.rs/ellidri> (please note!  This documentation
-  only shows public items, but private items are also documented!  Developpers
+  only shows public items, but private items are also documented!  Developers
   can generate the documentation by hand with the command below)
 - Git repository: <https://git.sr.ht/~taiite/ellidri>
 - Submit PRs on [Github][gh] or send patches to the mailing list:
