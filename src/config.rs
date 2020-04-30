@@ -4,8 +4,10 @@
 //!
 //! [1]: https://git.sr.ht/~taiite/ellidri/tree/master/doc/ellidri.conf
 
+use ellidri_tokens::mode;
 use serde::{Deserialize, Serialize};
 use std::{fmt, fs, io, net, path};
+use tokio_rustls::webpki;
 
 pub type Result<T> = std::result::Result<T, Error>;
 
@@ -13,12 +15,15 @@ pub type Result<T> = std::result::Result<T, Error>;
 pub enum Error {
     Io(io::Error),
     Format(serde_yaml::Error),
+    InvalidDomain,
+    InvalidModes,
 }
 
 impl std::error::Error for Error {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             Self::Io(err) => Some(err),
+            Self::Format(err) => Some(err),
             _ => None,
         }
     }
@@ -37,6 +42,8 @@ impl fmt::Display for Error {
         match self {
             Self::Io(err) => err.fmt(f),
             Self::Format(err) => err.fmt(f),
+            Self::InvalidDomain => write!(f, "'domain' must be a domain name (e.g. irc.com)"),
+            Self::InvalidModes => write!(f, "'default_chan_mode' must be a mode string (e.g. +nt)"),
         }
     }
 }
@@ -237,7 +244,16 @@ impl Config {
     /// Reads the configuration file at the given path.
     pub fn from_file(path: impl AsRef<path::Path>) -> Result<Self> {
         let contents = fs::read_to_string(path)?;
-        let res = serde_yaml::from_str(&contents)?;
+        let res: Self = serde_yaml::from_str(&contents)?;
+
+        if webpki::DNSNameRef::try_from_ascii_str(&res.state.domain).is_err() {
+            return Err(Error::InvalidDomain);
+        }
+
+        if !mode::is_channel_mode_string(&res.state.default_chan_mode) {
+            return Err(Error::InvalidModes);
+        }
+
         Ok(res)
     }
 }
