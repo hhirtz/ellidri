@@ -42,9 +42,15 @@ impl Iterator for SimpleQuery<'_> {
                 return None;
             };
             match c {
-                '+' => { self.value = true; },
-                '-' => { self.value = false; },
-                c => { return Some((self.value, c)); },
+                '+' => {
+                    self.value = true;
+                }
+                '-' => {
+                    self.value = false;
+                }
+                c => {
+                    return Some((self.value, c));
+                }
             }
         }
     }
@@ -106,14 +112,12 @@ impl UserChange {
 /// assert_eq!(query.next(), Some(Err(Error::Unchangeable('a', false))));
 /// assert_eq!(query.next(), None);
 /// ```
-pub fn user_query(modes: &str) -> impl Iterator<Item=Result<UserChange>> + '_ {
-    SimpleQuery::new(modes).map(|(value, mode)| {
-        match mode {
-            'i' => Ok(UserChange::Invisible(value)),
-            'o' if !value => Ok(UserChange::DeOperator),
-            other if USER_MODES.contains(other) => Err(Error::Unchangeable(other, value)),
-            other => Err(Error::Unknown(other, value)),
-        }
+pub fn user_query(modes: &str) -> impl Iterator<Item = Result<UserChange>> + '_ {
+    SimpleQuery::new(modes).map(|(value, mode)| match mode {
+        'i' => Ok(UserChange::Invisible(value)),
+        'o' if !value => Ok(UserChange::DeOperator),
+        other if USER_MODES.contains(other) => Err(Error::Unchangeable(other, value)),
+        other => Err(Error::Unknown(other, value)),
     })
 }
 
@@ -143,18 +147,18 @@ impl ChannelChange<'_> {
     pub fn value(&self) -> bool {
         use ChannelChange::*;
         match self {
-            InviteOnly(v) |
-            Moderated(v) |
-            NoPrivMsgFromOutside(v) |
-            Secret(v) |
-            TopicRestricted(v) |
-            Key(v, _) |
-            ChangeBan(v, _) |
-            ChangeException(v, _) |
-            ChangeInvitation(v, _) |
-            ChangeOperator(v, _) |
-            ChangeHalfop(v, _) |
-            ChangeVoice(v, _) => *v,
+            InviteOnly(v)
+            | Moderated(v)
+            | NoPrivMsgFromOutside(v)
+            | Secret(v)
+            | TopicRestricted(v)
+            | Key(v, _)
+            | ChangeBan(v, _)
+            | ChangeException(v, _)
+            | ChangeInvitation(v, _)
+            | ChangeOperator(v, _)
+            | ChangeHalfop(v, _)
+            | ChangeVoice(v, _) => *v,
             UserLimit(l) => l.is_some(),
             _ => false,
         }
@@ -184,8 +188,13 @@ impl ChannelChange<'_> {
     pub fn param(&self) -> Option<&str> {
         use ChannelChange::*;
         match self {
-            Key(_, p) | ChangeBan(_, p) | ChangeException(_, p) | ChangeInvitation(_, p)
-                | ChangeOperator(_, p) | ChangeHalfop(_, p) | ChangeVoice(_, p) => Some(p),
+            Key(_, p)
+            | ChangeBan(_, p)
+            | ChangeException(_, p)
+            | ChangeInvitation(_, p)
+            | ChangeOperator(_, p)
+            | ChangeHalfop(_, p)
+            | ChangeVoice(_, p) => Some(p),
             UserLimit(l) => *l,
             _ => None,
         }
@@ -208,13 +217,18 @@ impl ChannelChange<'_> {
 /// assert_eq!(query.next(), Some(Err(Error::MissingParam('v', true))));
 /// assert_eq!(query.next(), None);
 /// ```
-pub fn channel_query<'a, I, S>(modes: &'a str, params: I)
-    -> impl Iterator<Item=Result<ChannelChange<'a>>>
+pub fn channel_query<'a, I, S>(
+    modes: &'a str,
+    params: I,
+) -> impl Iterator<Item = Result<ChannelChange<'a>>>
 where
-    I: IntoIterator<Item=&'a S> + 'a,
+    I: IntoIterator<Item = &'a S> + 'a,
     S: AsRef<str> + 'a,
 {
-    let mut params = params.into_iter().map(|p| p.as_ref()).filter(|p| !p.is_empty());
+    let mut params = params
+        .into_iter()
+        .map(|p| p.as_ref())
+        .filter(|p| !p.is_empty());
     SimpleQuery::new(modes).map(move |(value, mode)| {
         use ChannelChange::*;
         match mode {
@@ -223,60 +237,76 @@ where
             'n' => Ok(NoPrivMsgFromOutside(value)),
             's' => Ok(Secret(value)),
             't' => Ok(TopicRestricted(value)),
-            'k' => if let Some(param) = params.next() {
-                Ok(Key(value, param))
-            } else if !value {
-                // Accept "MODE -k" since freenode does it this way
-                Ok(Key(false, "*"))
-            } else {
-                Err(Error::MissingParam('k', value))
-            },
-            'l' => if value {
+            'k' => {
                 if let Some(param) = params.next() {
-                    Ok(UserLimit(Some(param)))
+                    Ok(Key(value, param))
+                } else if !value {
+                    // Accept "MODE -k" since freenode does it this way
+                    Ok(Key(false, "*"))
                 } else {
-                    Err(Error::MissingParam('l', value))
+                    Err(Error::MissingParam('k', value))
                 }
-            } else {
-                Ok(UserLimit(None))
-            },
-            'b' => if let Some(param) = params.next() {
-                Ok(ChangeBan(value, param))
-            } else {
-                Ok(GetBans)
-            },
-            'e' => if let Some(param) = params.next() {
-                Ok(ChangeException(value, param))
-            } else {
-                Ok(GetExceptions)
-            },
-            'I' => if let Some(param) = params.next() {
-                Ok(ChangeInvitation(value, param))
-            } else {
-                Ok(GetInvitations)
-            },
-            'o' => if let Some(param) = params.next() {
-                Ok(ChangeOperator(value, param))
-            } else {
-                Err(Error::MissingParam('o', value))
-            },
-            'h' => if let Some(param) = params.next() {
-                Ok(ChangeHalfop(value, param))
-            } else {
-                Err(Error::MissingParam('h', value))
-            },
-            'v' => if let Some(param) = params.next() {
-                Ok(ChangeVoice(value, param))
-            } else {
-                Err(Error::MissingParam('v', value))
-            },
+            }
+            'l' => {
+                if value {
+                    if let Some(param) = params.next() {
+                        Ok(UserLimit(Some(param)))
+                    } else {
+                        Err(Error::MissingParam('l', value))
+                    }
+                } else {
+                    Ok(UserLimit(None))
+                }
+            }
+            'b' => {
+                if let Some(param) = params.next() {
+                    Ok(ChangeBan(value, param))
+                } else {
+                    Ok(GetBans)
+                }
+            }
+            'e' => {
+                if let Some(param) = params.next() {
+                    Ok(ChangeException(value, param))
+                } else {
+                    Ok(GetExceptions)
+                }
+            }
+            'I' => {
+                if let Some(param) = params.next() {
+                    Ok(ChangeInvitation(value, param))
+                } else {
+                    Ok(GetInvitations)
+                }
+            }
+            'o' => {
+                if let Some(param) = params.next() {
+                    Ok(ChangeOperator(value, param))
+                } else {
+                    Err(Error::MissingParam('o', value))
+                }
+            }
+            'h' => {
+                if let Some(param) = params.next() {
+                    Ok(ChangeHalfop(value, param))
+                } else {
+                    Err(Error::MissingParam('h', value))
+                }
+            }
+            'v' => {
+                if let Some(param) = params.next() {
+                    Ok(ChangeVoice(value, param))
+                } else {
+                    Err(Error::MissingParam('v', value))
+                }
+            }
             other => Err(Error::Unknown(other, value)),
         }
     })
 }
 
 /// Same as `channel_query`, but with no mode parameters.
-pub fn simple_channel_query(modes: &str) -> impl Iterator<Item=Result<ChannelChange<'_>>> {
+pub fn simple_channel_query(modes: &str) -> impl Iterator<Item = Result<ChannelChange<'_>>> {
     channel_query::<_, String>(modes, &[])
 }
 
@@ -384,4 +414,4 @@ mod tests {
         assert_eq!(q.next(), Some(Ok(ChannelChange::Key(false, "wine"))));
         assert_eq!(q.next(), None);
     }
-}  // mod tests
+} // mod tests

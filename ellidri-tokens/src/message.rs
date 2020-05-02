@@ -14,9 +14,7 @@ pub const PARAMS_LENGTH: usize = 15;
 ///
 /// Word boundaries here are spaces only.
 fn parse_word(s: &str) -> (&str, &str) {
-    let mut split = s.splitn(2, ' ')
-        .map(str::trim)
-        .filter(|s| !s.is_empty());
+    let mut split = s.splitn(2, ' ').map(str::trim).filter(|s| !s.is_empty());
     (split.next().unwrap_or(""), split.next().unwrap_or(""))
 }
 
@@ -160,7 +158,7 @@ impl<'a> Tag<'a> {
             if c == '\\' && !escape {
                 escape = true;
             } else {
-                buf.push(if escape {tag_escape(c)} else {c});
+                buf.push(if escape { tag_escape(c) } else { c });
                 escape = false;
             }
         }
@@ -179,7 +177,7 @@ impl<'a> Tag<'a> {
 /// assert_eq!(my_tags.next(), Some(Tag { key: "+custom", value: None }));
 /// assert_eq!(my_tags.next(), None);
 /// ```
-pub fn tags(s: &str) -> impl Iterator<Item=Tag<'_>> {
+pub fn tags(s: &str) -> impl Iterator<Item = Tag<'_>> {
     s.split(';')
         .filter(|item| !item.is_empty() && !item.starts_with('=') && !item.starts_with("+="))
         .map(|item| Tag::parse(item))
@@ -266,8 +264,7 @@ impl<'a> Message<'a> {
     /// assert!(empty.is_none());
     /// assert!(no_command.is_none());
     /// ```
-    pub fn parse(s: &'a str) -> Option<Message<'a>>
-    {
+    pub fn parse(s: &'a str) -> Option<Message<'a>> {
         let mut buf = s.trim();
         if buf.is_empty() || buf.contains('\0') {
             return None;
@@ -301,7 +298,13 @@ impl<'a> Message<'a> {
             num_params += 1;
         }
 
-        Some(Message { tags, prefix, command, num_params, params })
+        Some(Message {
+            tags,
+            prefix,
+            command,
+            num_params,
+            params,
+        })
     }
 
     /// Returns true if the message has enough parameters for its command.
@@ -326,7 +329,7 @@ impl<'a> Message<'a> {
         }
     }
 
-    pub fn tags(&self) -> impl Iterator<Item=Tag<'_>> {
+    pub fn tags(&self) -> impl Iterator<Item = Tag<'_>> {
         tags(self.tags)
     }
 }
@@ -343,20 +346,68 @@ mod tests {
         assert_eq!(ts.next(), None);
 
         let mut ts = tags("time=12732;re");
-        assert_eq!(ts.next(), Some(Tag { key: "time", value: Some("12732") }));
-        assert_eq!(ts.next(), Some(Tag { key: "re", value: None }));
+        assert_eq!(
+            ts.next(),
+            Some(Tag {
+                key: "time",
+                value: Some("12732")
+            })
+        );
+        assert_eq!(
+            ts.next(),
+            Some(Tag {
+                key: "re",
+                value: None
+            })
+        );
         assert_eq!(ts.next(), None);
 
         let mut ts = tags("+time=12732;re=;+asdf=5678");
-        assert_eq!(ts.next(), Some(Tag { key: "+time", value: Some("12732") }));
-        assert_eq!(ts.next(), Some(Tag { key: "re", value: None }));
-        assert_eq!(ts.next(), Some(Tag { key: "+asdf", value: Some("5678") }));
+        assert_eq!(
+            ts.next(),
+            Some(Tag {
+                key: "+time",
+                value: Some("12732")
+            })
+        );
+        assert_eq!(
+            ts.next(),
+            Some(Tag {
+                key: "re",
+                value: None
+            })
+        );
+        assert_eq!(
+            ts.next(),
+            Some(Tag {
+                key: "+asdf",
+                value: Some("5678")
+            })
+        );
         assert_eq!(ts.next(), None);
 
         let mut ts = tags("=these;time=12732;+=shouldbe;re=;asdf=5678;=ignored");
-        assert_eq!(ts.next(), Some(Tag { key: "time", value: Some("12732") }));
-        assert_eq!(ts.next(), Some(Tag { key: "re", value: None }));
-        assert_eq!(ts.next(), Some(Tag { key: "asdf", value: Some("5678") }));
+        assert_eq!(
+            ts.next(),
+            Some(Tag {
+                key: "time",
+                value: Some("12732")
+            })
+        );
+        assert_eq!(
+            ts.next(),
+            Some(Tag {
+                key: "re",
+                value: None
+            })
+        );
+        assert_eq!(
+            ts.next(),
+            Some(Tag {
+                key: "asdf",
+                value: Some("5678")
+            })
+        );
         assert_eq!(ts.next(), None);
     }
 
@@ -380,10 +431,13 @@ mod tests {
 
         let mut buf = String::new();
         for [test, expected] in tests {
-            let tag = Tag { key: "", value: Some(test) };
+            let tag = Tag {
+                key: "",
+                value: Some(test),
+            };
             buf.clear();
             tag.unescape_value_into(&mut buf);
             assert_eq!(&buf, expected);
         }
     }
-}  // mod tests
+} // mod tests

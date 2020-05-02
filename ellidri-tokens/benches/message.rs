@@ -13,20 +13,22 @@ fn message(c: &mut c::Criterion) {
     let mut long_message = String::with_capacity(4096);
     long_message.push_str(MESSAGE);
     (0..3000).for_each(|_| long_message.push('a'));
-    c
-        .bench_function("Message::parse() + tags()", |b| b.iter(|| {
+    c.bench_function("Message::parse() + tags()", |b| {
+        b.iter(|| {
             let msg = irc::Message::parse(c::black_box(&long_message)).unwrap();
-            irc::tags(msg.tags).for_each(|tag| { c::black_box(tag); })
-        }))
-        .bench_function("Tag::unescape_value_into()", |b| {
-            let tag = irc::Tag::parse(TAG);
-            let mut buf = String::with_capacity(1024);
-            b.iter(|| {
-                buf.clear();
-                c::black_box(&tag).unescape_value_into(&mut buf);
+            irc::tags(msg.tags).for_each(|tag| {
+                c::black_box(tag);
             })
         })
-        ;
+    })
+    .bench_function("Tag::unescape_value_into()", |b| {
+        let tag = irc::Tag::parse(TAG);
+        let mut buf = String::with_capacity(1024);
+        b.iter(|| {
+            buf.clear();
+            c::black_box(&tag).unescape_value_into(&mut buf);
+        })
+    });
 }
 
 criterion_group!(benches, message);

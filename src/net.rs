@@ -6,19 +6,19 @@ use ellidri_tokens::Message;
 use futures::future;
 use futures::FutureExt;
 
-use std::{fs, str};
 use std::collections::HashMap;
 use std::error::Error;
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::{fs, str};
 
-use tokio::{io, net, sync, time};
 use tokio::sync::mpsc;
+use tokio::{io, net, sync, time};
 
-use tokio_rustls::TlsAcceptor;
-use tokio_rustls::rustls::{NoClientAuth, ServerConfig};
 use tokio_rustls::rustls::internal::pemfile;
+use tokio_rustls::rustls::{NoClientAuth, ServerConfig};
+use tokio_rustls::TlsAcceptor;
 
 const KEEPALIVE_SECS: u64 = 75;
 const TLS_TIMEOUT_SECS: u64 = 30;
@@ -31,10 +31,14 @@ pub struct TlsIdentityStore {
 
 impl TlsIdentityStore {
     /// Retrieves the acceptor at `path`, or get it from the cache if it has already been built.
-    pub fn acceptor<P1, P2>(&mut self, cert: P1, key: P2)
-        -> Result<Arc<TlsAcceptor>, Box<dyn Error + 'static>>
-        where P1: AsRef<Path> + Into<PathBuf>,
-              P2: AsRef<Path> + Into<PathBuf>,
+    pub fn acceptor<P1, P2>(
+        &mut self,
+        cert: P1,
+        key: P2,
+    ) -> Result<Arc<TlsAcceptor>, Box<dyn Error + 'static>>
+    where
+        P1: AsRef<Path> + Into<PathBuf>,
+        P2: AsRef<Path> + Into<PathBuf>,
     {
         if let Some(acceptor) = self.acceptors.get(cert.as_ref()) {
             Ok(acceptor.clone())
@@ -47,33 +51,32 @@ impl TlsIdentityStore {
 }
 
 /// Read the file at `p`, parse the identity and builds a `TlsAcceptor` object.
-fn build_acceptor(certfile: &Path, keyfile: &Path) -> Result<TlsAcceptor, Box<dyn Error + 'static>> {
+fn build_acceptor(
+    certfile: &Path,
+    keyfile: &Path,
+) -> Result<TlsAcceptor, Box<dyn Error + 'static>> {
     let mut config = ServerConfig::new(NoClientAuth::new());
 
     log::info!("Loading TLS certificate from {:?}", certfile.display());
-    let cert = fs::read(certfile)
-        .map_err(|err| {
-            log::error!("Failed to read {:?}: {}", certfile.display(), err);
-            err
-        })?;
-    let cert = pemfile::certs(&mut cert.as_ref())
-        .map_err(|_| {
-            log::error!("Failed to parse {:?}", certfile.display());
-            ""
-        })?;
+    let cert = fs::read(certfile).map_err(|err| {
+        log::error!("Failed to read {:?}: {}", certfile.display(), err);
+        err
+    })?;
+    let cert = pemfile::certs(&mut cert.as_ref()).map_err(|_| {
+        log::error!("Failed to parse {:?}", certfile.display());
+        ""
+    })?;
 
     log::info!("Loading TLS private key from {:?}", keyfile.display());
-    let key = fs::read(keyfile)
-        .map_err(|err| {
-            log::error!("Failed to read {:?}: {}", keyfile.display(), err);
-            err
-        })?;
+    let key = fs::read(keyfile).map_err(|err| {
+        log::error!("Failed to read {:?}: {}", keyfile.display(), err);
+        err
+    })?;
     let key = {
-        let mut keys = pemfile::pkcs8_private_keys(&mut key.as_ref())
-            .map_err(|_| {
-                log::error!("Failed to parse {:?}", keyfile.display());
-                ""
-            })?;
+        let mut keys = pemfile::pkcs8_private_keys(&mut key.as_ref()).map_err(|_| {
+            log::error!("Failed to parse {:?}", keyfile.display());
+            ""
+        })?;
         if keys.is_empty() {
             log::error!("No key found in {:?}", keyfile.display());
             return Err(Box::new(io::Error::new(io::ErrorKind::Other, "")));
@@ -81,21 +84,27 @@ fn build_acceptor(certfile: &Path, keyfile: &Path) -> Result<TlsAcceptor, Box<dy
         keys.remove(0)
     };
 
-    config.set_single_cert(cert, key)
-        .map_err(|err| {
-            log::error!("Failed to associate {:?} with {:?}: {}",
-                        certfile.display(), keyfile.display(), err);
+    config.set_single_cert(cert, key).map_err(|err| {
+        log::error!(
+            "Failed to associate {:?} with {:?}: {}",
+            certfile.display(),
+            keyfile.display(),
             err
-        })?;
+        );
+        err
+    })?;
 
     Ok(TlsAcceptor::from(Arc::new(config)))
 }
 
 /// Returns a future that listens, accepts and handles incoming connections.
-pub async fn listen(addr: SocketAddr, shared: State, mut acceptor: Option<Arc<TlsAcceptor>>,
-                    mut stop: mpsc::Sender<SocketAddr>,
-                    mut commands: mpsc::Receiver<control::Command>)
-{
+pub async fn listen(
+    addr: SocketAddr,
+    shared: State,
+    mut acceptor: Option<Arc<TlsAcceptor>>,
+    mut stop: mpsc::Sender<SocketAddr>,
+    mut commands: mpsc::Receiver<control::Command>,
+) {
     let mut ln = match net::TcpListener::bind(&addr).await {
         Ok(ln) => ln,
         Err(err) => {
@@ -152,9 +161,12 @@ fn handle_tcp(conn: net::TcpStream, peer_addr: SocketAddr, shared: State) {
     tokio::spawn(handle(conn, peer_addr, shared));
 }
 
-fn handle_tls(conn: net::TcpStream, peer_addr: SocketAddr, shared: State,
-              acceptor: Arc<TlsAcceptor>)
-{
+fn handle_tls(
+    conn: net::TcpStream,
+    peer_addr: SocketAddr,
+    shared: State,
+    acceptor: Arc<TlsAcceptor>,
+) {
     if let Err(err) = conn.set_keepalive(Some(time::Duration::from_secs(KEEPALIVE_SECS))) {
         log::warn!("Failed to set TCP keepalive for {}: {}", peer_addr, err);
         return;
@@ -223,7 +235,10 @@ async fn handle(conn: impl io::AsyncRead + io::AsyncWrite, peer_addr: SocketAddr
             buf.clear();
             let n = reader.read_message(&mut buf).await?;
             if n == 0 {
-                return Err(io::Error::new(io::ErrorKind::UnexpectedEof, lines::CONNECTION_RESET));
+                return Err(io::Error::new(
+                    io::ErrorKind::UnexpectedEof,
+                    lines::CONNECTION_RESET,
+                ));
             }
             log::trace!("{} >> {}", peer_addr, buf.trim());
             Ok(handle_buffer(peer_id, &buf, &shared).await)
@@ -231,8 +246,8 @@ async fn handle(conn: impl io::AsyncRead + io::AsyncWrite, peer_addr: SocketAddr
     };
 
     let outgoing = async {
-        use io::AsyncWriteExt as _;
         use crate::client::MessageQueueItem::*;
+        use io::AsyncWriteExt as _;
 
         while let Some(msg) = outgoing_msgs.recv().await {
             match msg {
@@ -292,9 +307,7 @@ pub async fn handle_ws(ws: warp::ws::WebSocket, peer_addr: SocketAddr, shared: S
     };
 
     let outgoing = outgoing_msgs
-        .map(|msg| {
-            Ok(warp::ws::Message::text(msg.as_ref()))
-        })
+        .map(|msg| Ok(warp::ws::Message::text(msg.as_ref())))
         .forward(writer)
         .map_err(|err| err.to_string());
 

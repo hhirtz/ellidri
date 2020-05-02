@@ -1,5 +1,5 @@
 use crate::util;
-use ellidri_tokens::{MessageBuffer, mode, rpl};
+use ellidri_tokens::{mode, rpl, MessageBuffer};
 use regex as re;
 use std::collections::{HashMap, HashSet};
 
@@ -18,11 +18,21 @@ pub struct MemberModes {
 impl MemberModes {
     /// Pushes all the modes' symbols to the given string, in decreasing order of rank.
     pub fn all_symbols(self, out: &mut String) {
-        if self.founder { out.push('~'); }
-        if self.protected { out.push('&'); }
-        if self.operator { out.push('@'); }
-        if self.halfop { out.push('%'); }
-        if self.voice { out.push('+'); }
+        if self.founder {
+            out.push('~');
+        }
+        if self.protected {
+            out.push('&');
+        }
+        if self.operator {
+            out.push('@');
+        }
+        if self.halfop {
+            out.push('%');
+        }
+        if self.voice {
+            out.push('+');
+        }
     }
 
     /// Returns the highest enabled mode.
@@ -55,19 +65,28 @@ impl MemberModes {
     }
 
     pub fn can_change<'a, I, S>(self, modes: &'a str, params: I) -> bool
-        where I: IntoIterator<Item=&'a S> +'a,
-              S: AsRef<str> + 'a,
+    where
+        I: IntoIterator<Item = &'a S> + 'a,
+        S: AsRef<str> + 'a,
     {
         use mode::ChannelChange::*;
 
         mode::channel_query(modes, params).all(|mode| match mode {
             Err(_) => true,
             Ok(GetBans) | Ok(GetExceptions) | Ok(GetInvitations) => true,
-            Ok(Moderated(_)) | Ok(TopicRestricted(_)) | Ok(UserLimit(_)) |
-                Ok(ChangeBan(_, _)) | Ok(ChangeException(_, _)) |
-                Ok(ChangeInvitation(_, _)) | Ok(ChangeVoice(_, _)) => self.is_at_least_halfop(),
-            Ok(InviteOnly(_)) | Ok(NoPrivMsgFromOutside(_)) | Ok(Secret(_)) | Ok(Key(_, _)) |
-                Ok(ChangeOperator(_, _)) | Ok(ChangeHalfop(_, _)) => self.is_at_least_op(),
+            Ok(Moderated(_))
+            | Ok(TopicRestricted(_))
+            | Ok(UserLimit(_))
+            | Ok(ChangeBan(_, _))
+            | Ok(ChangeException(_, _))
+            | Ok(ChangeInvitation(_, _))
+            | Ok(ChangeVoice(_, _)) => self.is_at_least_halfop(),
+            Ok(InviteOnly(_))
+            | Ok(NoPrivMsgFromOutside(_))
+            | Ok(Secret(_))
+            | Ok(Key(_, _))
+            | Ok(ChangeOperator(_, _))
+            | Ok(ChangeHalfop(_, _)) => self.is_at_least_op(),
         })
     }
 }
@@ -129,7 +148,9 @@ impl Channel {
             topic_restricted: false,
         };
         for change in mode::simple_channel_query(modes).filter_map(Result::ok) {
-            channel.apply_mode_change(change, usize::max_value(), |_| "").unwrap();
+            channel
+                .apply_mode_change(change, usize::max_value(), |_| "")
+                .unwrap();
         }
         channel
     }
@@ -152,8 +173,11 @@ impl Channel {
     }
 
     pub fn list_entry(&self, msg: MessageBuffer<'_>) {
-        msg.fmt_param(&self.members.len())
-            .trailing_param(self.topic.as_ref().map_or("", |topic| topic.content.as_ref()));
+        msg.fmt_param(&self.members.len()).trailing_param(
+            self.topic
+                .as_ref()
+                .map_or("", |topic| topic.content.as_ref()),
+        );
     }
 
     pub fn is_banned(&self, nick: &str) -> bool {
@@ -189,13 +213,27 @@ impl Channel {
     pub fn modes(&self, mut out: MessageBuffer<'_>, full_info: bool) {
         let modes = out.raw_param();
         modes.push('+');
-        if self.invite_only { modes.push('i'); }
-        if self.moderated { modes.push('m'); }
-        if self.no_privmsg_from_outside { modes.push('n'); }
-        if self.secret { modes.push('s'); }
-        if self.topic_restricted { modes.push('t'); }
-        if self.user_limit.is_some() { modes.push('l'); }
-        if self.key.is_some() { modes.push('k'); }
+        if self.invite_only {
+            modes.push('i');
+        }
+        if self.moderated {
+            modes.push('m');
+        }
+        if self.no_privmsg_from_outside {
+            modes.push('n');
+        }
+        if self.secret {
+            modes.push('s');
+        }
+        if self.topic_restricted {
+            modes.push('t');
+        }
+        if self.user_limit.is_some() {
+            modes.push('l');
+        }
+        if self.key.is_some() {
+            modes.push('k');
+        }
 
         if full_info {
             if let Some(user_limit) = self.user_limit {
@@ -207,9 +245,12 @@ impl Channel {
         }
     }
 
-    pub fn apply_mode_change<'a>(&mut self, change: mode::ChannelChange<'_>, keylen: usize,
-                                 nick_of: impl Fn(usize) -> &'a str) -> Result<bool, &'static str>
-    {
+    pub fn apply_mode_change<'a>(
+        &mut self,
+        change: mode::ChannelChange<'_>,
+        keylen: usize,
+        nick_of: impl Fn(usize) -> &'a str,
+    ) -> Result<bool, &'static str> {
         use mode::ChannelChange::*;
 
         let mut applied = false;
@@ -217,42 +258,48 @@ impl Channel {
             InviteOnly(value) => {
                 applied = self.invite_only != value;
                 self.invite_only = value;
-            },
+            }
             Moderated(value) => {
                 applied = self.moderated != value;
                 self.moderated = value;
-            },
+            }
             NoPrivMsgFromOutside(value) => {
                 applied = self.no_privmsg_from_outside != value;
                 self.no_privmsg_from_outside = value;
-            },
+            }
             Secret(value) => {
                 applied = self.secret != value;
                 self.secret = value;
-            },
+            }
             TopicRestricted(value) => {
                 applied = self.topic_restricted != value;
                 self.topic_restricted = value;
-            },
-            Key(value, key) => if value {
-                if self.key.is_some() {
-                    return Err(rpl::ERR_KEYSET);
-                } else {
+            }
+            Key(value, key) => {
+                if value {
+                    if self.key.is_some() {
+                        return Err(rpl::ERR_KEYSET);
+                    } else {
+                        applied = true;
+                        self.key = Some(key[..key.len().min(keylen)].to_owned());
+                    }
+                } else if self.key.is_some() {
                     applied = true;
-                    self.key = Some(key[..key.len().min(keylen)].to_owned());
+                    self.key = None;
                 }
-            } else if self.key.is_some() {
-                applied = true;
-                self.key = None;
-            },
-            UserLimit(Some(s)) => if let Ok(limit) = s.parse() {
-                applied = self.user_limit.map_or(true, |chan_limit| chan_limit != limit);
-                self.user_limit = Some(limit);
-            },
+            }
+            UserLimit(Some(s)) => {
+                if let Ok(limit) = s.parse() {
+                    applied = self
+                        .user_limit
+                        .map_or(true, |chan_limit| chan_limit != limit);
+                    self.user_limit = Some(limit);
+                }
+            }
             UserLimit(None) => {
                 applied = self.user_limit.is_some();
                 self.user_limit = None;
-            },
+            }
             ChangeBan(value, param) => {
                 if value {
                     util::regexset_add(&mut self.ban_mask, param);
@@ -260,7 +307,7 @@ impl Channel {
                     util::regexset_remove(&mut self.ban_mask, param);
                 }
                 applied = true;
-            },
+            }
             ChangeException(value, param) => {
                 if value {
                     util::regexset_add(&mut self.exception_mask, param);
@@ -268,7 +315,7 @@ impl Channel {
                     util::regexset_remove(&mut self.exception_mask, param);
                 }
                 applied = true;
-            },
+            }
             ChangeInvitation(value, param) => {
                 if value {
                     util::regexset_add(&mut self.invitation_mask, param);
@@ -276,7 +323,7 @@ impl Channel {
                     util::regexset_remove(&mut self.invitation_mask, param);
                 }
                 applied = true;
-            },
+            }
             ChangeOperator(value, param) => {
                 let mut has_it = false;
                 for (member, modes) in &mut self.members {
@@ -290,7 +337,7 @@ impl Channel {
                 if !has_it {
                     return Err(rpl::ERR_USERNOTINCHANNEL);
                 }
-            },
+            }
             ChangeHalfop(value, param) => {
                 let mut has_it = false;
                 for (member, modes) in &mut self.members {
@@ -304,7 +351,7 @@ impl Channel {
                 if !has_it {
                     return Err(rpl::ERR_USERNOTINCHANNEL);
                 }
-            },
+            }
             ChangeVoice(value, param) => {
                 let mut has_it = false;
                 for (member, modes) in &mut self.members {
@@ -318,8 +365,8 @@ impl Channel {
                 if !has_it {
                     return Err(rpl::ERR_USERNOTINCHANNEL);
                 }
-            },
-            _ => {},
+            }
+            _ => {}
         }
         Ok(applied)
     }
@@ -359,7 +406,8 @@ mod tests {
         voice: true,
     };
 
-    fn params() -> impl Iterator<Item=&'static &'static str> {  // TODO lol what
+    fn params() -> impl Iterator<Item = &'static &'static str> {
+        // TODO lol what
         std::iter::repeat(&"beer")
     }
 
@@ -382,4 +430,4 @@ mod tests {
         assert!(HALFOP.can_change("+beIv", params()));
         assert!(!HALFOP.can_change("+obeIv", params()));
     }
-}  // mod tests
+} // mod tests

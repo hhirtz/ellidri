@@ -2,16 +2,16 @@
 
 #![allow(clippy::needless_pass_by_value)]
 
-use crate::{auth, config, lines, util};
 use crate::channel::Channel;
 use crate::client::{Client, MessageQueue, MessageQueueItem, ReplyBuffer};
-use ellidri_tokens::{Buffer, Command, Message, mode, rpl, tags};
+use crate::{auth, config, lines, util};
+use ellidri_tokens::{mode, rpl, tags, Buffer, Command, Message};
 use ellidri_unicase::{u, UniCase};
 use slab::Slab;
-use std::{cmp, fmt, fs, net};
 use std::collections::{HashMap, HashSet};
 use std::fmt::Write as _;
 use std::sync::Arc;
+use std::{cmp, fmt, fs, net};
 use tokio::sync::{Mutex, Notify};
 
 mod v1;
@@ -57,9 +57,11 @@ impl State {
     /// Intialize the IRC state from the given configuration.
     ///
     /// `rehash` will be notified/pinged whenever an operator sends a REHASH command.
-    pub fn new(config: config::State, auth_provider: Box<dyn auth::Provider>, rehash: Arc<Notify>)
-               -> Self
-    {
+    pub fn new(
+        config: config::State,
+        auth_provider: Box<dyn auth::Provider>,
+        rehash: Arc<Notify>,
+    ) -> Self {
         let inner = StateInner::new(config, auth_provider, rehash);
         Self(Arc::new(Mutex::new(inner)))
     }
@@ -164,9 +166,11 @@ pub(crate) struct StateInner {
 }
 
 impl StateInner {
-    pub fn new(config: config::State, auth_provider: Box<dyn auth::Provider>, rehash: Arc<Notify>)
-               -> Self
-    {
+    pub fn new(
+        config: config::State,
+        auth_provider: Box<dyn auth::Provider>,
+        rehash: Arc<Notify>,
+    ) -> Self {
         log::info!("Loading MOTD from {:?}", config.motd_file);
         let motd = match fs::read_to_string(&config.motd_file) {
             Ok(motd) => Some(motd),
@@ -206,7 +210,11 @@ impl StateInner {
         self.domain = Arc::from(config.domain);
         self.org_name = config.org_name;
         self.org_location = config.org_location;
-        self.motd = if config.motd_file.is_empty() {None} else {Some(config.motd_file)};
+        self.motd = if config.motd_file.is_empty() {
+            None
+        } else {
+            Some(config.motd_file)
+        };
         self.password = config.password;
         self.default_chan_mode = config.default_chan_mode;
         self.opers = config.opers;
@@ -291,9 +299,13 @@ impl StateInner {
         let is_operator = client.operator;
 
         if MAX_TAG_DATA_LENGTH < msg.tags.len() {
-            rb.reply(rpl::ERR_INPUTTOOLONG, 2+lines::INPUT_TOO_LONG.len(), |msg| {
-                msg.trailing_param(lines::INPUT_TOO_LONG);
-            });
+            rb.reply(
+                rpl::ERR_INPUTTOOLONG,
+                2 + lines::INPUT_TOO_LONG.len(),
+                |msg| {
+                    msg.trailing_param(lines::INPUT_TOO_LONG);
+                },
+            );
             return Ok(3);
         }
 
@@ -301,14 +313,18 @@ impl StateInner {
             Ok(cmd) => cmd,
             Err(unknown) => {
                 if client.is_registered() {
-                    let capacity = 1+unknown.len() + 2+lines::UNKNOWN_COMMAND.len();
+                    let capacity = 1 + unknown.len() + 2 + lines::UNKNOWN_COMMAND.len();
                     rb.reply(rpl::ERR_UNKNOWNCOMMAND, capacity, |msg| {
                         msg.param(unknown).trailing_param(lines::UNKNOWN_COMMAND);
                     });
                 } else {
-                    rb.reply(rpl::ERR_NOTREGISTERED, 2+lines::NOT_REGISTERED.len(), |msg| {
-                        msg.trailing_param(lines::NOT_REGISTERED);
-                    });
+                    rb.reply(
+                        rpl::ERR_NOTREGISTERED,
+                        2 + lines::NOT_REGISTERED.len(),
+                        |msg| {
+                            msg.trailing_param(lines::NOT_REGISTERED);
+                        },
+                    );
                 }
                 return Ok(1);
             }
@@ -317,14 +333,18 @@ impl StateInner {
         if !client.capabilities().is_capable_of(command) {
             if client.is_registered() {
                 let command = command.as_str();
-                let capacity = 1+command.len() + 2+lines::UNKNOWN_COMMAND.len();
+                let capacity = 1 + command.len() + 2 + lines::UNKNOWN_COMMAND.len();
                 rb.reply(rpl::ERR_UNKNOWNCOMMAND, capacity, |msg| {
                     msg.param(command).trailing_param(lines::UNKNOWN_COMMAND);
                 });
             } else {
-                rb.reply(rpl::ERR_NOTREGISTERED, 2+lines::NOT_REGISTERED.len(), |msg| {
-                    msg.trailing_param(lines::NOT_REGISTERED);
-                });
+                rb.reply(
+                    rpl::ERR_NOTREGISTERED,
+                    2 + lines::NOT_REGISTERED.len(),
+                    |msg| {
+                        msg.trailing_param(lines::NOT_REGISTERED);
+                    },
+                );
             }
             return Ok(2);
         }
@@ -332,23 +352,35 @@ impl StateInner {
         if !msg.has_enough_params() {
             match command {
                 Command::Nick | Command::Whois => {
-                    rb.reply(rpl::ERR_NONICKNAMEGIVEN, 2+lines::NEED_MORE_PARAMS.len(), |msg| {
-                        msg.trailing_param(lines::NEED_MORE_PARAMS);
-                    });
+                    rb.reply(
+                        rpl::ERR_NONICKNAMEGIVEN,
+                        2 + lines::NEED_MORE_PARAMS.len(),
+                        |msg| {
+                            msg.trailing_param(lines::NEED_MORE_PARAMS);
+                        },
+                    );
                 }
                 Command::PrivMsg | Command::Notice | Command::TagMsg if msg.num_params == 0 => {
-                    rb.reply(rpl::ERR_NORECIPIENT, 2+lines::NEED_MORE_PARAMS.len(), |msg| {
-                        msg.trailing_param(lines::NEED_MORE_PARAMS);
-                    });
+                    rb.reply(
+                        rpl::ERR_NORECIPIENT,
+                        2 + lines::NEED_MORE_PARAMS.len(),
+                        |msg| {
+                            msg.trailing_param(lines::NEED_MORE_PARAMS);
+                        },
+                    );
                 }
                 Command::PrivMsg | Command::Notice if msg.num_params == 1 => {
-                    rb.reply(rpl::ERR_NOTEXTTOSEND, 2+lines::NEED_MORE_PARAMS.len(), |msg| {
-                        msg.trailing_param(lines::NEED_MORE_PARAMS);
-                    });
+                    rb.reply(
+                        rpl::ERR_NOTEXTTOSEND,
+                        2 + lines::NEED_MORE_PARAMS.len(),
+                        |msg| {
+                            msg.trailing_param(lines::NEED_MORE_PARAMS);
+                        },
+                    );
                 }
                 _ => {
                     let command = command.as_str();
-                    let capacity = 1+command.len() + 2+lines::NEED_MORE_PARAMS.len();
+                    let capacity = 1 + command.len() + 2 + lines::NEED_MORE_PARAMS.len();
                     rb.reply(rpl::ERR_NEEDMOREPARAMS, capacity, |msg| {
                         msg.param(command).trailing_param(lines::NEED_MORE_PARAMS);
                     });
@@ -359,13 +391,21 @@ impl StateInner {
 
         if !client.can_issue_command(command, msg.params[0]) {
             if client.is_registered() {
-                rb.reply(rpl::ERR_ALREADYREGISTRED, 2+lines::ALREADY_REGISTERED.len(), |msg| {
-                    msg.trailing_param(lines::ALREADY_REGISTERED);
-                });
+                rb.reply(
+                    rpl::ERR_ALREADYREGISTRED,
+                    2 + lines::ALREADY_REGISTERED.len(),
+                    |msg| {
+                        msg.trailing_param(lines::ALREADY_REGISTERED);
+                    },
+                );
             } else {
-                rb.reply(rpl::ERR_NOTREGISTERED, 2+lines::NOT_REGISTERED.len(), |msg| {
-                    msg.trailing_param(lines::NOT_REGISTERED);
-                });
+                rb.reply(
+                    rpl::ERR_NOTREGISTERED,
+                    2 + lines::NOT_REGISTERED.len(),
+                    |msg| {
+                        msg.trailing_param(lines::NOT_REGISTERED);
+                    },
+                );
             }
             return Ok(2);
         }
@@ -392,13 +432,16 @@ impl StateInner {
         };
         rb.end_lr();
 
-        Ok(if is_operator {1} else {used_points})
+        Ok(if is_operator { 1 } else { used_points })
     }
 
     /// Actually execute the command.
-    fn handle_message_inner<'a>(&mut self, id: usize, rb: &'a mut ReplyBuffer, msg: Message<'a>)
-        -> HandlerResult
-    {
+    fn handle_message_inner<'a>(
+        &mut self,
+        id: usize,
+        rb: &'a mut ReplyBuffer,
+        msg: Message<'a>,
+    ) -> HandlerResult {
         let command = msg.command.unwrap();
         let ps = msg.params;
         let n = msg.num_params;
@@ -437,7 +480,7 @@ impl StateInner {
             Command::SetName => self.cmd_setname(ctx, ps[0]),
             Command::TagMsg => self.cmd_tagmsg(ctx, ps[0]),
             Command::Time => self.cmd_time(ctx),
-            Command::Topic => self.cmd_topic(ctx, ps[0], if n == 1 {None} else {Some(ps[1])}),
+            Command::Topic => self.cmd_topic(ctx, ps[0], if n == 1 { None } else { Some(ps[1]) }),
             Command::User => self.cmd_user(ctx, ps[0], ps[3]),
             Command::Version => self.cmd_version(ctx),
             Command::Who => self.cmd_who(ctx, ps[0], ps[1]),
@@ -496,16 +539,20 @@ fn points_of(command: Command) -> u32 {
 
 /// Returns `Ok(channel)` when `name` is an existing channel name.  Otherwise returns `Err(())` and
 /// send an error to the client.
-fn find_channel<'a>(id: usize, rb: &mut ReplyBuffer, channels: &'a ChannelMap, channel_name: &str)
-                    -> Result<&'a Channel, ()>
-{
+fn find_channel<'a>(
+    id: usize,
+    rb: &mut ReplyBuffer,
+    channels: &'a ChannelMap,
+    channel_name: &str,
+) -> Result<&'a Channel, ()> {
     match channels.get(u(channel_name)) {
         Some(channel) => Ok(channel),
         None => {
             log::debug!("{}:         no such channel", id);
-            let capacity = 1+channel_name.len() + 2+lines::NO_SUCH_CHANNEL.len();
+            let capacity = 1 + channel_name.len() + 2 + lines::NO_SUCH_CHANNEL.len();
             rb.reply(rpl::ERR_NOSUCHCHANNEL, capacity, |msg| {
-                msg.param(channel_name).trailing_param(lines::NO_SUCH_CHANNEL);
+                msg.param(channel_name)
+                    .trailing_param(lines::NO_SUCH_CHANNEL);
             });
             Err(())
         }
@@ -516,16 +563,20 @@ fn find_channel<'a>(id: usize, rb: &mut ReplyBuffer, channels: &'a ChannelMap, c
 /// Otherwise returns `Err(())` and send an error to the client.
 ///
 /// `channel_name` is needed for the error reply.
-fn find_member(id: usize, rb: &mut ReplyBuffer, channel: &Channel,
-               channel_name: &str) -> Result<crate::channel::MemberModes, ()>
-{
+fn find_member(
+    id: usize,
+    rb: &mut ReplyBuffer,
+    channel: &Channel,
+    channel_name: &str,
+) -> Result<crate::channel::MemberModes, ()> {
     match channel.members.get(&id) {
         Some(modes) => Ok(*modes),
         None => {
             log::debug!("{}:         not on channel", id);
-            let capacity = 1+channel_name.len() + 2+lines::NOT_ON_CHANNEL.len();
+            let capacity = 1 + channel_name.len() + 2 + lines::NOT_ON_CHANNEL.len();
             rb.reply(rpl::ERR_NOTONCHANNEL, capacity, |msg| {
-                msg.param(channel_name).trailing_param(lines::NOT_ON_CHANNEL);
+                msg.param(channel_name)
+                    .trailing_param(lines::NOT_ON_CHANNEL);
             });
             Err(())
         }
@@ -534,33 +585,51 @@ fn find_member(id: usize, rb: &mut ReplyBuffer, channel: &Channel,
 
 /// Returns `Ok((address, client))` when the client identified by the nickname `nick` is connected
 /// and registered.  Otherwise returns `Err(())` and send an error to the client.
-fn find_nick<'a>(id: usize, rb: &mut ReplyBuffer, clients: &'a ClientMap, nicks: &'a NicksMap,
-                 nick: &str) -> Result<(usize, &'a Client), ()>
-{
-    nicks.get(u(nick))
+fn find_nick<'a>(
+    id: usize,
+    rb: &mut ReplyBuffer,
+    clients: &'a ClientMap,
+    nicks: &'a NicksMap,
+    nick: &str,
+) -> Result<(usize, &'a Client), ()> {
+    nicks
+        .get(u(nick))
         .map(|id| (*id, &clients[*id]))
         .filter(|(_, c)| c.is_registered())
         .ok_or_else(|| {
             log::debug!("{}:         nick doesn't exist", id);
-            rb.reply(rpl::ERR_NOSUCHNICK, 1+nick.len() + 2+lines::NO_SUCH_NICK.len(), |msg| {
-                msg.param(nick).trailing_param(lines::NO_SUCH_NICK);
-            });
+            rb.reply(
+                rpl::ERR_NOSUCHNICK,
+                1 + nick.len() + 2 + lines::NO_SUCH_NICK.len(),
+                |msg| {
+                    msg.param(nick).trailing_param(lines::NO_SUCH_NICK);
+                },
+            );
         })
 }
 
 // Send utilities
 impl StateInner {
-    fn build_message(&self, ctx: &mut CommandContext<'_>, from: &Client, cmd: Command, target: &str,
-                     content: Option<&str>) -> MessageQueueItem
-    {
+    fn build_message(
+        &self,
+        ctx: &mut CommandContext<'_>,
+        from: &Client,
+        cmd: Command,
+        target: &str,
+        content: Option<&str>,
+    ) -> MessageQueueItem {
         let msgid = util::new_message_id();
         let time = util::time_precise();
-        let capacity = ctx.client_tags.len() + from.full_name().len() +
-            target.len() + content.map_or(0, str::len) + 30;
+        let capacity = ctx.client_tags.len()
+            + from.full_name().len()
+            + target.len()
+            + content.map_or(0, str::len)
+            + 30;
 
         if from.capabilities().echo_message && from.capabilities().has_message_tags() {
             ctx.rb.tagged_message(ctx.client_tags, capacity, |msg| {
-                let msg = msg.tag("msgid", Some(&msgid))
+                let msg = msg
+                    .tag("msgid", Some(&msgid))
                     .tag("time", Some(&time))
                     .prefixed_command(from.full_name(), cmd)
                     .param(target);
@@ -580,7 +649,8 @@ impl StateInner {
         let mut buf = Buffer::with_capacity(capacity);
         let mut tags_len = 0;
         {
-            let msg_buf = buf.tagged_message(ctx.client_tags)
+            let msg_buf = buf
+                .tagged_message(ctx.client_tags)
                 .tag("msgid", Some(&msgid))
                 .tag("time", Some(&time))
                 .save_tags_len(&mut tags_len)
@@ -595,15 +665,20 @@ impl StateInner {
         msg
     }
 
-    fn send_query_or_channel_msg(&mut self, mut ctx: CommandContext<'_>, cmd: Command, target: &str,
-                                 content: Option<&str>) -> HandlerResult
-    {
+    fn send_query_or_channel_msg(
+        &mut self,
+        mut ctx: CommandContext<'_>,
+        cmd: Command,
+        target: &str,
+        content: Option<&str>,
+    ) -> HandlerResult {
         let client = &self.clients[ctx.id];
 
         if content == Some("") {
-            let capacity = 1+cmd.as_str().len() + 2+lines::NEED_MORE_PARAMS.len();
+            let capacity = 1 + cmd.as_str().len() + 2 + lines::NEED_MORE_PARAMS.len();
             ctx.rb.reply(rpl::ERR_NOTEXTTOSEND, capacity, |msg| {
-                msg.param(cmd.as_str()).trailing_param(lines::NEED_MORE_PARAMS);
+                msg.param(cmd.as_str())
+                    .trailing_param(lines::NEED_MORE_PARAMS);
             });
             return Err(());
         }
@@ -612,7 +687,7 @@ impl StateInner {
             let channel = find_channel(ctx.id, &mut ctx.rb, &self.channels, target)?;
             if !channel.can_talk(ctx.id) {
                 log::debug!("{}:     can't send to channel", ctx.id);
-                let capacity = 1+target.len() + 2+lines::CANNOT_SEND_TO_CHAN.len();
+                let capacity = 1 + target.len() + 2 + lines::CANNOT_SEND_TO_CHAN.len();
                 ctx.rb.reply(rpl::ERR_CANNOTSENDTOCHAN, capacity, |msg| {
                     msg.param(target).trailing_param(lines::CANNOT_SEND_TO_CHAN);
                 });
@@ -634,7 +709,8 @@ impl StateInner {
                 }
             }
         } else {
-            let (_, target_client) = find_nick(ctx.id, &mut ctx.rb, &self.clients, &self.nicks, target)?;
+            let (_, target_client) =
+                find_nick(ctx.id, &mut ctx.rb, &self.clients, &self.nicks, target)?;
             if !target_client.capabilities().is_capable_of(cmd) {
                 return Err(());
             }
@@ -643,9 +719,10 @@ impl StateInner {
             target_client.send(msg);
             target_client.send(MessageQueueItem::Flush);
             if let Some(ref away_msg) = target_client.away_message {
-                ctx.rb.reply(rpl::AWAY, 1+target.len() + 2+away_msg.len(), |msg| {
-                    msg.param(target).trailing_param(away_msg);
-                });
+                ctx.rb
+                    .reply(rpl::AWAY, 1 + target.len() + 2 + away_msg.len(), |msg| {
+                        msg.param(target).trailing_param(away_msg);
+                    });
             }
         }
         self.clients.get_mut(ctx.id).unwrap().update_idle_time();
@@ -653,16 +730,22 @@ impl StateInner {
         Ok(())
     }
 
-    fn send_notification(&self, from: usize, buf: Buffer,
-                         mut filter: impl FnMut(usize, &Client) -> bool)
-    {
+    fn send_notification(
+        &self,
+        from: usize,
+        buf: Buffer,
+        mut filter: impl FnMut(usize, &Client) -> bool,
+    ) {
         let msg = MessageQueueItem::from(buf);
-        let mut noticed = self.channels.values()
+        let mut noticed = self
+            .channels
+            .values()
             .filter(|channel| channel.members.contains_key(&from))
             .flat_map(|channel| channel.members.keys().cloned())
             .collect::<HashSet<_>>();
         noticed.insert(from);
-        let iter = noticed.into_iter()
+        let iter = noticed
+            .into_iter()
             .filter(|&id| from != id && filter(id, &self.clients[id]));
         for id in iter {
             let c = &self.clients[id];
@@ -678,7 +761,7 @@ impl StateInner {
                 .param("CHANTYPES=#&")
                 .param(mode::CHANMODES)
                 .param("EXCEPTS")
-                .param("HOSTLEN=39")  // max size of an IPv6 address
+                .param("HOSTLEN=39") // max size of an IPv6 address
                 .param("INVEX")
                 .param("MODES")
                 .param("PREFIX=(qaohv)~&@%+")
@@ -704,15 +787,18 @@ impl StateInner {
             lines::luser_client(msg, self.clients.len())
         });
 
-        let (op, unknown) = self.clients.iter().fold((0, 0), |(op, unknown), (_, client)| {
-            if !client.is_registered() {
-                (op, unknown + 1)
-            } else if client.operator {
-                (op + 1, unknown)
-            } else {
-                (op, unknown)
-            }
-        });
+        let (op, unknown) = self
+            .clients
+            .iter()
+            .fold((0, 0), |(op, unknown), (_, client)| {
+                if !client.is_registered() {
+                    (op, unknown + 1)
+                } else if client.operator {
+                    (op + 1, unknown)
+                } else {
+                    (op, unknown)
+                }
+            });
         if 0 < op {
             rb.reply(rpl::LUSEROP, 9 + lines::LUSER_OP.len(), |msg| {
                 msg.fmt_param(&op).trailing_param(lines::LUSER_OP);
@@ -737,19 +823,21 @@ impl StateInner {
     fn send_motd(&self, rb: &mut ReplyBuffer) {
         if let Some(ref motd) = self.motd {
             let capacity = self.domain.len() + 25;
-            rb.reply(rpl::MOTDSTART, capacity, |msg| lines::motd_start(msg, &self.domain));
+            rb.reply(rpl::MOTDSTART, capacity, |msg| {
+                lines::motd_start(msg, &self.domain)
+            });
             for line in motd.lines() {
-                rb.reply(rpl::MOTD, 2+2+line.len(), |mut msg| {
+                rb.reply(rpl::MOTD, 2 + 2 + line.len(), |mut msg| {
                     let trailing = msg.raw_trailing_param();
                     trailing.push_str("- ");
                     trailing.push_str(line);
                 });
             }
-            rb.reply(rpl::ENDOFMOTD, 2+lines::END_OF_MOTD.len(), |msg| {
+            rb.reply(rpl::ENDOFMOTD, 2 + lines::END_OF_MOTD.len(), |msg| {
                 msg.trailing_param(lines::END_OF_MOTD);
             });
         } else {
-            rb.reply(rpl::ERR_NOMOTD, 2+lines::NO_MOTD.len(), |msg| {
+            rb.reply(rpl::ERR_NOMOTD, 2 + lines::NO_MOTD.len(), |msg| {
                 msg.trailing_param(lines::NO_MOTD);
             });
         }
@@ -784,30 +872,46 @@ impl StateInner {
                     }
                     trailing.push(' ');
                 }
-                trailing.pop();  // Remove last space, not ':' since !channel.members.is_empty()
+                trailing.pop(); // Remove last space, not ':' since !channel.members.is_empty()
             });
         }
-        rb.reply(rpl::ENDOFNAMES, 1+channel_name.len() + 2+lines::END_OF_NAMES.len(), |msg| {
-            msg.param(channel_name).trailing_param(lines::END_OF_NAMES);
-        });
+        rb.reply(
+            rpl::ENDOFNAMES,
+            1 + channel_name.len() + 2 + lines::END_OF_NAMES.len(),
+            |msg| {
+                msg.param(channel_name).trailing_param(lines::END_OF_NAMES);
+            },
+        );
     }
 
     /// Sends the topic of the channel `channel_name` to the given client.
     fn send_topic(&self, rb: &mut ReplyBuffer, channel_name: &str, send_error: bool) {
         let channel = &self.channels[u(channel_name)];
         if let Some(ref topic) = channel.topic {
-            rb.reply(rpl::TOPIC, 1+channel_name.len() + 2+topic.content.len(), |msg| {
-                msg.param(channel_name).trailing_param(&topic.content);
-            });
-            rb.reply(rpl::TOPICWHOTIME, 1+channel_name.len() + 1+topic.who.len() + 1+10, |msg| {
-                msg.param(channel_name)
-                    .param(&topic.who)
-                    .fmt_param(&topic.time);
-            });
+            rb.reply(
+                rpl::TOPIC,
+                1 + channel_name.len() + 2 + topic.content.len(),
+                |msg| {
+                    msg.param(channel_name).trailing_param(&topic.content);
+                },
+            );
+            rb.reply(
+                rpl::TOPICWHOTIME,
+                1 + channel_name.len() + 1 + topic.who.len() + 1 + 10,
+                |msg| {
+                    msg.param(channel_name)
+                        .param(&topic.who)
+                        .fmt_param(&topic.time);
+                },
+            );
         } else if send_error {
-            rb.reply(rpl::NOTOPIC, 1+channel_name.len() + 2+lines::NO_TOPIC.len(), |msg| {
-                msg.param(channel_name).trailing_param(lines::NO_TOPIC);
-            });
+            rb.reply(
+                rpl::NOTOPIC,
+                1 + channel_name.len() + 2 + lines::NO_TOPIC.len(),
+                |msg| {
+                    msg.param(channel_name).trailing_param(lines::NO_TOPIC);
+                },
+            );
         }
     }
 
@@ -825,9 +929,16 @@ impl StateInner {
         rb.reply(rpl::CREATED, capacity, |msg| {
             lines::created(msg, &self.created_at);
         });
-        let capacity = 1+self.domain.len() + 1+SERVER_VERSION.len() +
-            1+mode::USER_MODES.len() + 1+mode::SIMPLE_CHAN_MODES.len() +
-            1+mode::EXTENDED_CHAN_MODES.len();
+        let capacity = 1
+            + self.domain.len()
+            + 1
+            + SERVER_VERSION.len()
+            + 1
+            + mode::USER_MODES.len()
+            + 1
+            + mode::SIMPLE_CHAN_MODES.len()
+            + 1
+            + mode::EXTENDED_CHAN_MODES.len();
         rb.reply(rpl::MYINFO, capacity, |msg| {
             msg.param(&self.domain)
                 .param(SERVER_VERSION)
@@ -852,7 +963,8 @@ fn is_valid_channel_name(s: &str, max_len: usize) -> bool {
     let first = s.as_bytes()[0];
     s.len() <= max_len
         && (first == b'#' || first == b'&')
-        && s.chars().all(|c| c != ' ' && c != ',' && c != ctrl_g && c != ':')
+        && s.chars()
+            .all(|c| c != ' ' && c != ',' && c != ctrl_g && c != ':')
 }
 
 /// Whether a string is accepted as a nickname by ellidri or not.
@@ -870,7 +982,8 @@ fn is_valid_nickname(s: &str, max_len: usize) -> bool {
     !s.is_empty()
         && s.len() <= max_len
         && s.iter().all(is_valid_nickname_char)
-        && s[0] != b'-' && !(b'0' <= s[0] && s[0] <= b'9')
+        && s[0] != b'-'
+        && !(b'0' <= s[0] && s[0] <= b'9')
 }
 
 /// Whether a nickname must not be taken by a regular user.
@@ -892,8 +1005,10 @@ mod tests {
         assert!(!is_valid_channel_name("", MAX_LEN));
         assert!(!is_valid_channel_name("channel", MAX_LEN));
         assert!(!is_valid_channel_name("#chan nel", MAX_LEN));
-        assert!(!is_valid_nickname("#longnicknameverylongohwowthisisalongnicknameohwowmuchlong01234",
-                                   MAX_LEN));
+        assert!(!is_valid_nickname(
+            "#longnicknameverylongohwowthisisalongnicknameohwowmuchlong01234",
+            MAX_LEN
+        ));
     }
 
     #[test]
@@ -908,6 +1023,9 @@ mod tests {
         assert!(!is_valid_nickname(" space ", DEFAULT_MAX_LEN));
         assert!(!is_valid_nickname("sp ace", DEFAULT_MAX_LEN));
         assert!(!is_valid_nickname("007brice", DEFAULT_MAX_LEN));
-        assert!(!is_valid_nickname("longnicknameverylongohwowthisisalongnickname", DEFAULT_MAX_LEN));
+        assert!(!is_valid_nickname(
+            "longnicknameverylongohwowthisisalongnickname",
+            DEFAULT_MAX_LEN
+        ));
     }
 }

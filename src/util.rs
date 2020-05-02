@@ -2,8 +2,8 @@ use ellidri_unicase::u;
 use rand::SeedableRng as _;
 use rand_chacha::ChaChaRng;
 use regex as re;
-use std::{iter, time};
 use std::cell::RefCell;
+use std::{iter, time};
 
 thread_local! {
     static RNG: RefCell<ChaChaRng> = RefCell::new(ChaChaRng::from_entropy());
@@ -58,7 +58,9 @@ pub fn regexset_add(set: &mut re::RegexSet, mask: &str) {
         let mut s = s.borrow_mut();
         s.clear();
         convert_mask(&mut s, mask);
-        let new_patterns = set.patterns().into_iter()
+        let new_patterns = set
+            .patterns()
+            .into_iter()
             .map(AsRef::as_ref)
             .chain(iter::once(s.as_str()));
         let new_set = build_regexset(re::RegexSetBuilder::new(new_patterns));
@@ -72,7 +74,9 @@ pub fn regexset_remove(set: &mut re::RegexSet, mask: &str) {
         s.clear();
         convert_mask(&mut s, mask);
         let s = u(s.as_str());
-        let new_patterns = set.patterns().into_iter()
+        let new_patterns = set
+            .patterns()
+            .into_iter()
             .map(AsRef::as_ref)
             .filter(|p| u(p) != s);
         let new_set = build_regexset(re::RegexSetBuilder::new(new_patterns));
@@ -122,7 +126,7 @@ pub struct PendingStream;
 
 #[cfg(not(unix))]
 impl PendingStream {
-    pub fn recv(self) -> impl Future<Output=Option<()>> {
+    pub fn recv(self) -> impl Future<Output = Option<()>> {
         futures::future::pending()
     }
 }

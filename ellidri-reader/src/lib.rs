@@ -4,8 +4,8 @@
 //! are read.
 
 use futures::ready;
-use std::{io, marker, mem, pin, task};
 use std::future::Future;
+use std::{io, marker, mem, pin, task};
 use tokio::io::{AsyncBufRead, AsyncRead, BufReader};
 
 const ABUSE_ERR: &str = "Bad client, bad! >:(";
@@ -32,7 +32,10 @@ impl<R: AsyncRead> IrcReader<R> {
     ///
     /// [1]: https://ircv3.net/specs/extensions/message-tags.html
     pub fn new(r: R, message_max: usize) -> Self {
-        Self { inner: BufReader::new(r), message_max }
+        Self {
+            inner: BufReader::new(r),
+            message_max,
+        }
     }
 
     /// Equivalent of tokio's `AsyncBufReadExt::read_line` for IRC messages.
@@ -43,7 +46,8 @@ impl<R: AsyncRead> IrcReader<R> {
     /// async fn read_message(&mut self, buf: &mut String) -> io::Result<usize>
     /// ```
     pub fn read_message<'a>(&'a mut self, buf: &'a mut String) -> ReadMessage<'a, R>
-        where Self: marker::Unpin,
+    where
+        Self: marker::Unpin,
     {
         ReadMessage {
             reader: &mut self.inner,
@@ -81,31 +85,43 @@ impl<R: AsyncRead + marker::Unpin> Future for ReadMessage<'_, R> {
     type Output = io::Result<usize>;
 
     fn poll(mut self: pin::Pin<&mut Self>, cx: &mut task::Context<'_>) -> task::Poll<Self::Output> {
-        let Self { reader, buf, bytes, n } = &mut *self;
+        let Self {
+            reader,
+            buf,
+            bytes,
+            n,
+        } = &mut *self;
         read_message(pin::Pin::new(reader), cx, buf, bytes, n)
     }
 }
 
-fn read_message<R>(reader: pin::Pin<&mut BufReader<R>>, cx: &mut task::Context<'_>,
-                   buf: &mut String, bytes: &mut Vec<u8>, n: &mut ReadInfo)
-                   -> task::Poll<io::Result<usize>>
-    where R: AsyncRead,
+fn read_message<R>(
+    reader: pin::Pin<&mut BufReader<R>>,
+    cx: &mut task::Context<'_>,
+    buf: &mut String,
+    bytes: &mut Vec<u8>,
+    n: &mut ReadInfo,
+) -> task::Poll<io::Result<usize>>
+where
+    R: AsyncRead,
 {
     let ret = ready!(read_line(reader, cx, bytes, n))?;
     if std::str::from_utf8(&bytes).is_err() {
-        task::Poll::Ready(
-            Err(io::Error::new(io::ErrorKind::InvalidData, UTF8_ERR))
-        )
+        task::Poll::Ready(Err(io::Error::new(io::ErrorKind::InvalidData, UTF8_ERR)))
     } else {
         mem::swap(unsafe { buf.as_mut_vec() }, bytes);
         task::Poll::Ready(Ok(ret))
     }
 }
 
-fn read_line<R>(mut reader: pin::Pin<&mut BufReader<R>>, cx: &mut task::Context<'_>,
-                bytes: &mut Vec<u8>, n: &mut ReadInfo)
-                -> task::Poll<io::Result<usize>>
-    where R: AsyncRead,
+fn read_line<R>(
+    mut reader: pin::Pin<&mut BufReader<R>>,
+    cx: &mut task::Context<'_>,
+    bytes: &mut Vec<u8>,
+    n: &mut ReadInfo,
+) -> task::Poll<io::Result<usize>>
+where
+    R: AsyncRead,
 {
     loop {
         if MAX_READ_PER_MESSAGE <= n.count {

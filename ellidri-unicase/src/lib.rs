@@ -32,10 +32,15 @@
 //! ```
 
 #![warn(clippy::all, rust_2018_idioms)]
-#![allow(clippy::filter_map, clippy::find_map, clippy::shadow_unrelated, clippy::use_self)]
+#![allow(
+    clippy::filter_map,
+    clippy::find_map,
+    clippy::shadow_unrelated,
+    clippy::use_self
+)]
 
-use std::fmt;
 use std::borrow::Borrow;
+use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::marker::PhantomData;
 
@@ -105,7 +110,8 @@ impl CaseMapping for Rfc1459 {
 pub struct UniCase<S: ?Sized, C: CaseMapping = Ascii>(PhantomData<C>, S);
 
 impl<S, C> UniCase<S, C>
-    where C: CaseMapping,
+where
+    C: CaseMapping,
 {
     /// Wraps the given value into `UniCase`, and "make it" case-insensitive.
     ///
@@ -122,8 +128,9 @@ impl<S, C> UniCase<S, C>
 }
 
 impl<S, C> UniCase<S, C>
-    where S: ?Sized,
-          C: CaseMapping,
+where
+    S: ?Sized,
+    C: CaseMapping,
 {
     /// Returns a reference to the underlying value.
     pub fn get(&self) -> &S {
@@ -132,7 +139,8 @@ impl<S, C> UniCase<S, C>
 }
 
 impl<'a, C> From<&'a str> for &'a UniCase<str, C>
-    where C: CaseMapping,
+where
+    C: CaseMapping,
 {
     fn from(s: &'a str) -> &'a UniCase<str, C> {
         // Because of #[repr(transparent)],
@@ -150,8 +158,9 @@ pub fn u(s: &str) -> &UniCase<str> {
 }
 
 impl<S, C> AsRef<UniCase<str, C>> for UniCase<S, C>
-    where S: AsRef<str> + ?Sized,
-          C: CaseMapping,
+where
+    S: AsRef<str> + ?Sized,
+    C: CaseMapping,
 {
     fn as_ref(&self) -> &UniCase<str, C> {
         self.1.as_ref().into()
@@ -159,8 +168,9 @@ impl<S, C> AsRef<UniCase<str, C>> for UniCase<S, C>
 }
 
 impl<S, C> Borrow<UniCase<str, C>> for UniCase<S, C>
-    where S: Borrow<str>,
-          C: CaseMapping,
+where
+    S: Borrow<str>,
+    C: CaseMapping,
 {
     fn borrow(&self) -> &UniCase<str, C> {
         self.1.borrow().into()
@@ -168,8 +178,9 @@ impl<S, C> Borrow<UniCase<str, C>> for UniCase<S, C>
 }
 
 impl<S, C> Hash for UniCase<S, C>
-    where S: AsRef<str> + ?Sized,
-          C: CaseMapping,
+where
+    S: AsRef<str> + ?Sized,
+    C: CaseMapping,
 {
     fn hash<H: Hasher>(&self, hasher: &mut H) {
         let bytes = self.1.as_ref().as_bytes();
@@ -180,26 +191,32 @@ impl<S, C> Hash for UniCase<S, C>
 }
 
 impl<S1, S2, C> PartialEq<UniCase<S2, C>> for UniCase<S1, C>
-    where S1: AsRef<str> + ?Sized,
-          S2: AsRef<str> + ?Sized,
-          C: CaseMapping,
+where
+    S1: AsRef<str> + ?Sized,
+    S2: AsRef<str> + ?Sized,
+    C: CaseMapping,
 {
     fn eq(&self, other: &UniCase<S2, C>) -> bool {
         let me = self.1.as_ref().as_bytes();
         let you = other.1.as_ref().as_bytes();
-        me.len() == you.len() && me.iter().zip(you).all(|(&a, &b)| {
-            C::canonical_byte(a) == C::canonical_byte(b)
-        })
+        me.len() == you.len()
+            && me
+                .iter()
+                .zip(you)
+                .all(|(&a, &b)| C::canonical_byte(a) == C::canonical_byte(b))
     }
 }
 
 impl<S, C> Eq for UniCase<S, C>
-    where S: AsRef<str> + ?Sized,
-          C: CaseMapping,
-{}
+where
+    S: AsRef<str> + ?Sized,
+    C: CaseMapping,
+{
+}
 
 impl<S> fmt::Debug for UniCase<S, Ascii>
-    where S: fmt::Debug + ?Sized,
+where
+    S: fmt::Debug + ?Sized,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "UniCase<Ascii>({:?})", &self.1)
@@ -207,7 +224,8 @@ impl<S> fmt::Debug for UniCase<S, Ascii>
 }
 
 impl<S> fmt::Debug for UniCase<S, Rfc1459>
-    where S: fmt::Debug + ?Sized,
+where
+    S: fmt::Debug + ?Sized,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "UniCase<Rfc1459>({:?})", &self.1)
@@ -215,7 +233,8 @@ impl<S> fmt::Debug for UniCase<S, Rfc1459>
 }
 
 impl<S> fmt::Debug for UniCase<S, Rfc1459Strict>
-    where S: fmt::Debug + ?Sized,
+where
+    S: fmt::Debug + ?Sized,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "UniCase<Rfc1459Strict>({:?})", &self.1)

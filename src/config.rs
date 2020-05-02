@@ -30,11 +30,15 @@ impl std::error::Error for Error {
 }
 
 impl From<io::Error> for Error {
-    fn from(val: io::Error) -> Self { Self::Io(val) }
+    fn from(val: io::Error) -> Self {
+        Self::Io(val)
+    }
 }
 
 impl From<serde_yaml::Error> for Error {
-    fn from(val: serde_yaml::Error) -> Self { Self::Format(val) }
+    fn from(val: serde_yaml::Error) -> Self {
+        Self::Format(val)
+    }
 }
 
 impl fmt::Display for Error {
@@ -150,7 +154,7 @@ pub mod db {
     #[derive(Clone, Debug, Deserialize, Serialize)]
     pub struct Info {
         pub driver: Driver,
-        pub url: String
+        pub url: String,
     }
 }
 
@@ -178,7 +182,9 @@ pub struct Config {
     pub database: Option<db::Info>,
 }
 
-fn require_certificates() -> bool { true }
+fn require_certificates() -> bool {
+    true
+}
 
 fn bindings() -> Vec<Binding> {
     vec![Binding {
@@ -187,21 +193,49 @@ fn bindings() -> Vec<Binding> {
     }]
 }
 
-fn sasl_backend() -> SaslBackend { SaslBackend::None }
+fn sasl_backend() -> SaslBackend {
+    SaslBackend::None
+}
 
-fn domain() -> String { String::from("ellidri.localdomain") }
-fn default_chan_mode() -> String { String::from("+nst") }
-fn motd_file() -> String { String::from("/etc/motd") }
-fn org() -> String { String::from("unspecified") }
-fn awaylen() -> usize { 300 }
-fn channellen() -> usize { 50 }
-fn keylen() -> usize { 24 }
-fn kicklen() -> usize { 300 }
-fn namelen() -> usize { 64 }
-fn nicklen() -> usize { 32 }
-fn topiclen() -> usize { 300 }
-fn userlen() -> usize { 64 }
-fn login_timeout() -> u64 { 60_000 }
+fn domain() -> String {
+    String::from("ellidri.localdomain")
+}
+fn default_chan_mode() -> String {
+    String::from("+nst")
+}
+fn motd_file() -> String {
+    String::from("/etc/motd")
+}
+fn org() -> String {
+    String::from("unspecified")
+}
+fn awaylen() -> usize {
+    300
+}
+fn channellen() -> usize {
+    50
+}
+fn keylen() -> usize {
+    24
+}
+fn kicklen() -> usize {
+    300
+}
+fn namelen() -> usize {
+    64
+}
+fn nicklen() -> usize {
+    32
+}
+fn topiclen() -> usize {
+    300
+}
+fn userlen() -> usize {
+    64
+}
+fn login_timeout() -> u64 {
+    60_000
+}
 
 impl State {
     pub fn sample() -> Self {

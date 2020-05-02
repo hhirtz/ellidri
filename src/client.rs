@@ -1,7 +1,7 @@
 //! Client data, connection state and capability logic.
 
 use crate::util;
-use ellidri_tokens::{Buffer, Command, MessageBuffer, mode, TagBuffer};
+use ellidri_tokens::{mode, Buffer, Command, MessageBuffer, TagBuffer};
 use std::cell::RefCell;
 use std::cmp::Ordering;
 use std::fmt::Write;
@@ -10,10 +10,7 @@ use tokio::sync::mpsc;
 
 #[derive(Clone, Debug)]
 pub enum MessageQueueItem {
-    Data {
-        start: usize,
-        buf: Arc<String>,
-    },
+    Data { start: usize, buf: Arc<String> },
     Flush,
 }
 
@@ -27,7 +24,10 @@ impl MessageQueueItem {
 
 impl From<Buffer> for MessageQueueItem {
     fn from(val: Buffer) -> Self {
-        Self::Data { start: 0, buf: Arc::new(val.build()) }
+        Self::Data {
+            start: 0,
+            buf: Arc::new(val.build()),
+        }
     }
 }
 
@@ -80,7 +80,7 @@ impl ConnectionState {
                 User => Ok(ConnectionState::UserGiven),
                 Quit => Ok(ConnectionState::Quit),
                 _ => Err(()),
-            }
+            },
             ConnectionState::NickGiven => match command {
                 Cap if sub_command == "LS" => Ok(ConnectionState::CapNickGiven),
                 Cap if sub_command == "REQ" => Ok(ConnectionState::CapNickGiven),
@@ -88,7 +88,7 @@ impl ConnectionState {
                 User => Ok(ConnectionState::Registered),
                 Quit => Ok(ConnectionState::Quit),
                 _ => Err(()),
-            }
+            },
             ConnectionState::UserGiven => match command {
                 Cap if sub_command == "LS" => Ok(ConnectionState::CapUserGiven),
                 Cap if sub_command == "REQ" => Ok(ConnectionState::CapUserGiven),
@@ -96,7 +96,7 @@ impl ConnectionState {
                 Nick => Ok(ConnectionState::Registered),
                 Quit => Ok(ConnectionState::Quit),
                 _ => Err(()),
-            }
+            },
             ConnectionState::CapGiven => match command {
                 Cap if sub_command == "END" => Ok(ConnectionState::ConnectionEstablished),
                 Authenticate | Cap | Pass | Ping => Ok(self),
@@ -104,32 +104,32 @@ impl ConnectionState {
                 User => Ok(ConnectionState::CapUserGiven),
                 Quit => Ok(ConnectionState::Quit),
                 _ => Err(()),
-            }
+            },
             ConnectionState::CapNickGiven => match command {
                 Cap if sub_command == "END" => Ok(ConnectionState::NickGiven),
                 Authenticate | Cap | Nick | Pass | Ping => Ok(self),
                 User => Ok(ConnectionState::CapNegotiation),
                 Quit => Ok(ConnectionState::Quit),
                 _ => Err(()),
-            }
+            },
             ConnectionState::CapUserGiven => match command {
                 Cap if sub_command == "END" => Ok(ConnectionState::UserGiven),
                 Authenticate | Cap | Pass | Ping => Ok(self),
                 Nick => Ok(ConnectionState::CapNegotiation),
                 Quit => Ok(ConnectionState::Quit),
                 _ => Err(()),
-            }
+            },
             ConnectionState::CapNegotiation => match command {
                 Cap if sub_command == "END" => Ok(ConnectionState::Registered),
                 Authenticate | Cap | Nick | Pass | Ping => Ok(self),
                 Quit => Ok(ConnectionState::Quit),
                 _ => Err(()),
-            }
+            },
             ConnectionState::Registered => match command {
                 Pass | User => Err(()),
                 Quit => Ok(ConnectionState::Quit),
                 _ => Ok(self),
-            }
+            },
             ConnectionState::Quit => Err(()),
         }
     }
@@ -240,7 +240,7 @@ pub const AUTHENTICATE_WHOLE_LEN: usize = 1024;
 
 impl Capabilities {
     //pub fn has_cap_notify(&self) -> bool {
-        //self.v302 || self.cap_notify
+    //self.v302 || self.cap_notify
     //}
 
     pub fn has_labeled_response(&self) -> bool {
@@ -409,8 +409,8 @@ impl Client {
             self.auth_buffer_complete = false;
             self.auth_buffer.clear();
         }
-        if AUTHENTICATE_CHUNK_LEN < buf.len() ||
-            AUTHENTICATE_WHOLE_LEN < self.auth_buffer.len() + buf.len()
+        if AUTHENTICATE_CHUNK_LEN < buf.len()
+            || AUTHENTICATE_WHOLE_LEN < self.auth_buffer.len() + buf.len()
         {
             return Err(());
         }
@@ -513,9 +513,15 @@ impl Client {
     pub fn write_modes(&self, mut out: MessageBuffer<'_>) {
         let modes = out.raw_param();
         modes.push('+');
-        if self.away_message.is_some() { modes.push('a'); }
-        if self.invisible { modes.push('i'); }
-        if self.operator { modes.push('o'); }
+        if self.away_message.is_some() {
+            modes.push('a');
+        }
+        if self.invisible {
+            modes.push('i');
+        }
+        if self.operator {
+            modes.push('o');
+        }
     }
 
     pub fn apply_mode_change(&mut self, change: mode::UserChange) -> bool {
@@ -525,7 +531,7 @@ impl Client {
             Invisible(value) => {
                 applied = self.invisible != value;
                 self.invisible = value;
-            },
+            }
             DeOperator => {
                 applied = self.operator;
                 self.operator = false;
@@ -583,7 +589,8 @@ impl ReplyBuffer {
                 LABEL.with(|s| buf.tagged_message("").tag("label", Some(&s.borrow())))
             } else {
                 buf.tagged_message("")
-            }.prefixed_command(&self.domain, "BATCH");
+            }
+            .prefixed_command(&self.domain, "BATCH");
             let _ = write!(msg.raw_param(), "+{}", new_batch);
             msg.param("labeled-response");
         }
@@ -600,7 +607,11 @@ impl ReplyBuffer {
 
     pub fn end_batch(&mut self) {
         let old_batch = self.batch.unwrap();
-        self.batch = if old_batch == 0 {None} else {Some(old_batch - 1)};
+        self.batch = if old_batch == 0 {
+            None
+        } else {
+            Some(old_batch - 1)
+        };
 
         let mut buf = Buffer::with_capacity(16);
         {
@@ -627,9 +638,12 @@ impl ReplyBuffer {
         }
     }
 
-    pub fn reply(&mut self, command: impl Into<Command>, capacity: usize,
-                 map: impl FnOnce(MessageBuffer<'_>))
-    {
+    pub fn reply(
+        &mut self,
+        command: impl Into<Command>,
+        capacity: usize,
+        map: impl FnOnce(MessageBuffer<'_>),
+    ) {
         NICK.with(|s| {
             let nick = &s.borrow();
             self.prefixed_message(command, capacity + 1 + nick.len(), |msg| {
@@ -638,24 +652,55 @@ impl ReplyBuffer {
         });
     }
 
-    pub fn prefixed_message(&mut self, command: impl Into<Command>, capacity: usize,
-                            map: impl FnOnce(MessageBuffer<'_>))
-    {
-        send_message(&self.queue, &mut self.label_len, self.batch, &self.domain, command,
-                     capacity, map);
+    pub fn prefixed_message(
+        &mut self,
+        command: impl Into<Command>,
+        capacity: usize,
+        map: impl FnOnce(MessageBuffer<'_>),
+    ) {
+        send_message(
+            &self.queue,
+            &mut self.label_len,
+            self.batch,
+            &self.domain,
+            command,
+            capacity,
+            map,
+        );
     }
 
-    pub fn message(&mut self, prefix: &str, command: impl Into<Command>, capacity: usize,
-                   map: impl FnOnce(MessageBuffer<'_>))
-    {
-        send_message(&self.queue, &mut self.label_len, self.batch, prefix, command, capacity, map);
+    pub fn message(
+        &mut self,
+        prefix: &str,
+        command: impl Into<Command>,
+        capacity: usize,
+        map: impl FnOnce(MessageBuffer<'_>),
+    ) {
+        send_message(
+            &self.queue,
+            &mut self.label_len,
+            self.batch,
+            prefix,
+            command,
+            capacity,
+            map,
+        );
     }
 
-    pub fn tagged_message(&mut self, client_tags: &str, capacity: usize,
-                          map: impl FnOnce(TagBuffer<'_>))
-    {
-        send_tagged_message(&self.queue, &mut self.label_len, self.batch, client_tags,
-                            capacity, map);
+    pub fn tagged_message(
+        &mut self,
+        client_tags: &str,
+        capacity: usize,
+        map: impl FnOnce(TagBuffer<'_>),
+    ) {
+        send_tagged_message(
+            &self.queue,
+            &mut self.label_len,
+            self.batch,
+            client_tags,
+            capacity,
+            map,
+        );
     }
 
     pub fn send_auth_buffer(&mut self, buf: &[u8]) {
@@ -700,10 +745,15 @@ impl Drop for ReplyBuffer {
     }
 }
 
-fn send_message(queue: &MessageQueue, label_len: &mut usize, batch: Option<u8>, prefix: &str,
-                command: impl Into<Command>, mut capacity: usize,
-                map: impl FnOnce(MessageBuffer<'_>))
-{
+fn send_message(
+    queue: &MessageQueue,
+    label_len: &mut usize,
+    batch: Option<u8>,
+    prefix: &str,
+    command: impl Into<Command>,
+    mut capacity: usize,
+    map: impl FnOnce(MessageBuffer<'_>),
+) {
     let command = command.into();
     capacity += command.as_str().len();
     if !prefix.is_empty() {
@@ -714,9 +764,14 @@ fn send_message(queue: &MessageQueue, label_len: &mut usize, batch: Option<u8>, 
     })
 }
 
-fn send_tagged_message(queue: &MessageQueue, label_len: &mut usize, batch: Option<u8>,
-                       client_tags: &str, capacity: usize, map: impl FnOnce(TagBuffer<'_>))
-{
+fn send_tagged_message(
+    queue: &MessageQueue,
+    label_len: &mut usize,
+    batch: Option<u8>,
+    client_tags: &str,
+    capacity: usize,
+    map: impl FnOnce(TagBuffer<'_>),
+) {
     let capacity = capacity + *label_len + 2;
     let mut buf = Buffer::with_capacity(capacity);
     {
@@ -733,12 +788,20 @@ fn send_tagged_message(queue: &MessageQueue, label_len: &mut usize, batch: Optio
             let len = buf.len();
             match len.cmp(&capacity) {
                 Ordering::Greater => {
-                    log::debug!("Reallocated message (from cap {} to len {}):\n{:?}",
-                                capacity, len, buf.get());
+                    log::debug!(
+                        "Reallocated message (from cap {} to len {}):\n{:?}",
+                        capacity,
+                        len,
+                        buf.get()
+                    );
                 }
                 Ordering::Less => {
-                    log::debug!("Unused buffer capacity ({}, used {}):\n{:?}",
-                                capacity, len, buf.get());
+                    log::debug!(
+                        "Unused buffer capacity ({}, used {}):\n{:?}",
+                        capacity,
+                        len,
+                        buf.get()
+                    );
                 }
                 Ordering::Equal => {}
             }
@@ -759,35 +822,46 @@ mod tests {
 
         let def = ConnectionState::default();
 
-        let normal = def
-            .apply(Nick, "").unwrap()
-            .apply(User, "").unwrap();
+        let normal = def.apply(Nick, "").unwrap().apply(User, "").unwrap();
         assert_eq!(normal, ConnectionState::Registered);
 
         let with_password = def
-            .apply(Pass, "").unwrap()
-            .apply(Nick, "").unwrap()
-            .apply(User, "").unwrap();
+            .apply(Pass, "")
+            .unwrap()
+            .apply(Nick, "")
+            .unwrap()
+            .apply(User, "")
+            .unwrap();
         assert_eq!(with_password, ConnectionState::Registered);
 
         let choosing_caps = def
-            .apply(Cap, "LS").unwrap()
-            .apply(Nick, "").unwrap()
-            .apply(User, "").unwrap();
+            .apply(Cap, "LS")
+            .unwrap()
+            .apply(Nick, "")
+            .unwrap()
+            .apply(User, "")
+            .unwrap();
         assert_eq!(choosing_caps, ConnectionState::CapNegotiation);
 
         let requested_caps = def
-            .apply(Nick, "").unwrap()
-            .apply(Cap, "REQ").unwrap()
-            .apply(User, "").unwrap()
-            .apply(Cap, "END").unwrap();
+            .apply(Nick, "")
+            .unwrap()
+            .apply(Cap, "REQ")
+            .unwrap()
+            .apply(User, "")
+            .unwrap()
+            .apply(Cap, "END")
+            .unwrap();
         assert_eq!(requested_caps, ConnectionState::Registered);
 
         let spurious_commands = def
-            .apply(Nick, "").unwrap()
-            .apply(Cap, "LIST").unwrap()
-            .apply(Quit, "").unwrap()
+            .apply(Nick, "")
+            .unwrap()
+            .apply(Cap, "LIST")
+            .unwrap()
+            .apply(Quit, "")
+            .unwrap()
             .apply(Nick, "");
         assert_eq!(spurious_commands, Err(()));
     }
-}  // mod tests
+} // mod tests

@@ -72,15 +72,21 @@ pub trait Provider: Send + Sync {
     ///
     /// If the client is not authenticated yet, the next challenge to be sent to the client is
     /// appended to `next`.
-    fn next_challenge(&self, auth: usize, response: &[u8], next: &mut Vec<u8>)
-        -> Result<Option<String>, Error>;
+    fn next_challenge(
+        &self,
+        auth: usize,
+        response: &[u8],
+        next: &mut Vec<u8>,
+    ) -> Result<Option<String>, Error>;
 }
 
 /// A provider that doesn't do anything.
 pub struct DummyProvider;
 
 impl Provider for DummyProvider {
-    fn is_available(&self) -> bool { false }
+    fn is_available(&self) -> bool {
+        false
+    }
     fn write_mechanisms(&self, _: &mut String) {}
     fn start_auth(&self, _: &str, _: &mut Vec<u8>) -> Result<usize, Error> {
         Err(Error::ProviderUnavailable)
@@ -108,15 +114,18 @@ impl Plain for r2d2::Pool<r2d2_sqlite::SqliteConnectionManager> {
 
 #[cfg(feature = "postgres")]
 impl<T> Plain for r2d2::Pool<r2d2_postgres::PostgresConnectionManager<T>>
-    where T: tokio_postgres::tls::MakeTlsConnect<tokio_postgres::Socket> + Clone + Sync + Send + 'static,
-          T::TlsConnect: Send,
-          T::Stream: Send,
-          <T::TlsConnect as tokio_postgres::tls::TlsConnect<tokio_postgres::Socket>>::Future: Send,
+where
+    T: tokio_postgres::tls::MakeTlsConnect<tokio_postgres::Socket> + Clone + Sync + Send + 'static,
+    T::TlsConnect: Send,
+    T::Stream: Send,
+    <T::TlsConnect as tokio_postgres::tls::TlsConnect<tokio_postgres::Socket>>::Future: Send,
 {
     fn plain(&self, user: &str, pass: &str) -> Result<(), Error> {
         let mut conn = self.get()?;
-        conn.query_one("SELECT username FROM users WHERE username = ? AND password = ?",
-                       &[&user, &pass])?;
+        conn.query_one(
+            "SELECT username FROM users WHERE username = ? AND password = ?",
+            &[&user, &pass],
+        )?;
         Ok(())
     }
 }
@@ -129,7 +138,8 @@ pub struct DbProvider<M: r2d2::ManageConnection> {
 
 #[cfg(any(feature = "postgres", feature = "sqlite"))]
 impl<M> DbProvider<M>
-    where M: r2d2::ManageConnection
+where
+    M: r2d2::ManageConnection,
 {
     fn try_from(val: M) -> Result<Self, r2d2::Error> {
         let pool = r2d2::Pool::new(val)?;
@@ -139,23 +149,26 @@ impl<M> DbProvider<M>
 
 #[cfg(any(feature = "postgres", feature = "sqlite"))]
 impl<M> Provider for DbProvider<M>
-    where M: r2d2::ManageConnection,
-          r2d2::Pool<M>: Plain,
+where
+    M: r2d2::ManageConnection,
+    r2d2::Pool<M>: Plain,
 {
     fn is_available(&self) -> bool {
         self.pool.get().is_ok()
     }
 
-    fn write_mechanisms(&self, _buf: &mut String) {
-    }
+    fn write_mechanisms(&self, _buf: &mut String) {}
 
     fn start_auth(&self, _mechanism: &str, _: &mut Vec<u8>) -> Result<usize, Error> {
         Err(Error::UnsupportedMechanism)
     }
 
-    fn next_challenge(&self, _: usize, response: &[u8], _: &mut Vec<u8>)
-        -> Result<Option<String>, Error>
-    {
+    fn next_challenge(
+        &self,
+        _: usize,
+        response: &[u8],
+        _: &mut Vec<u8>,
+    ) -> Result<Option<String>, Error> {
         let mut split = response.split(|b| *b == 0);
         let _ = split.next().ok_or(Error::BadFormat)?;
         let user = split.next().ok_or(Error::BadFormat)?;
@@ -179,10 +192,12 @@ fn choose_db_provider(db_cfg: db::Info) -> Result<Box<dyn Provider>, Box<dyn std
             let provider = DbProvider::try_from(manager)?;
 
             let conn = provider.pool.get()?;
-            conn.query_row("SELECT name FROM SQLITE_MASTER WHERE name = 'users'",
-                           rusqlite::NO_PARAMS,
-                           |_row| Ok(()))
-                .map_err(|_| "table \"users\" is missing")?;
+            conn.query_row(
+                "SELECT name FROM SQLITE_MASTER WHERE name = 'users'",
+                rusqlite::NO_PARAMS,
+                |_row| Ok(()),
+            )
+            .map_err(|_| "table \"users\" is missing")?;
 
             Ok(Box::new(provider))
         }
@@ -202,9 +217,10 @@ fn choose_db_provider(db_cfg: db::Info) -> Result<Box<dyn Provider>, Box<dyn std
 }
 
 /// Returns the first available provider given the `backend` type and the database URL `db_cfg`.
-pub fn choose_provider(backend: SaslBackend, db_cfg: Option<db::Info>)
-    -> Result<Box<dyn Provider>, Box<dyn std::error::Error>>
-{
+pub fn choose_provider(
+    backend: SaslBackend,
+    db_cfg: Option<db::Info>,
+) -> Result<Box<dyn Provider>, Box<dyn std::error::Error>> {
     match backend {
         SaslBackend::None => Ok(Box::new(DummyProvider)),
         SaslBackend::Database => choose_db_provider(db_cfg.unwrap()),

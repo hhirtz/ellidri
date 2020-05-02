@@ -42,10 +42,10 @@
 
 use crate::{auth, config, net, State};
 use futures::FutureExt;
-use std::{fs, process};
 use std::future::Future;
 use std::net::SocketAddr;
 use std::sync::Arc;
+use std::{fs, process};
 use tokio::runtime as rt;
 use tokio::signal::unix;
 use tokio::sync::{mpsc, Notify};
@@ -102,9 +102,13 @@ fn load_config(config_path: &str) -> config::Result<(config::Config, Box<dyn aut
     })?;
 
     let sasl_backend = cfg.sasl_backend;
-    let auth_provider = auth::choose_provider(sasl_backend, cfg.database.clone())
-        .unwrap_or_else(|err| {
-            log::warn!("Failed to initialize the {} SASL backend: {}", sasl_backend, err);
+    let auth_provider =
+        auth::choose_provider(sasl_backend, cfg.database.clone()).unwrap_or_else(|err| {
+            log::warn!(
+                "Failed to initialize the {} SASL backend: {}",
+                sasl_backend,
+                err
+            );
             Box::new(auth::DummyProvider)
         });
 
@@ -137,21 +141,32 @@ fn create_runtime(workers: usize) -> rt::Runtime {
 ///
 /// It spawns all the generated bindings on the runtime, and returns their listening address and
 /// command channel.
-fn load_bindings(bindings: Vec<config::Binding>, shared: &State, stop: &mpsc::Sender<SocketAddr>,
-                 runtime: &mut rt::Runtime) -> Vec<(SocketAddr, mpsc::Sender<Command>)>
-{
+fn load_bindings(
+    bindings: Vec<config::Binding>,
+    shared: &State,
+    stop: &mpsc::Sender<SocketAddr>,
+    runtime: &mut rt::Runtime,
+) -> Vec<(SocketAddr, mpsc::Sender<Command>)> {
     let mut res = Vec::with_capacity(bindings.len());
     let mut store = net::TlsIdentityStore::default();
 
     for config::Binding { address, tls } in bindings {
         let (handle, commands) = mpsc::channel(8);
-        if let Some(config::Tls { certificate, key, .. }) = tls {
+        if let Some(config::Tls {
+            certificate, key, ..
+        }) = tls
+        {
             let acceptor = match store.acceptor(certificate, key) {
                 Ok(acceptor) => acceptor,
                 Err(_) => process::exit(1),
             };
-            let server = net::listen(address, shared.clone(), Some(acceptor),
-                                     stop.clone(), commands);
+            let server = net::listen(
+                address,
+                shared.clone(),
+                Some(acceptor),
+                stop.clone(),
+                commands,
+            );
             res.push((address, handle));
             runtime.spawn(server);
         } else {
@@ -227,7 +242,7 @@ impl Control {
             ws: cfg.ws_endpoint.map(WsBinding::new),
             #[cfg(not(feature = "websocket"))]
             ws: None,
-            bindings
+            bindings,
         };
         (runtime, control)
     }
@@ -239,7 +254,10 @@ impl Control {
     pub async fn run(self) {
         #[cfg(unix)]
         let mut signals = unix::signal(unix::SignalKind::user_defined1()).unwrap_or_else(|err| {
-            log::error!("Cannot listen for signals to reload the configuration: {}", err);
+            log::error!(
+                "Cannot listen for signals to reload the configuration: {}",
+                err
+            );
             process::exit(1);
         });
 
@@ -253,7 +271,7 @@ impl Control {
             mut failures,
             rehash,
             mut ws,
-            mut bindings
+            mut bindings,
         } = self;
 
         #[cfg(feature = "websocket")]
@@ -296,21 +314,17 @@ fn spawn_ws(ws: &WsBinding, shared: State) {
         .and(warp::addr::remote())
         .and(shared)
         .map(|ws: warp::ws::Ws, peer_addr: Option<SocketAddr>, shared| {
-            ws
-                .max_message_size(4096 + 512)
-                .on_upgrade(move |socket| {
-                    net::handle_ws(socket, peer_addr.unwrap(), shared)
-                })
+            ws.max_message_size(4096 + 512)
+                .on_upgrade(move |socket| net::handle_ws(socket, peer_addr.unwrap(), shared))
         });
 
     let ws_stop = ws.stop.clone();
     let addr = ws.addr;
-    let (_, server) = warp::serve(server)
-        .bind_with_graceful_shutdown(addr, async move {
-            log::info!("Binding {} online, accepting WebSocket connections", addr);
-            ws_stop.notified().await;
-            log::info!("Binding {} now offline", addr);
-        });
+    let (_, server) = warp::serve(server).bind_with_graceful_shutdown(addr, async move {
+        log::info!("Binding {} online, accepting WebSocket connections", addr);
+        ws_stop.notified().await;
+        log::info!("Binding {} now offline", addr);
+    });
     tokio::spawn(server);
 }
 
@@ -322,14 +336,15 @@ fn spawn_ws(ws: &WsBinding, shared: State) {
 /// - Remove old bindings that are not used anymore,
 /// - Add new bindings, or send them a command to listen for raw TCP or TLS connections,
 /// - Update the shared state.
-async fn do_rehash(config_path: &str, shared: &State, stop: &mpsc::Sender<SocketAddr>,
-                   bindings: &mut Vec<(SocketAddr, mpsc::Sender<Command>)>,
-                   ws: &mut Option<WsBinding>)
-{
+async fn do_rehash(
+    config_path: &str,
+    shared: &State,
+    stop: &mpsc::Sender<SocketAddr>,
+    bindings: &mut Vec<(SocketAddr, mpsc::Sender<Command>)>,
+    ws: &mut Option<WsBinding>,
+) {
     log::info!("Reloading configuration from {:?}", config_path);
-    let reloaded = task::block_in_place(|| {
-        reload_config(config_path, shared, stop)
-    });
+    let reloaded = task::block_in_place(|| reload_config(config_path, shared, stop));
     let (cfg, auth_provider, new_bindings) = match reloaded {
         Some(reloaded) => reloaded,
         None => return,
@@ -338,7 +353,10 @@ async fn do_rehash(config_path: &str, shared: &State, stop: &mpsc::Sender<Socket
     let mut i = 0;
     while i < bindings.len() {
         let old_address = bindings[i].0;
-        if new_bindings.iter().all(|new_b| old_address != new_b.address) {
+        if new_bindings
+            .iter()
+            .all(|new_b| old_address != new_b.address)
+        {
             bindings.swap_remove(i);
         } else {
             i += 1;
@@ -347,10 +365,13 @@ async fn do_rehash(config_path: &str, shared: &State, stop: &mpsc::Sender<Socket
 
     for new_b in new_bindings {
         if let Some(i) = bindings.iter().position(|old_b| old_b.0 == new_b.address) {
-            let res = bindings[i].1.send(match new_b.acceptor {
-                Some(acceptor) => Command::UseTls(acceptor),
-                None => Command::UsePlain,
-            }).await;
+            let res = bindings[i]
+                .1
+                .send(match new_b.acceptor {
+                    Some(acceptor) => Command::UseTls(acceptor),
+                    None => Command::UsePlain,
+                })
+                .await;
             if res.is_err() {
                 // Failure to send the command means either the binding task have dropped the
                 // command channel, or the binding task doesn't exist anymore.  Both possibilities
@@ -369,8 +390,10 @@ async fn do_rehash(config_path: &str, shared: &State, stop: &mpsc::Sender<Socket
 
     #[cfg(feature = "websocket")]
     match cfg.ws_endpoint {
-        Some(ws_endpoint) => if ws.as_ref().map_or(true, |ws| ws.addr != ws_endpoint) {
-            *ws = Some(WsBinding::new(ws_endpoint));
+        Some(ws_endpoint) => {
+            if ws.as_ref().map_or(true, |ws| ws.addr != ws_endpoint) {
+                *ws = Some(WsBinding::new(ws_endpoint));
+            }
         }
         None => {
             if let Some(ws) = &ws {
@@ -392,9 +415,15 @@ async fn do_rehash(config_path: &str, shared: &State, stop: &mpsc::Sender<Socket
 /// This function will put the contents of the MOTD file into `Config.motd_file`, so that the
 /// shared state can use the field as-is, since it must not use blocking operations such as reading
 /// a file.
-fn reload_config(config_path: &str, shared: &State, stop: &mpsc::Sender<SocketAddr>)
-    -> Option<(config::Config, Box<dyn auth::Provider>, Vec<LoadedBinding<impl Future<Output=()>>>)>
-{
+fn reload_config(
+    config_path: &str,
+    shared: &State,
+    stop: &mpsc::Sender<SocketAddr>,
+) -> Option<(
+    config::Config,
+    Box<dyn auth::Provider>,
+    Vec<LoadedBinding<impl Future<Output = ()>>>,
+)> {
     let (mut cfg, auth_provider) = match load_config(config_path) {
         Ok((c, a)) => (c, a),
         Err(_) => return None,
@@ -417,21 +446,31 @@ fn reload_config(config_path: &str, shared: &State, stop: &mpsc::Sender<SocketAd
 /// be generated are not returned.
 ///
 /// Otherwise both functions have the same behavior.
-fn reload_bindings(bindings: &[config::Binding], shared: &State, stop: &mpsc::Sender<SocketAddr>)
-                   -> Vec<LoadedBinding<impl Future<Output=()>>>
-{
+fn reload_bindings(
+    bindings: &[config::Binding],
+    shared: &State,
+    stop: &mpsc::Sender<SocketAddr>,
+) -> Vec<LoadedBinding<impl Future<Output = ()>>> {
     let mut res = Vec::with_capacity(bindings.len());
     let mut store = net::TlsIdentityStore::default();
 
     for config::Binding { address, tls } in bindings {
         let (handle, commands) = mpsc::channel(8);
-        if let Some(config::Tls { certificate, key, .. }) = tls {
+        if let Some(config::Tls {
+            certificate, key, ..
+        }) = tls
+        {
             let acceptor = match store.acceptor(certificate, key) {
                 Ok(acceptor) => acceptor,
                 Err(_) => continue,
             };
-            let future = net::listen(*address, shared.clone(), Some(acceptor.clone()),
-                                     stop.clone(), commands);
+            let future = net::listen(
+                *address,
+                shared.clone(),
+                Some(acceptor.clone()),
+                stop.clone(),
+                commands,
+            );
             res.push(LoadedBinding {
                 address: *address,
                 acceptor: Some(acceptor),

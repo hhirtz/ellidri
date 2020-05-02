@@ -1,6 +1,6 @@
 use crate::{Command, MESSAGE_LENGTH};
-use std::fmt;
 use std::cell::RefCell;
+use std::fmt;
 
 /// Helper to build an IRC message.
 ///
@@ -197,10 +197,7 @@ impl<'a> TagBuffer<'a> {
         buf.reserve(MESSAGE_LENGTH);
         let tag_start = buf.len();
         buf.push('@');
-        TagBuffer {
-            buf,
-            tag_start,
-        }
+        TagBuffer { buf, tag_start }
     }
 
     /// Whether the buffer has tags in it or not.
@@ -299,7 +296,9 @@ impl Buffer {
     }
 
     pub fn with_capacity(capacity: usize) -> Self {
-        Self { buf: String::with_capacity(capacity) }
+        Self {
+            buf: String::with_capacity(capacity),
+        }
     }
 
     /// Whether the buffer is empty.
@@ -369,7 +368,8 @@ impl Buffer {
     ///
     /// TODO example
     pub fn tagged_message(&mut self, client_tags: &str) -> TagBuffer<'_> {
-        client_tags.split(';')
+        client_tags
+            .split(';')
             .filter(|s| s.starts_with('+') && !s.starts_with("+="))
             .fold(TagBuffer::new(&mut self.buf), |buf, tag| buf.raw_tag(tag))
     }
