@@ -1,6 +1,7 @@
-//! Handlers for the RFC 2812 client-to-server interface.
+//! Handlers for the client-to-server interface defined in the RFCs.
 //!
 //! <https://tools.ietf.org/html/rfc2812.html>
+//! <https://modern.ircdocs.horse/>
 
 use crate::channel::{Channel, MemberModes, Topic};
 use crate::client::{Client, MessageQueueItem, ReplyBuffer};

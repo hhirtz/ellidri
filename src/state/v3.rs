@@ -1,4 +1,6 @@
-//! Handlers for messages defined in IRCv3 extensions.
+//! Handlers for the client-to-server interface defined by IRCv3.
+//!
+//! <https://ircv3.net/irc/>
 
 use crate::{auth, lines};
 use crate::client::cap;

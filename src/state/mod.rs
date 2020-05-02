@@ -1,11 +1,4 @@
 //! Shared state and API to handle incoming commands.
-//!
-//! This module is split in several files:
-//!
-//! - `mod.rs`: public API of the server state and send utilities
-//! - `rfc2812.rs`: handlers for messages defined in the RFC 2812
-//! - `ircv3.rs`: handlers for messages defined in IRCv3 extensions
-//! - `test.rs`: testing utilities
 
 #![allow(clippy::needless_pass_by_value)]
 
@@ -21,10 +14,8 @@ use std::fmt::Write as _;
 use std::sync::Arc;
 use tokio::sync::{Mutex, Notify};
 
-mod ircv3;
-mod rfc2812;
-#[cfg(test)]
-mod test;
+mod v1;
+mod v3;
 
 const SERVER_VERSION: &str = concat!(env!("CARGO_PKG_NAME"), "-", env!("CARGO_PKG_VERSION"));
 
