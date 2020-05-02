@@ -6,7 +6,7 @@ macro_rules! commands {
         ///
         /// Unknown commands and replies are supported by `Message` directly, this enum just
         /// contains the supported commands.
-        #[derive(Clone, Copy, Debug, PartialEq)]
+        #[derive(Clone, Copy, Debug, PartialEq, Eq)]
         pub enum Command {
             $( $cmd, )*
             Reply(&'static str),
@@ -111,7 +111,7 @@ commands! {
     Kick     "KICK"     2
     Kill     "KILL"     2
     List     "LIST"     0
-    Lusers   "LUSERS"   0
+    LUsers   "LUSERS"   0
     Mode     "MODE"     1
     Motd     "MOTD"     0
     Names    "NAMES"    0
@@ -132,5 +132,5 @@ commands! {
     User     "USER"     4
     Version  "VERSION"  0
     Who      "WHO"      0
-    Whois    "WHOIS"    1
+    WhoIs    "WHOIS"    1
 }

@@ -40,7 +40,7 @@
 //! not kept track of, thus ellidri might reload the same TLS identity for a binding (it is fine to
 //! let it do we are not reading thousands for TLS identities here).
 
-use crate::{auth, config, net, State};
+use crate::{config, Database, net, State};
 use futures::FutureExt;
 use std::future::Future;
 use std::net::SocketAddr;
@@ -74,45 +74,6 @@ struct LoadedBinding<F> {
 
     /// The actual task, ready to be polled.
     future: F,
-}
-
-/// A WebSocket binding.
-struct WsBinding {
-    /// The local address.
-    pub addr: SocketAddr,
-
-    /// A channel to stop the binding.
-    pub stop: Arc<Notify>,
-}
-
-impl WsBinding {
-    pub fn new(addr: SocketAddr) -> Self {
-        Self {
-            addr,
-            stop: Arc::new(Notify::new()),
-        }
-    }
-}
-
-/// Reads the configuration file and initialize the relevant authentication provider.
-fn load_config(config_path: &str) -> config::Result<(config::Config, Box<dyn auth::Provider>)> {
-    let cfg = config::Config::from_file(config_path).map_err(|err| {
-        log::error!("Failed to read {:?}: {}", config_path, err);
-        err
-    })?;
-
-    let sasl_backend = cfg.sasl_backend;
-    let auth_provider =
-        auth::choose_provider(sasl_backend, cfg.database.clone()).unwrap_or_else(|err| {
-            log::warn!(
-                "Failed to initialize the {} SASL backend: {}",
-                sasl_backend,
-                err
-            );
-            Box::new(auth::DummyProvider)
-        });
-
-    Ok((cfg, auth_provider))
 }
 
 /// Creates a tokio runtime with the given number of worker threads.
@@ -203,11 +164,6 @@ pub struct Control {
     /// It is shared with `Control.shared`, which pings on this channel when REHASH is received.
     rehash: Arc<Notify>,
 
-    /// The WebSocket binding.
-    ///
-    /// TLS support must be provided by a reverse proxy.
-    ws: Option<WsBinding>,
-
     /// The list of socket addresses (IP address + TCP port) of the running binding tasks.
     ///
     /// `Control` keeps track of this in several ways:
@@ -224,24 +180,39 @@ pub struct Control {
 
 impl Control {
     /// Generates, from the given configuration file path, a new `Control` and a new tokio runtime.
-    pub fn new(config_path: impl Into<String>) -> (rt::Runtime, Self) {
-        let config_path = config_path.into();
+    pub fn new(config_path: String) -> (rt::Runtime, Self) {
         let (stop, failures) = mpsc::channel(8);
         let rehash = Arc::new(Notify::new());
-        let (cfg, auth_provider) = load_config(&config_path).unwrap_or_else(|_| process::exit(1));
+
+        let cfg = config::Config::from_file(&config_path).unwrap_or_else(|err| {
+            log::error!("Failed to read {:?}: {}", config_path, err);
+            process::exit(1);
+        });
+
         let mut runtime = create_runtime(cfg.workers);
-        let shared = State::new(cfg.state, auth_provider, rehash.clone());
+
+        let db = if let Some(db_cfg) = cfg.database.clone() {
+            match runtime.block_on(Database::new(db_cfg)) {
+                Ok(db) => Some(db),
+                Err(err) => {
+                    log::warn!("Failed to initialize the database: {}", err);
+                    None
+                }
+            }
+        } else {
+            None
+        };
+
+        let shared = runtime.block_on(State::new(cfg.state, db, rehash.clone()));
+
         let bindings = load_bindings(cfg.bindings, &shared, &stop, &mut runtime);
+
         let control = Self {
             config_path,
             shared,
             stop,
             failures,
             rehash,
-            #[cfg(feature = "websocket")]
-            ws: cfg.ws_endpoint.map(WsBinding::new),
-            #[cfg(not(feature = "websocket"))]
-            ws: None,
             bindings,
         };
         (runtime, control)
@@ -270,12 +241,8 @@ impl Control {
             stop,
             mut failures,
             rehash,
-            mut ws,
             mut bindings,
         } = self;
-
-        #[cfg(feature = "websocket")]
-        ws.as_ref().map(|ws| spawn_ws(ws, shared.clone()));
 
         loop {
             futures::select! {
@@ -294,38 +261,14 @@ impl Control {
                     }
                 },
                 _ = rehash.notified().fuse() => {
-                    do_rehash(&config_path, &shared, &stop, &mut bindings, &mut ws).await;
+                    do_rehash(&config_path, &shared, &stop, &mut bindings).await;
                 },
                 _ = signals.recv().fuse() => {
-                    do_rehash(&config_path, &shared, &stop, &mut bindings, &mut ws).await;
+                    do_rehash(&config_path, &shared, &stop, &mut bindings).await;
                 },
             }
         }
     }
-}
-
-#[cfg(feature = "websocket")]
-fn spawn_ws(ws: &WsBinding, shared: State) {
-    use warp::Filter;
-
-    let shared = warp::any().map(move || shared.clone());
-    let server = warp::path::end()
-        .and(warp::ws())
-        .and(warp::addr::remote())
-        .and(shared)
-        .map(|ws: warp::ws::Ws, peer_addr: Option<SocketAddr>, shared| {
-            ws.max_message_size(4096 + 512)
-                .on_upgrade(move |socket| net::handle_ws(socket, peer_addr.unwrap(), shared))
-        });
-
-    let ws_stop = ws.stop.clone();
-    let addr = ws.addr;
-    let (_, server) = warp::serve(server).bind_with_graceful_shutdown(addr, async move {
-        log::info!("Binding {} online, accepting WebSocket connections", addr);
-        ws_stop.notified().await;
-        log::info!("Binding {} now offline", addr);
-    });
-    tokio::spawn(server);
 }
 
 /// Reloads the configuration at `config_path`.
@@ -341,11 +284,10 @@ async fn do_rehash(
     shared: &State,
     stop: &mpsc::Sender<SocketAddr>,
     bindings: &mut Vec<(SocketAddr, mpsc::Sender<Command>)>,
-    ws: &mut Option<WsBinding>,
 ) {
     log::info!("Reloading configuration from {:?}", config_path);
     let reloaded = task::block_in_place(|| reload_config(config_path, shared, stop));
-    let (cfg, auth_provider, new_bindings) = match reloaded {
+    let (cfg, new_bindings) = match reloaded {
         Some(reloaded) => reloaded,
         None => return,
     };
@@ -388,22 +330,7 @@ async fn do_rehash(
         }
     }
 
-    #[cfg(feature = "websocket")]
-    match cfg.ws_endpoint {
-        Some(ws_endpoint) => {
-            if ws.as_ref().map_or(true, |ws| ws.addr != ws_endpoint) {
-                *ws = Some(WsBinding::new(ws_endpoint));
-            }
-        }
-        None => {
-            if let Some(ws) = &ws {
-                ws.stop.notify();
-            }
-            *ws = None;
-        }
-    }
-
-    shared.rehash(cfg.state, auth_provider).await;
+    shared.rehash(cfg.state).await;
 
     log::info!("Configuration reloaded");
 }
@@ -419,14 +346,13 @@ fn reload_config(
     config_path: &str,
     shared: &State,
     stop: &mpsc::Sender<SocketAddr>,
-) -> Option<(
-    config::Config,
-    Box<dyn auth::Provider>,
-    Vec<LoadedBinding<impl Future<Output = ()>>>,
-)> {
-    let (mut cfg, auth_provider) = match load_config(config_path) {
-        Ok((c, a)) => (c, a),
-        Err(_) => return None,
+) -> Option<(config::Config, Vec<LoadedBinding<impl Future<Output = ()>>>)> {
+    let mut cfg = match config::Config::from_file(config_path) {
+        Ok(cfg) => cfg,
+        Err(err) => {
+            log::error!("Failed to read {:?}: {}", config_path, err);
+            return None;
+        }
     };
     cfg.state.motd_file = match fs::read_to_string(&cfg.state.motd_file) {
         Ok(motd) => motd,
@@ -436,7 +362,7 @@ fn reload_config(
         }
     };
     let new_bindings = reload_bindings(&cfg.bindings, shared, stop);
-    Some((cfg, auth_provider, new_bindings))
+    Some((cfg, new_bindings))
 }
 
 /// Equivalent of `load_bindings` for when exiting the program is not acceptable.

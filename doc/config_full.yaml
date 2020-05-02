@@ -50,22 +50,8 @@ bindings:
       certificate: /etc/ellidri.d/fullchain.pem
       key: /etc/ellidri.d/privkey.pem
 
-      # Should clients also provide a certificate? (defaults to true)
+      # Should clients also provide a certificate?
       require_certificate: false
-
-
-# WebSocket endpoint
-#
-# To use this, ellidri must have been built with websocket support.
-#
-# Address and port on which ellidri should listen for WebSocket connections.
-# For now no TLS certificate can be set and administrators are expected to proxy
-# WebSocket traffic through a reverse-proxy with TLS enabled.
-#
-# By default, ellidri does not activate the WebSocket endpoint.
-#
-# Example:
-ws_endpoint: 127.0.0.1:6666
 
 
 # Informations about the organization running the IRC server
@@ -113,45 +99,59 @@ opers:
 # Server password
 #
 # This password will be needed for clients to be able to log on the server.
-# ellidri will expect them to send it in a PASS command.
+# ellidri will expect them to send it in a PASS command.  By default no password
+# will be asked.
 #
 # For example:
 password: My password can't be this cute!
 
 
-# SASL support
+# Database URL
 #
-# ellidri supports several backends for SASL, each of them implement several
-# SASL methods.  The list of backend is the following:
+# Specify the URL to the database ellidri should use for SASL.  If unset,
+# ellidri will disable SASL.  While ellidri tries its best at all times to serve
+# its users, it cannot reload the database once started.  Please bear with it!
 #
-# - `none` (default): disable SASL
-# - `database`: SQL database backend.  Supports PLAIN.  You must configure
-#   the `database` if you choose this backend.
-sasl_backend: none
-
-
-# Database URL (required if `sasl_backend` is set to `database`)
-#
-# Specify the URL to the database ellidri should use for SASL.
-# The value must follow the format <driver>://<url>
+# The format of the setting is  <driver>://<url>
 #
 # Supported drivers:
-# - sqlite
+# - mysql
 # - postgres (aliases: psql, postgresql)
+# - sqlite
 #
 # For sqlite, the url is the path to the file.  In-memory databases are not supported.
 #
 # For postgres, the url must follow the key-value format specified at:
 # <https://docs.rs/postgres/0.17.0/postgres/config/struct.Config.html>
 #
-# Examples:
+# Simple SQLite example:
 #database:
 #    driver: sqlite
-#    url: /var/lib/ellidri/ellidri.db
+#    url: sqlite:///var/lib/ellidri/ellidri.db
 #
-#database:
-#    driver: postgres
-#    url: host=/run/postgresql,localhost database=ellidri sslmode=prefer
+# More complex example with PostgreSQL:
+database:
+    # The URL to the PostgreSQL instance.  See here for more details:
+    # <https://docs.rs/postgres/0.17.0/postgres/config/struct.Config.html>
+    url: postgres://host=/run/postgresql,localhost database=ellidri
+
+    # The values below are optional and their default are shown.
+
+    # Disabled by default, this is the number of *milliseconds* ellidri should
+    # wait before closing an inactive connection.  You'll want to set this if
+    # you are billed on usage of the database.
+    idle_timeout:
+
+    # ellidri will not make more connections to the database than this.
+    max_pool_size: 10
+
+    # ellidri will make at least this number of connections to the database.
+    min_pool_size: 0
+
+    # If a connection to a database cannot be established within this number of
+    # *milliseconds*, then ellidri will stop trying to connect and write an
+    # error message.
+    connect_timeout: 10000
 
 
 # Misc settings

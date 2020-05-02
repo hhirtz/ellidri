@@ -12,7 +12,7 @@
     clippy::use_self
 )]
 
-pub use buffers::{Buffer, MessageBuffer, TagBuffer};
+pub use buffers::{Buffer, MessageBuffer, ReplyBuffer, TagBuffer};
 pub use command::Command;
 pub use message::{tag_escape, tags, Message, Tag, MESSAGE_LENGTH, PARAMS_LENGTH};
 

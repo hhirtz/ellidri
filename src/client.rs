@@ -1,30 +1,29 @@
 //! Client data, connection state and capability logic.
 
-use crate::util;
-use ellidri_tokens::{mode, Buffer, Command, MessageBuffer, TagBuffer};
-use std::cell::RefCell;
-use std::cmp::Ordering;
-use std::fmt::Write;
+use crate::{data, util};
+use ellidri_tokens::{mode, Buffer, MessageBuffer, ReplyBuffer};
+use std::fmt::Write as _;
 use std::sync::Arc;
 use tokio::sync::mpsc;
 
 #[derive(Clone, Debug)]
-pub enum MessageQueueItem {
-    Data { start: usize, buf: Arc<String> },
-    Flush,
-}
-
-impl MessageQueueItem {
-    pub fn set_start(&mut self, s: usize) {
-        if let Self::Data { start, .. } = self {
-            *start = s;
-        }
-    }
+pub struct MessageQueueItem {
+    pub start: usize,
+    buf: Arc<String>,
 }
 
 impl From<Buffer> for MessageQueueItem {
     fn from(val: Buffer) -> Self {
-        Self::Data {
+        Self {
+            start: 0,
+            buf: Arc::new(val.build()),
+        }
+    }
+}
+
+impl From<ReplyBuffer> for MessageQueueItem {
+    fn from(val: ReplyBuffer) -> Self {
+        Self {
             start: 0,
             buf: Arc::new(val.build()),
         }
@@ -36,10 +35,7 @@ impl AsRef<str> for MessageQueueItem {
     ///
     /// This function panics when `self.start` is greater than the content's length.
     fn as_ref(&self) -> &str {
-        match self {
-            Self::Data { start, buf } => &buf[*start..],
-            Self::Flush => "",
-        }
+        &self.buf.as_ref()[self.start..]
     }
 }
 
@@ -69,65 +65,76 @@ impl Default for ConnectionState {
 }
 
 impl ConnectionState {
-    pub fn apply(self, command: Command, sub_command: &str) -> Result<ConnectionState, ()> {
-        use Command::*;
+    pub fn apply(self, request: &data::Request<'_>) -> Result<ConnectionState, ()> {
+        use data::Request::*;
         match self {
-            ConnectionState::ConnectionEstablished => match command {
-                Cap if sub_command == "LS" => Ok(ConnectionState::CapGiven),
-                Cap if sub_command == "REQ" => Ok(ConnectionState::CapGiven),
-                Authenticate | Cap | Pass | Ping => Ok(self),
-                Nick => Ok(ConnectionState::NickGiven),
-                User => Ok(ConnectionState::UserGiven),
-                Quit => Ok(ConnectionState::Quit),
+            ConnectionState::ConnectionEstablished => match request {
+                CapLs { .. } | CapReq { .. } => Ok(ConnectionState::CapGiven),
+                Authenticate { .. } | CapEnd | Pass { .. } | Ping { .. } => Ok(self),
+                Nick { .. } => Ok(ConnectionState::NickGiven),
+                User { .. } => Ok(ConnectionState::UserGiven),
+                Quit { .. } => Ok(ConnectionState::Quit),
                 _ => Err(()),
             },
-            ConnectionState::NickGiven => match command {
-                Cap if sub_command == "LS" => Ok(ConnectionState::CapNickGiven),
-                Cap if sub_command == "REQ" => Ok(ConnectionState::CapNickGiven),
-                Authenticate | Cap | Nick | Pass | Ping => Ok(self),
-                User => Ok(ConnectionState::Registered),
-                Quit => Ok(ConnectionState::Quit),
+            ConnectionState::NickGiven => match request {
+                CapLs { .. } | CapReq { .. } => Ok(ConnectionState::CapGiven),
+                Authenticate { .. } | CapEnd | Nick { .. } | Pass { .. } | Ping { .. } => Ok(self),
+                User { .. } => Ok(ConnectionState::Registered),
+                Quit { .. } => Ok(ConnectionState::Quit),
                 _ => Err(()),
             },
-            ConnectionState::UserGiven => match command {
-                Cap if sub_command == "LS" => Ok(ConnectionState::CapUserGiven),
-                Cap if sub_command == "REQ" => Ok(ConnectionState::CapUserGiven),
-                Authenticate | Cap | Pass | Ping => Ok(self),
-                Nick => Ok(ConnectionState::Registered),
-                Quit => Ok(ConnectionState::Quit),
+            ConnectionState::UserGiven => match request {
+                CapLs { .. } | CapReq { .. } => Ok(ConnectionState::CapGiven),
+                Authenticate { .. } | CapEnd | Pass { .. } | Ping { .. } => Ok(self),
+                Nick { .. } => Ok(ConnectionState::Registered),
+                Quit { .. } => Ok(ConnectionState::Quit),
                 _ => Err(()),
             },
-            ConnectionState::CapGiven => match command {
-                Cap if sub_command == "END" => Ok(ConnectionState::ConnectionEstablished),
-                Authenticate | Cap | Pass | Ping => Ok(self),
-                Nick => Ok(ConnectionState::CapNickGiven),
-                User => Ok(ConnectionState::CapUserGiven),
-                Quit => Ok(ConnectionState::Quit),
+            ConnectionState::CapGiven => match request {
+                CapEnd => Ok(ConnectionState::ConnectionEstablished),
+                Authenticate { .. } | CapLs { .. } | CapReq { .. } | Pass { .. } | Ping { .. } => {
+                    Ok(self)
+                }
+                Nick { .. } => Ok(ConnectionState::CapNickGiven),
+                User { .. } => Ok(ConnectionState::CapUserGiven),
+                Quit { .. } => Ok(ConnectionState::Quit),
                 _ => Err(()),
             },
-            ConnectionState::CapNickGiven => match command {
-                Cap if sub_command == "END" => Ok(ConnectionState::NickGiven),
-                Authenticate | Cap | Nick | Pass | Ping => Ok(self),
-                User => Ok(ConnectionState::CapNegotiation),
-                Quit => Ok(ConnectionState::Quit),
+            ConnectionState::CapNickGiven => match request {
+                CapEnd => Ok(ConnectionState::NickGiven),
+                Authenticate { .. }
+                | CapLs { .. }
+                | CapReq { .. }
+                | Nick { .. }
+                | Pass { .. }
+                | Ping { .. } => Ok(self),
+                User { .. } => Ok(ConnectionState::CapNegotiation),
+                Quit { .. } => Ok(ConnectionState::Quit),
                 _ => Err(()),
             },
-            ConnectionState::CapUserGiven => match command {
-                Cap if sub_command == "END" => Ok(ConnectionState::UserGiven),
-                Authenticate | Cap | Pass | Ping => Ok(self),
-                Nick => Ok(ConnectionState::CapNegotiation),
-                Quit => Ok(ConnectionState::Quit),
+            ConnectionState::CapUserGiven => match request {
+                CapEnd => Ok(ConnectionState::UserGiven),
+                Authenticate { .. } | CapLs { .. } | CapReq { .. } | Pass { .. } | Ping { .. } => {
+                    Ok(self)
+                }
+                Nick { .. } => Ok(ConnectionState::CapNegotiation),
+                Quit { .. } => Ok(ConnectionState::Quit),
                 _ => Err(()),
             },
-            ConnectionState::CapNegotiation => match command {
-                Cap if sub_command == "END" => Ok(ConnectionState::Registered),
-                Authenticate | Cap | Nick | Pass | Ping => Ok(self),
-                Quit => Ok(ConnectionState::Quit),
+            ConnectionState::CapNegotiation => match request {
+                CapEnd => Ok(ConnectionState::Registered),
+                Authenticate { .. }
+                | CapLs { .. }
+                | CapReq { .. }
+                | Nick { .. }
+                | Pass { .. }
+                | Ping { .. } => Ok(self),
+                Quit { .. } => Ok(ConnectionState::Quit),
                 _ => Err(()),
             },
-            ConnectionState::Registered => match command {
-                Pass | User => Err(()),
-                Quit => Ok(ConnectionState::Quit),
+            ConnectionState::Registered => match request {
+                Pass { .. } | User { .. } => Err(()),
+                Quit { .. } => Ok(ConnectionState::Quit),
                 _ => Ok(self),
             },
             ConnectionState::Quit => Err(()),
@@ -139,136 +146,10 @@ impl ConnectionState {
     }
 }
 
-macro_rules! caps {
-    ( $( $cap:ident $cap_str:literal $cap_member:ident )* |
-      $( $specap:ident $specap_str:literal $specap_member:ident )*
-    ) => {
-        pub mod cap {
-            use std::collections::HashSet;
-
-            $( pub const $cap: &str = $cap_str; )*
-            $( pub const $specap: &str = $specap_str; )*
-
-            lazy_static::lazy_static! {
-                pub static ref ALL: HashSet<&'static str> = [
-                    $( $cap ),*, $( $specap ),*
-                ].iter().cloned().collect();
-            }
-
-            const _LS_COMMON: &str = concat!( $( $cap_str, " " ),* );
-
-            pub fn are_supported(capabilities: &str) -> bool {
-                query(capabilities).all(|(cap,  _)| ALL.contains(cap))
-            }
-
-            pub fn ls_common() -> &'static str {
-                &_LS_COMMON[.._LS_COMMON.len() - 1]
-            }
-
-            pub fn query(buf: &str) -> impl Iterator<Item=(&str, bool)> {
-                buf.split_whitespace().map(|word| {
-                    if word.starts_with('-') {
-                        // NOPANIC  word starts with '-', which is encoded on 1 byte in UTF-8
-                        (&word[1..], false)
-                    } else {
-                        (word, true)
-                    }
-                })
-            }
-        }
-
-        #[derive(Clone, Default)]
-        pub struct Capabilities {
-            pub v302: bool,
-            $( pub $cap_member: bool, )*
-            $( pub $specap_member: bool, )*
-        }
-
-        impl Capabilities {
-            pub fn update(&mut self, capabilities: &str) {
-                for (capability, enable) in cap::query(capabilities) {
-                    match capability {
-                        $( cap::$cap => self.$cap_member = enable, )*
-                        $( cap::$specap => self.$specap_member = enable, )*
-                        _ => {}
-                    }
-                }
-            }
-
-            pub fn write_enabled(&self, mut msg: MessageBuffer<'_>) {
-                msg = msg.param("LIST");
-                let trailing = msg.raw_trailing_param();
-                let len = trailing.len();
-            $(
-                if self.$cap_member {
-                    trailing.push_str(cap::$cap);
-                    trailing.push(' ');
-                }
-            )*
-            $(
-                if self.$specap_member {
-                    trailing.push_str(cap::$specap);
-                    trailing.push(' ');
-                }
-            )*
-                if len < trailing.len() { trailing.pop(); }
-            }
-        }
-    };
-}
-
-caps! {
-    ACCOUNT_NOTIFY    "account-notify"     account_notify
-    AWAY_NOTIFY       "away-notify"        away_notify
-    BATCH             "batch"              batch
-    CAP_NOTIFY        "cap-notify"         cap_notify
-    ECHO_MESSAGE      "echo-message"       echo_message
-    EXTENDED_JOIN     "extended-join"      extended_join
-    INVITE_NOTIFY     "invite-notify"      invite_notify
-    LABELED_RESPONSE  "labeled-response"   labeled_response
-    MESSAGE_TAGS      "message-tags"       message_tags
-    MULTI_PREFIX      "multi-prefix"       multi_prefix
-    SERVER_TIME       "server-time"        server_time
-    SETNAME           "setname"            setname
-    USERHOST_IN_NAMES "userhost-in-names"  userhost_in_names
-    |
-    SASL "sasl" sasl
-}
-
 pub const AUTHENTICATE_CHUNK_LEN: usize = 400;
 pub const AUTHENTICATE_WHOLE_LEN: usize = 1024;
 
-impl Capabilities {
-    //pub fn has_cap_notify(&self) -> bool {
-    //self.v302 || self.cap_notify
-    //}
-
-    pub fn has_labeled_response(&self) -> bool {
-        self.batch && self.labeled_response
-    }
-
-    pub fn has_message_tags(&self) -> bool {
-        self.message_tags || self.server_time
-    }
-
-    pub fn set_cap_version(&mut self, version: &str) {
-        if version == "302" {
-            self.v302 = true;
-        }
-    }
-
-    /// Whether the given command can be issued with these capabilities.
-    pub fn is_capable_of(&self, command: Command) -> bool {
-        match command {
-            Command::Authenticate => self.sasl,
-            Command::SetName => self.setname,
-            Command::TagMsg => self.message_tags,
-            _ => true,
-        }
-    }
-}
-
-const FULL_NAME_LENGTH: usize = 63;
+const FULL_NAME_LENGTH: usize = 64;
 
 /// Client data.
 pub struct Client {
@@ -280,7 +161,8 @@ pub struct Client {
 
     pub domain: Arc<str>,
 
-    capabilities: Capabilities,
+    pub cap_version: data::cap::Version,
+    pub cap_enabled: data::Capabilities,
     state: ConnectionState,
 
     auth_buffer: String,
@@ -308,7 +190,6 @@ pub struct Client {
     // Modes: https://tools.ietf.org/html/rfc2812.html#section-3.1.5
     pub away_message: Option<String>,
     pub invisible: bool,
-    pub registered: bool,
     pub operator: bool,
 }
 
@@ -323,7 +204,8 @@ impl Client {
             queue,
             domain,
             full_name: String::with_capacity(FULL_NAME_LENGTH),
-            capabilities: Capabilities::default(),
+            cap_version: data::cap::Version::V300,
+            cap_enabled: data::Capabilities::default(),
             state: ConnectionState::default(),
             auth_buffer: String::new(),
             auth_buffer_complete: false,
@@ -338,7 +220,6 @@ impl Client {
             has_given_password: false,
             away_message: None,
             invisible: false,
-            registered: false,
             operator: false,
         }
     }
@@ -348,30 +229,18 @@ impl Client {
     /// Use this function to send messages to the client.
     pub fn send(&self, msg: impl Into<MessageQueueItem>) {
         let mut msg = msg.into();
-        if self.capabilities.has_message_tags() {
-            msg.set_start(0);
+        if self.cap_enabled.has_message_tags() {
+            msg.start = 0;
         }
         let _ = self.queue.send(msg);
     }
 
     pub fn reply(&self, label: &str) -> ReplyBuffer {
-        ReplyBuffer::new(self.queue.clone(), self.domain.clone(), &self.nick, label)
+        ReplyBuffer::new(&self.domain, &self.nick, label)
     }
 
     pub fn state(&self) -> ConnectionState {
         self.state
-    }
-
-    pub fn capabilities(&self) -> &Capabilities {
-        &self.capabilities
-    }
-
-    pub fn set_cap_version(&mut self, version: &str) {
-        self.capabilities.set_cap_version(version);
-    }
-
-    pub fn update_capabilities(&mut self, capabilities: &str) {
-        self.capabilities.update(capabilities);
     }
 
     /// Change the connection state of the client given the command it just sent.
@@ -380,16 +249,16 @@ impl Client {
     ///
     /// This function panics if the command cannot be issued in the client current state.
     /// `Client::can_issue_command` should be called before.
-    pub fn apply_command(&mut self, command: Command, sub_command: &str) -> ConnectionState {
-        self.state = self.state.apply(command, sub_command).unwrap();
+    pub fn apply_request(&mut self, request: &data::Request<'_>) -> ConnectionState {
+        self.state = self.state.apply(request).unwrap();
         self.state
     }
 
     /// Whether or not the client can issue the given command.
     ///
     /// This function does not change the connection state.
-    pub fn can_issue_command(&self, command: Command, sub_command: &str) -> bool {
-        self.state.apply(command, sub_command).is_ok()
+    pub fn can_issue_request(&self, request: &data::Request<'_>) -> bool {
+        self.state.apply(request).is_ok()
     }
 
     pub fn is_registered(&self) -> bool {
@@ -540,328 +409,3 @@ impl Client {
         applied
     }
 }
-
-thread_local! {
-    static LABEL: RefCell<String> = RefCell::new(String::new());
-    static NICK: RefCell<String> = RefCell::new(String::new());
-}
-
-pub struct ReplyBuffer {
-    queue: MessageQueue,
-    domain: Arc<str>,
-    batch: Option<u8>,
-    label_len: usize,
-}
-
-impl ReplyBuffer {
-    fn new(queue: MessageQueue, domain: Arc<str>, nick: &str, label: &str) -> Self {
-        Self::set_nick(nick);
-        Self::set_label(label);
-        Self {
-            queue,
-            domain,
-            batch: None,
-            label_len: label.len(),
-        }
-    }
-
-    pub fn set_nick(nick: &str) {
-        NICK.with(|s| {
-            let mut s = s.borrow_mut();
-            s.clear();
-            s.push_str(nick);
-        });
-    }
-
-    fn set_label(label: &str) {
-        LABEL.with(|s| {
-            let mut s = s.borrow_mut();
-            s.clear();
-            s.push_str(label);
-        });
-    }
-
-    pub fn start_batch(&mut self, name: &str) {
-        let new_batch = self.new_batch();
-        let mut buf = Buffer::with_capacity(self.label_len + name.len() + 24);
-        {
-            let mut msg = if self.label_len != 0 {
-                LABEL.with(|s| buf.tagged_message("").tag("label", Some(&s.borrow())))
-            } else {
-                buf.tagged_message("")
-            }
-            .prefixed_command(&self.domain, "BATCH");
-            let _ = write!(msg.raw_param(), "+{}", new_batch);
-            msg.param("labeled-response");
-        }
-        let _ = self.queue.send(buf.into());
-    }
-
-    pub fn start_lr_batch(&mut self) {
-        if self.label_len == 0 {
-            return;
-        }
-        self.start_batch("labeled-response");
-        self.label_len = 0;
-    }
-
-    pub fn end_batch(&mut self) {
-        let old_batch = self.batch.unwrap();
-        self.batch = if old_batch == 0 {
-            None
-        } else {
-            Some(old_batch - 1)
-        };
-
-        let mut buf = Buffer::with_capacity(16);
-        {
-            let mut msg = buf.message("", "BATCH");
-            let _ = write!(msg.raw_param(), "-{}", old_batch);
-        }
-        let _ = self.queue.send(buf.into());
-    }
-
-    pub fn end_lr(&mut self) {
-        if self.label_len != 0 {
-            // This isn't a batch response, and we've sent nothing with the label, so ACK
-            let mut buf = Buffer::with_capacity(self.label_len + 16);
-            LABEL.with(|s| {
-                buf.tagged_message("")
-                    .tag("label", Some(&s.borrow()))
-                    .prefixed_command(&self.domain, "ACK");
-            });
-            self.label_len = 0;
-            let _ = self.queue.send(buf.into());
-        } else if self.batch.is_some() {
-            // This is a labeled-response batch, end it.
-            self.end_batch();
-        }
-    }
-
-    pub fn reply(
-        &mut self,
-        command: impl Into<Command>,
-        capacity: usize,
-        map: impl FnOnce(MessageBuffer<'_>),
-    ) {
-        NICK.with(|s| {
-            let nick = &s.borrow();
-            self.prefixed_message(command, capacity + 1 + nick.len(), |msg| {
-                map(msg.param(nick));
-            });
-        });
-    }
-
-    pub fn prefixed_message(
-        &mut self,
-        command: impl Into<Command>,
-        capacity: usize,
-        map: impl FnOnce(MessageBuffer<'_>),
-    ) {
-        send_message(
-            &self.queue,
-            &mut self.label_len,
-            self.batch,
-            &self.domain,
-            command,
-            capacity,
-            map,
-        );
-    }
-
-    pub fn message(
-        &mut self,
-        prefix: &str,
-        command: impl Into<Command>,
-        capacity: usize,
-        map: impl FnOnce(MessageBuffer<'_>),
-    ) {
-        send_message(
-            &self.queue,
-            &mut self.label_len,
-            self.batch,
-            prefix,
-            command,
-            capacity,
-            map,
-        );
-    }
-
-    pub fn tagged_message(
-        &mut self,
-        client_tags: &str,
-        capacity: usize,
-        map: impl FnOnce(TagBuffer<'_>),
-    ) {
-        send_tagged_message(
-            &self.queue,
-            &mut self.label_len,
-            self.batch,
-            client_tags,
-            capacity,
-            map,
-        );
-    }
-
-    pub fn send_auth_buffer(&mut self, buf: &[u8]) {
-        if buf.is_empty() {
-            self.message("", Command::Authenticate, 2, |msg| {
-                msg.param("+");
-            });
-            return;
-        }
-
-        let encoded = base64::encode(buf);
-        let mut i = 0;
-        while i < encoded.len() {
-            let max = encoded.len().min(i + AUTHENTICATE_CHUNK_LEN);
-            // NOPANIC
-            // i < encoded.len() && (max == encoded.len() || max == i + x), x > 0  ==>  i < max
-            // max <= encoded.len()
-            // Also encoded is base64 so it's safe to slice.
-            let chunk = &encoded[i..max];
-            self.message("", Command::Authenticate, 1 + chunk.len(), |msg| {
-                msg.param(chunk);
-            });
-            i = max;
-        }
-        if i % AUTHENTICATE_CHUNK_LEN == 0 {
-            self.message("", Command::Authenticate, 2, |msg| {
-                msg.param("+");
-            });
-        }
-    }
-
-    fn new_batch(&mut self) -> u8 {
-        let new_batch = self.batch.map_or(0, |old_batch| old_batch + 1);
-        self.batch = Some(new_batch);
-        new_batch
-    }
-}
-
-impl Drop for ReplyBuffer {
-    fn drop(&mut self) {
-        let _ = self.queue.send(MessageQueueItem::Flush);
-    }
-}
-
-fn send_message(
-    queue: &MessageQueue,
-    label_len: &mut usize,
-    batch: Option<u8>,
-    prefix: &str,
-    command: impl Into<Command>,
-    mut capacity: usize,
-    map: impl FnOnce(MessageBuffer<'_>),
-) {
-    let command = command.into();
-    capacity += command.as_str().len();
-    if !prefix.is_empty() {
-        capacity += 1 + prefix.len() + 1;
-    }
-    send_tagged_message(queue, label_len, batch, "", capacity, |msg| {
-        map(msg.prefixed_command(prefix, command))
-    })
-}
-
-fn send_tagged_message(
-    queue: &MessageQueue,
-    label_len: &mut usize,
-    batch: Option<u8>,
-    client_tags: &str,
-    capacity: usize,
-    map: impl FnOnce(TagBuffer<'_>),
-) {
-    let capacity = capacity + *label_len + 2;
-    let mut buf = Buffer::with_capacity(capacity);
-    {
-        let mut msg = buf.tagged_message(client_tags);
-        if *label_len != 0 {
-            msg = LABEL.with(|s| msg.tag("label", Some(&s.borrow())));
-            *label_len = 0;
-        }
-        if let Some(batch) = batch {
-            msg = msg.tag("batch", Some(&batch));
-        }
-        if cfg!(debug_assertions) {
-            map(msg);
-            let len = buf.len();
-            match len.cmp(&capacity) {
-                Ordering::Greater => {
-                    log::debug!(
-                        "Reallocated message (from cap {} to len {}):\n{:?}",
-                        capacity,
-                        len,
-                        buf.get()
-                    );
-                }
-                Ordering::Less => {
-                    log::debug!(
-                        "Unused buffer capacity ({}, used {}):\n{:?}",
-                        capacity,
-                        len,
-                        buf.get()
-                    );
-                }
-                Ordering::Equal => {}
-            }
-        } else {
-            map(msg);
-        };
-    }
-    let _ = queue.send(buf.into());
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_connection_state_apply() {
-        use Command::*;
-
-        let def = ConnectionState::default();
-
-        let normal = def.apply(Nick, "").unwrap().apply(User, "").unwrap();
-        assert_eq!(normal, ConnectionState::Registered);
-
-        let with_password = def
-            .apply(Pass, "")
-            .unwrap()
-            .apply(Nick, "")
-            .unwrap()
-            .apply(User, "")
-            .unwrap();
-        assert_eq!(with_password, ConnectionState::Registered);
-
-        let choosing_caps = def
-            .apply(Cap, "LS")
-            .unwrap()
-            .apply(Nick, "")
-            .unwrap()
-            .apply(User, "")
-            .unwrap();
-        assert_eq!(choosing_caps, ConnectionState::CapNegotiation);
-
-        let requested_caps = def
-            .apply(Nick, "")
-            .unwrap()
-            .apply(Cap, "REQ")
-            .unwrap()
-            .apply(User, "")
-            .unwrap()
-            .apply(Cap, "END")
-            .unwrap();
-        assert_eq!(requested_caps, ConnectionState::Registered);
-
-        let spurious_commands = def
-            .apply(Nick, "")
-            .unwrap()
-            .apply(Cap, "LIST")
-            .unwrap()
-            .apply(Quit, "")
-            .unwrap()
-            .apply(Nick, "");
-        assert_eq!(spurious_commands, Err(()));
-    }
-} // mod tests

@@ -1,11 +1,29 @@
-use ellidri_tokens::MessageBuffer;
-use std::fmt::Write;
+use std::fmt::Arguments;
 
+//
 // Network messages
+//
+
+pub const BAD_PASSWORD: &str = "You're not senpai!";
 
 pub const CONNECTION_RESET: &str = "This senpai left without saying anything...";
 
+pub fn quit<F, T>(reason: Option<&str>, f: F) -> T
+where
+    F: FnOnce(Arguments<'_>) -> T,
+{
+    if let Some(reason) = reason {
+        f(format_args!("This senpai left a note: {}", reason))
+    } else {
+        f(format_args!("This senpai left"))
+    }
+}
+
+pub const REGISTRATION_TIMEOUT: &str = "Senpai is such a slowpoke... baka";
+
+//
 // IRC replies
+//
 
 pub const ADMIN_ME: &str = "Administrative info";
 
@@ -74,6 +92,8 @@ pub const NOT_REGISTERED: &str = "You must register first!";
 
 pub const PASSWORD_MISMATCH: &str = "Nope! Wrong password";
 
+pub const PART_ALL: &str = "Baka!";
+
 pub const REHASHING: &str = "Oh~~!  Onwards to reload the configuration!";
 
 pub const UNKNOWN_COMMAND: &str = "Hnn... What did you just say?";
@@ -90,54 +110,63 @@ pub const YOURE_OPER: &str = "You are now a BIG senpai!";
 
 pub const WHOIS_IDLE: &str = "Seconds since last activity, registration time";
 
+//
 // Welcome messages
+//
 
-pub fn your_host(mut r: MessageBuffer<'_>, host: &str, version: &str) {
-    let trailing = r.raw_trailing_param();
-    trailing.push_str("Your host is ");
-    trailing.push_str(host);
-    trailing.push_str(" running version ");
-    trailing.push_str(version);
+#[macro_export]
+macro_rules! lines_your_host {
+    ( $host:expr, $version:expr ) => {
+        format_args!("Your host is {} running version {}", $host, $version)
+    };
 }
 
 pub const I_SUPPORT: &str = "are allowed by ellidri";
 
-pub fn created(mut r: MessageBuffer<'_>, since: &str) {
-    let trailing = r.raw_trailing_param();
-    trailing.push_str("I've been looking at you since ");
-    trailing.push_str(since);
+#[macro_export]
+macro_rules! lines_created {
+    ( $since:expr ) => {
+        format_args!("I've been looking at you since {}", $since)
+    };
 }
 
 pub const LUSER_CHANNELS: &str = "channels created";
 
-pub fn luser_client(mut r: MessageBuffer<'_>, num_clients: usize) {
-    let trailing = r.raw_trailing_param();
-    let _ = write!(trailing, "There are {} senpai(s) on 1 server", num_clients);
+#[macro_export]
+macro_rules! lines_luser_client {
+    ( $num_clients:expr ) => {
+        format_args!("There are {} senpai(s) on 1 server", $num_clients)
+    };
 }
 
-pub fn luser_me(mut r: MessageBuffer<'_>, num_clients: usize) {
-    let trailing = r.raw_trailing_param();
-    let _ = write!(trailing, "I have {} senpai(s) and 0 servers", num_clients);
+#[macro_export]
+macro_rules! lines_luser_me {
+    ( $num_clients:expr ) => {
+        format_args!("I have {} senpai(s) and 0 servers", $num_clients)
+    };
 }
 
 pub const LUSER_OP: &str = "operator(s) online";
 
 pub const LUSER_UNKNOWN: &str = "unknown connection(s)";
 
-pub fn motd_start(mut r: MessageBuffer<'_>, domain: &str) {
-    let trailing = r.raw_trailing_param();
-    trailing.push_str("- ");
-    trailing.push_str(domain);
-    trailing.push_str(" message of the day -");
+#[macro_export]
+macro_rules! lines_motd_start {
+    ( $domain:expr ) => {
+        format_args!("- {} message of the day -", $domain)
+    };
 }
 
-pub fn welcome(mut r: MessageBuffer<'_>, name: &str) {
-    let trailing = r.raw_trailing_param();
-    trailing.push_str("Welcome home, ");
-    trailing.push_str(name);
+#[macro_export]
+macro_rules! lines_welcome {
+    ( $name:expr ) => {
+        format_args!("Welcome home, {}", $name)
+    };
 }
 
+//
 // SASL
+//
 
 pub const SASL_ABORTED: &str = "ABORT BAKA";
 
@@ -151,12 +180,15 @@ pub const SASL_SUCCESSFUL: &str = "sugoi~~! looks like it worked!";
 
 pub const SASL_TOO_LONG: &str = "senpai, it's too big!";
 
-pub fn logged_in(mut r: MessageBuffer<'_>, user: &str) {
-    let trailing = r.raw_trailing_param();
-    trailing.push_str("okaeri ");
-    trailing.push_str(user);
+#[macro_export]
+macro_rules! lines_logged_in {
+    ( $user:expr ) => {
+        format_args!("okaeri {}", $user)
+    };
 }
 
+//
 // Setname
+//
 
 pub const INVALID_REALNAME: &str = "Meh, this is obviously a bad realname...";

@@ -1,5 +1,5 @@
 use ellidri_unicase::u;
-use rand::SeedableRng as _;
+use rand_chacha::rand_core::{RngCore, SeedableRng};
 use rand_chacha::ChaChaRng;
 use regex as re;
 use std::cell::RefCell;
@@ -85,21 +85,15 @@ pub fn regexset_remove(set: &mut re::RegexSet, mask: &str) {
 }
 
 pub fn new_message_id() -> String {
-    use rand::RngCore as _;
-
-    let mut bytes = [0; 16];
+    let mut bytes = [0x0; 24];
     RNG.with(|rng| {
         rng.borrow_mut().fill_bytes(&mut bytes);
     });
 
-    let id = uuid::Builder::from_bytes(bytes)
-        .set_variant(uuid::Variant::RFC4122)
-        .set_version(uuid::Version::Random)
-        .build();
+    let mut encoded = [0x0; 24 * 4 / 3];
+    base64::encode_config_slice(&bytes, base64::STANDARD_NO_PAD, &mut encoded);
 
-    let mut res = vec![0; uuid::adapter::Simple::LENGTH];
-    id.to_simple().encode_upper(&mut res);
-    String::from_utf8(res).unwrap()
+    std::str::from_utf8(&encoded).unwrap().to_owned()
 }
 
 pub fn time_precise() -> String {

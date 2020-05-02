@@ -52,21 +52,12 @@ impl fmt::Display for Error {
     }
 }
 
-impl fmt::Display for SaslBackend {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::None => write!(f, "none"),
-            Self::Database => write!(f, "database"),
-        }
-    }
-}
-
 /// TLS-related and needed information for TLS bindings.
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 pub struct Tls {
     pub certificate: path::PathBuf,
     pub key: path::PathBuf,
-    #[serde(default = "require_certificates")]
+    #[serde(default)]
     pub require_certificates: bool,
 }
 
@@ -97,7 +88,8 @@ pub struct State {
     #[serde(default = "motd_file")]
     pub motd_file: String,
 
-    pub password: Option<String>,
+    #[serde(default)]
+    pub password: String,
 
     #[serde(default)]
     pub opers: Vec<Oper>,
@@ -130,31 +122,33 @@ pub struct State {
     pub login_timeout: u64,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]
-pub enum SaslBackend {
-    #[serde(rename = "none")]
-    None,
-    #[serde(rename = "database")]
-    Database,
-}
-
 pub mod db {
     use super::*;
 
     #[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]
     pub enum Driver {
-        #[cfg(feature = "sqlite")]
         #[serde(rename = "sqlite")]
         Sqlite,
-        #[cfg(feature = "postgres")]
-        #[serde(rename = "postgres", alias = "psql", alias = "postgresql")]
-        Postgres,
     }
 
     #[derive(Clone, Debug, Deserialize, Serialize)]
     pub struct Info {
         pub driver: Driver,
         pub url: String,
+
+        #[serde(default = "db_max_size")]
+        pub max_size: u32,
+
+        #[serde(default = "db_min_size")]
+        pub min_size: u32,
+
+        #[serde(default = "db_connect_timeout")]
+        pub connect_timeout: u64,
+
+        pub idle_timeout: Option<u64>,
+        // Don't advertise "max_lifetime" because sqlx leaks when it's too high:
+        // <https://docs.rs/sqlx-core/0.3.5/src/sqlx_core/pool/options.rs.html#30>
+        //pub max_lifetime: u64,
     }
 }
 
@@ -167,23 +161,13 @@ pub struct Config {
     #[serde(default = "bindings")]
     pub bindings: Vec<Binding>,
 
-    #[cfg(feature = "websocket")]
-    pub ws_endpoint: Option<net::SocketAddr>,
-
     #[serde(default)]
     pub workers: usize,
 
     #[serde(flatten)]
     pub state: State,
 
-    #[serde(default = "sasl_backend")]
-    pub sasl_backend: SaslBackend,
-
     pub database: Option<db::Info>,
-}
-
-fn require_certificates() -> bool {
-    true
 }
 
 fn bindings() -> Vec<Binding> {
@@ -191,10 +175,6 @@ fn bindings() -> Vec<Binding> {
         address: net::SocketAddr::from(([127, 0, 0, 1], 6667)),
         tls: None,
     }]
-}
-
-fn sasl_backend() -> SaslBackend {
-    SaslBackend::None
 }
 
 fn domain() -> String {
@@ -237,14 +217,24 @@ fn login_timeout() -> u64 {
     60_000
 }
 
+fn db_max_size() -> u32 {
+    10
+}
+fn db_min_size() -> u32 {
+    0
+}
+fn db_connect_timeout() -> u64 {
+    10_000
+}
+
 impl State {
     pub fn sample() -> Self {
         Self {
             domain: domain(),
             default_chan_mode: default_chan_mode(),
             motd_file: motd_file(),
-            password: None,
-            opers: vec![],
+            password: String::new(),
+            opers: Vec::new(),
             org_name: org(),
             org_location: org(),
             org_mail: org(),
@@ -266,11 +256,8 @@ impl Config {
         Self {
             is_unsafe: false,
             bindings: bindings(),
-            #[cfg(feature = "websocket")]
-            ws_endpoint: None,
             workers: 0,
             state: State::sample(),
-            sasl_backend: sasl_backend(),
             database: None,
         }
     }

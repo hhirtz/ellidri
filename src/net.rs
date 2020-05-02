@@ -221,9 +221,8 @@ macro_rules! rate_limit {
 
 /// Returns a future that handles an IRC connection.
 async fn handle(conn: impl io::AsyncRead + io::AsyncWrite, peer_addr: SocketAddr, shared: State) {
-    let (reader, writer) = io::split(conn);
+    let (reader, mut writer) = io::split(conn);
     let mut reader = IrcReader::new(reader, 512);
-    let mut writer = io::BufWriter::new(writer);
 
     let (msg_queue, mut outgoing_msgs) = sync::mpsc::unbounded_channel();
     let peer_id = shared.peer_joined(peer_addr, msg_queue).await;
@@ -231,7 +230,7 @@ async fn handle(conn: impl io::AsyncRead + io::AsyncWrite, peer_addr: SocketAddr
 
     let incoming = async {
         let mut buf = String::new();
-        rate_limit!(250, 16, async {
+        rate_limit!(125, 32, async {
             buf.clear();
             let n = reader.read_message(&mut buf).await?;
             if n == 0 {
@@ -246,14 +245,10 @@ async fn handle(conn: impl io::AsyncRead + io::AsyncWrite, peer_addr: SocketAddr
     };
 
     let outgoing = async {
-        use crate::client::MessageQueueItem::*;
         use io::AsyncWriteExt as _;
 
         while let Some(msg) = outgoing_msgs.recv().await {
-            match msg {
-                Data { start, buf } => writer.write_all(buf[start..].as_bytes()).await?,
-                Flush => writer.flush().await?,
-            }
+            writer.write_all(msg.as_ref().as_bytes()).await?;
         }
         Ok(())
     };
@@ -279,39 +274,4 @@ async fn login_timeout(peer_id: usize, shared: State) {
     let timeout = shared.login_timeout().await;
     time::delay_for(time::Duration::from_millis(timeout)).await;
     shared.remove_if_unregistered(peer_id).await;
-}
-
-#[cfg(feature = "websocket")]
-use futures_util::future::TryFutureExt;
-#[cfg(feature = "websocket")]
-use futures_util::stream::StreamExt;
-
-#[cfg(feature = "websocket")]
-pub async fn handle_ws(ws: warp::ws::WebSocket, peer_addr: SocketAddr, shared: State) {
-    let (writer, mut reader) = ws.split();
-    let (msg_queue, outgoing_msgs) = sync::mpsc::unbounded_channel();
-    let peer_id = shared.peer_joined(peer_addr, msg_queue).await;
-    tokio::spawn(login_timeout(peer_id, shared.clone()));
-
-    let incoming = async {
-        rate_limit!(1024, 16, async {
-            match reader.next().await {
-                Some(Ok(msg)) if msg.is_text() => {
-                    Ok(handle_buffer(peer_id, msg.to_str().unwrap(), &shared).await)
-                }
-                Some(Ok(_)) => Ok(Some(1)),
-                Some(Err(err)) => Err(err.to_string()),
-                None => Err(lines::CONNECTION_RESET.to_string()),
-            }
-        })
-    };
-
-    let outgoing = outgoing_msgs
-        .map(|msg| Ok(warp::ws::Message::text(msg.as_ref())))
-        .forward(writer)
-        .map_err(|err| err.to_string());
-
-    futures::pin_mut!(incoming, outgoing);
-    let res = future::select(incoming, outgoing).await;
-    shared.peer_quit(peer_id, res.factor_first().0.err()).await;
 }

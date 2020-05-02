@@ -1,3 +1,4 @@
+use crate::data::modes;
 use crate::util;
 use ellidri_tokens::{mode, rpl, MessageBuffer};
 use regex as re;
@@ -64,14 +65,10 @@ impl MemberModes {
         self.voice || self.halfop || self.operator || self.protected || self.founder
     }
 
-    pub fn can_change<'a, I, S>(self, modes: &'a str, params: I) -> bool
-    where
-        I: IntoIterator<Item = &'a S> + 'a,
-        S: AsRef<str> + 'a,
-    {
+    pub fn can_change(self, modes: modes::Channel<'_>) -> bool {
         use mode::ChannelChange::*;
 
-        mode::channel_query(modes, params).all(|mode| match mode {
+        modes.iter().all(|mode| match mode {
             Err(_) => true,
             Ok(GetBans) | Ok(GetExceptions) | Ok(GetInvitations) => true,
             Ok(Moderated(_))
@@ -115,12 +112,12 @@ pub struct Channel {
     // https://tools.ietf.org/html/rfc2811.html#section-4.3
     pub ban_mask: re::RegexSet,
     pub exception_mask: re::RegexSet,
-    pub invitation_mask: re::RegexSet,
+    pub invex_mask: re::RegexSet,
 
     // Modes: https://tools.ietf.org/html/rfc2811.html#section-4.2
     pub invite_only: bool,
     pub moderated: bool,
-    pub no_privmsg_from_outside: bool,
+    pub no_msg_from_outside: bool,
     pub secret: bool,
     pub topic_restricted: bool,
 }
@@ -140,10 +137,10 @@ impl Channel {
             key: None,
             ban_mask: re::RegexSet::new::<_, &String>(&[]).unwrap(),
             exception_mask: re::RegexSet::new::<_, &String>(&[]).unwrap(),
-            invitation_mask: re::RegexSet::new::<_, &String>(&[]).unwrap(),
+            invex_mask: re::RegexSet::new::<_, &String>(&[]).unwrap(),
             invite_only: false,
             moderated: false,
-            no_privmsg_from_outside: false,
+            no_msg_from_outside: false,
             secret: false,
             topic_restricted: false,
         };
@@ -183,18 +180,18 @@ impl Channel {
     pub fn is_banned(&self, nick: &str) -> bool {
         self.ban_mask.is_match(nick)
             && !self.exception_mask.is_match(nick)
-            && !self.invitation_mask.is_match(nick)
+            && !self.invex_mask.is_match(nick)
     }
 
     pub fn is_invited(&self, id: usize, nick: &str) -> bool {
-        !self.invite_only || self.invites.contains(&id) || self.invitation_mask.is_match(nick)
+        !self.invite_only || self.invites.contains(&id) || self.invex_mask.is_match(nick)
     }
 
     pub fn can_talk(&self, id: usize) -> bool {
         if self.moderated {
             self.members.get(&id).map_or(false, |m| m.has_voice())
         } else {
-            !self.no_privmsg_from_outside || self.members.contains_key(&id)
+            !self.no_msg_from_outside || self.members.contains_key(&id)
         }
     }
 
@@ -219,7 +216,7 @@ impl Channel {
         if self.moderated {
             modes.push('m');
         }
-        if self.no_privmsg_from_outside {
+        if self.no_msg_from_outside {
             modes.push('n');
         }
         if self.secret {
@@ -237,7 +234,7 @@ impl Channel {
 
         if full_info {
             if let Some(user_limit) = self.user_limit {
-                out = out.fmt_param(&user_limit);
+                out = out.fmt_param(user_limit);
             }
             if let Some(ref key) = self.key {
                 out.param(&key);
@@ -264,8 +261,8 @@ impl Channel {
                 self.moderated = value;
             }
             NoPrivMsgFromOutside(value) => {
-                applied = self.no_privmsg_from_outside != value;
-                self.no_privmsg_from_outside = value;
+                applied = self.no_msg_from_outside != value;
+                self.no_msg_from_outside = value;
             }
             Secret(value) => {
                 applied = self.secret != value;
@@ -318,9 +315,9 @@ impl Channel {
             }
             ChangeInvitation(value, param) => {
                 if value {
-                    util::regexset_add(&mut self.invitation_mask, param);
+                    util::regexset_add(&mut self.invex_mask, param);
                 } else {
-                    util::regexset_remove(&mut self.invitation_mask, param);
+                    util::regexset_remove(&mut self.invex_mask, param);
                 }
                 applied = true;
             }
@@ -406,11 +403,6 @@ mod tests {
         voice: true,
     };
 
-    fn params() -> impl Iterator<Item = &'static &'static str> {
-        // TODO lol what
-        std::iter::repeat(&"beer")
-    }
-
     #[test]
     fn test_member_modes_is_at_least() {
         assert!(OPERATOR.has_voice());
@@ -422,12 +414,5 @@ mod tests {
         assert!(VOICE.has_voice());
         assert!(!VOICE.is_at_least_halfop());
         assert!(!VOICE.is_at_least_op());
-    }
-
-    #[test]
-    fn test_member_modes_can_change() {
-        assert!(OPERATOR.can_change("+oinskh", params()));
-        assert!(HALFOP.can_change("+beIv", params()));
-        assert!(!HALFOP.can_change("+obeIv", params()));
     }
 } // mod tests

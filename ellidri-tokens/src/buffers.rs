@@ -1,6 +1,7 @@
 use crate::{Command, MESSAGE_LENGTH};
 use std::cell::RefCell;
 use std::fmt;
+use std::fmt::Write as _;
 
 /// Helper to build an IRC message.
 ///
@@ -69,12 +70,14 @@ impl<'a> MessageBuffer<'a> {
     ///
     /// assert_eq!(&response.build(), "PRIVMSG   #space  42\r\n");
     /// ```
-    pub fn fmt_param(self, param: &dyn fmt::Display) -> Self {
-        use std::fmt::Write as _;
-
-        self.buf.push(' ');
-        let _ = write!(self.buf, "{}", param);
+    pub fn fmt_param(self, param: impl fmt::Display) -> Self {
+        let _ = write!(self.buf, " {}", param);
         self
+    }
+
+    pub fn raw_param(&mut self) -> &mut String {
+        self.buf.push(' ');
+        self.buf
     }
 
     /// Appends the traililng parameter to the message and consumes the buffer.
@@ -101,47 +104,10 @@ impl<'a> MessageBuffer<'a> {
         self.buf.push_str(param);
     }
 
-    /// Returns a buffer the caller can use to append characters to an IRC message.
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// # use ellidri_tokens::{Command, Buffer};
-    /// let mut response = Buffer::new();
-    /// {
-    ///     let mut msg = response.message("nick!user@127.0.0.1", Command::Mode)
-    ///         .param("#my_channel");
-    ///     let mut param = msg.raw_param();
-    ///     param.push('+');
-    ///     param.push('n');
-    ///     param.push('t');
-    /// }
-    ///
-    /// assert_eq!(&response.build(), ":nick!user@127.0.0.1 MODE #my_channel +nt\r\n");
-    /// ```
-    pub fn raw_param(&mut self) -> &mut String {
-        self.buf.push(' ');
-        self.buf
+    pub fn fmt_trailing_param(self, param: impl fmt::Display) {
+        let _ = write!(self.buf, " :{}", param);
     }
 
-    /// Returns a buffer the caller can use to append characters to an IRC message.
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// # use ellidri_tokens::{Buffer, rpl};
-    /// let mut response = Buffer::new();
-    /// {
-    ///     let mut msg = response.message("ellidri.dev", rpl::NAMREPLY)
-    ///         .param("ser");
-    ///     let mut param = msg.raw_trailing_param();
-    ///     param.push_str("@RandomChanOp");
-    ///     param.push(' ');
-    ///     param.push_str("RandomUser");
-    /// }
-    ///
-    /// assert_eq!(&response.build(), ":ellidri.dev 353 ser :@RandomChanOp RandomUser\r\n");
-    /// ```
     pub fn raw_trailing_param(&mut self) -> &mut String {
         self.buf.push(' ');
         self.buf.push(':');
@@ -161,9 +127,7 @@ thread_local! {
     static UNESCAPED_VALUE: RefCell<String> = RefCell::new(String::new());
 }
 
-fn write_escaped(buf: &mut String, value: &dyn fmt::Display) {
-    use fmt::Write;
-
+fn write_escaped(buf: &mut String, value: impl fmt::Display) {
     UNESCAPED_VALUE.with(|s| {
         let mut s = s.borrow_mut();
 
@@ -206,7 +170,7 @@ impl<'a> TagBuffer<'a> {
     }
 
     /// Adds a new tag to the buffer, with the given `key` and `value`.
-    pub fn tag(self, key: &str, value: Option<&dyn fmt::Display>) -> Self {
+    pub fn tag(self, key: &str, value: Option<impl fmt::Display>) -> Self {
         if !self.is_empty() {
             self.buf.push(';');
         }
@@ -230,7 +194,7 @@ impl<'a> TagBuffer<'a> {
     /// Writes the length of tags in `out`.
     ///
     /// Use this to know the start of the prefix or command.
-    pub fn save_tags_len(self, out: &mut usize) -> Self {
+    pub fn save_tag_len(self, out: &mut usize) -> Self {
         if self.buf.ends_with('@') {
             *out = 0;
         } else {
@@ -377,5 +341,153 @@ impl Buffer {
     /// Consumes the `Buffer` and returns the underlying `String`.
     pub fn build(self) -> String {
         self.buf
+    }
+}
+
+thread_local! {
+    static DOMAIN: RefCell<String> = RefCell::new(String::with_capacity(128));
+    static NICKNAME: RefCell<String> = RefCell::new(String::with_capacity(64));
+    static LABEL: RefCell<String> = RefCell::new(String::with_capacity(64));
+}
+
+pub struct ReplyBuffer {
+    buf: Buffer,
+    batch: Option<usize>,
+    has_label: bool,
+}
+
+impl ReplyBuffer {
+    pub fn new(domain: &str, nickname: &str, label: &str) -> Self {
+        Self::set_nick(nickname);
+        Self::set_domain(domain);
+        Self::set_label(domain);
+        Self {
+            buf: Buffer::new(),
+            batch: None,
+            has_label: !label.is_empty(),
+        }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.buf.is_empty()
+    }
+
+    pub fn tagged_message(&mut self, tags: &str) -> TagBuffer<'_> {
+        self.buf.reserve(crate::MESSAGE_LENGTH);
+        let mut msg = self.buf.tagged_message(tags);
+
+        if self.has_label {
+            self.has_label = false;
+            msg = LABEL.with(|s| msg.tag("label", Some(&s.borrow())));
+        }
+        if let Some(batch) = self.batch {
+            msg = msg.tag("batch", Some(&batch));
+        }
+
+        msg
+    }
+
+    pub fn message(&mut self, prefix: &str, command: impl Into<Command>) -> MessageBuffer<'_> {
+        self.tagged_message("").prefixed_command(prefix, command)
+    }
+
+    pub fn prefixed_message(&mut self, command: impl Into<Command>) -> MessageBuffer<'_> {
+        DOMAIN.with(move |s| self.message(&s.borrow(), command))
+    }
+
+    pub fn reply(&mut self, r: impl Into<Command>) -> MessageBuffer<'_> {
+        NICKNAME.with(move |s| self.prefixed_message(r).param(&s.borrow()))
+    }
+
+    pub fn lr_batch_begin(&mut self) {
+        if !self.has_label {
+            return;
+        }
+        self.has_label = false;
+
+        let new_batch = self.new_batch();
+        LABEL.with(|label| {
+            DOMAIN.with(|domain| {
+                let label = label.borrow();
+                let domain = domain.borrow();
+
+                self.buf
+                    .tagged_message("")
+                    .tag("label", Some(&label))
+                    .prefixed_command(&domain, "BATCH")
+                    .fmt_param(format_args!("+{}", new_batch))
+                    .param("labeled-response");
+            })
+        });
+    }
+
+    pub fn lr_end(&mut self) {
+        if !self.has_label && self.batch.is_none() {
+            return;
+        }
+        if self.batch.is_some() {
+            self.batch_end();
+        }
+        if self.batch.is_some() {
+            panic!("ReplyBuffer has an ongoing batch after the end of a labeled response");
+        }
+        if self.is_empty() {
+            self.prefixed_message("ACK");
+        }
+        self.has_label = false;
+    }
+
+    pub fn batch_begin(&mut self, name: &str) {
+        let new_batch = self.new_batch();
+        self.prefixed_message("BATCH")
+            .fmt_param(format_args!("+{}", new_batch))
+            .param(name);
+    }
+
+    pub fn batch_end(&mut self) {
+        let prev = match self.batch {
+            Some(prev) => prev,
+            None => return,
+        };
+        self.batch = if prev == 0 { None } else { Some(prev - 1) };
+        self.prefixed_message("BATCH")
+            .fmt_param(format_args!("-{}", prev));
+    }
+
+    pub fn build(self) -> String {
+        self.buf.build()
+    }
+
+    pub fn set_nick(nickname: &str) {
+        NICKNAME.with(|s| {
+            let mut s = s.borrow_mut();
+            s.clear();
+            s.push_str(nickname);
+        });
+    }
+
+    fn set_domain(domain: &str) {
+        DOMAIN.with(|s| {
+            let mut s = s.borrow_mut();
+            s.clear();
+            s.push_str(domain);
+        });
+    }
+
+    fn set_label(label: &str) {
+        if label.is_empty() {
+            return;
+        }
+        LABEL.with(|s| {
+            let mut s = s.borrow_mut();
+            s.clear();
+            s.push_str(label);
+        });
+    }
+
+    fn new_batch(&mut self) -> usize {
+        let next = self.batch.map_or(0, |prev| prev + 1);
+        self.batch = Some(next);
+        next
     }
 }

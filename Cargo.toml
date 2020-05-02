@@ -8,7 +8,7 @@ version = "3.0.0"
 authors = ["Hubert Hirtz <hubert.hirtz@laposte.net>"]
 edition = "2018"
 description = "Your kawaii IRC server"
-homepage = "https://git.sr.ht/~taiite/ellidri"
+homepage = "https://sr.ht/~taiite/ellidri"
 repository = "https://git.sr.ht/~taiite/ellidri"
 readme = "README.md"
 keywords = ["irc"]
@@ -24,19 +24,6 @@ all-features = true
 debug = true
 
 
-[features]
-default = ["postgres", "sqlite", "websocket"]
-
-# PostgreSQL support
-postgres = ["r2d2", "r2d2_postgres", "tokio-postgres"]
-
-# SQLite support
-sqlite = ["r2d2", "r2d2_sqlite", "rusqlite"]
-
-# WebSocket support
-websocket = ["warp"]
-
-
 [dependencies]
 # Async runtime
 futures = { version = "0.3", default-features = false, features = ["async-await", "std"] }
@@ -46,9 +33,6 @@ tokio = { version = "0.2", default-features = false, features = ["blocking", "io
 
 # TLS
 tokio-rustls = { version = "0.13", default-features = false }
-
-# WebSockets
-warp = { version = "0.2", default-features = false, features = ["websocket"], optional = true }
 
 # Case-insensitive HashMap.
 # Separated from the main crate because it contains unsafe code.
@@ -74,27 +58,10 @@ chrono = { version = "0.4", default-features = false, features = ["clock", "std"
 regex = { version = "1", default-features = false, features = ["std", "perf", "unicode-case"] }
 regex-syntax = { version = "0.6", default-features = false, features = ["unicode-case"] }
 
-# Initialization of the HashSet of capabilities
-lazy_static = { version = "1", default-features = false }
-
 # msgid tag generation
-rand = { version = "0.7", default-features = false, features = ["std"] }
 rand_chacha = { version = "0.2", default-features = false, features = ["std"] }
-uuid = { version = "0.8", default-features = false, features = ["std"] }
 
 # SASL
 base64 = { version = "0.12", default-features = false, features = ["std"] }
-r2d2 = { version = "0.8", default-features = false, optional = true }
-r2d2_sqlite = { version = "0.14", default-features = false, optional = true }
-r2d2_postgres = { version = "0.16", default-features = false, optional = true }
-rusqlite = { version = "0.21", default-features = false, optional = true }
-tokio-postgres = { version = "0.5", default-features = false, optional = true }
-
-
-[dev-dependencies]
-criterion = "0.3"
-
-
-[[bench]]
-name = "state"
-harness = false
+bcrypt = { version = "0.7", default-features = false }
+sqlx = { version = "0.3", default-features = false, features = ["runtime-tokio", "macros", "sqlite"] }
