@@ -737,13 +737,12 @@ impl StateInner {
         mut filter: impl FnMut(usize, &Client) -> bool,
     ) {
         let msg = MessageQueueItem::from(buf);
-        let mut noticed = self
+        let noticed = self
             .channels
             .values()
             .filter(|channel| channel.members.contains_key(&from))
             .flat_map(|channel| channel.members.keys().cloned())
             .collect::<HashSet<_>>();
-        noticed.insert(from);
         let iter = noticed
             .into_iter()
             .filter(|&id| from != id && filter(id, &self.clients[id]));
