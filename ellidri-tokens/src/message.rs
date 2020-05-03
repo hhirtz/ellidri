@@ -265,17 +265,14 @@ impl<'a> Message<'a> {
     /// assert!(no_command.is_none());
     /// ```
     pub fn parse(s: &'a str) -> Option<Message<'a>> {
-        let mut buf = s.trim();
+        let buf = s.trim_start();
         if buf.is_empty() || buf.contains('\0') {
             return None;
         }
 
-        let (tags, rest) = parse_tags(buf);
-        buf = rest;
-        let (prefix, rest) = parse_prefix(buf);
-        buf = rest;
-        let (command, rest) = parse_command(buf);
-        buf = rest;
+        let (tags, buf) = parse_tags(buf);
+        let (prefix, buf) = parse_prefix(buf);
+        let (command, mut buf) = parse_command(buf);
 
         if let Err("") = command {
             return None;

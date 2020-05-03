@@ -14,6 +14,7 @@ use std::sync::Arc;
 use std::{cmp, fmt, fs, net};
 use tokio::sync::{Mutex, Notify};
 
+pub mod test;
 mod v1;
 mod v3;
 
