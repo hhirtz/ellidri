@@ -600,7 +600,7 @@ impl StateInner {
 
     fn send_motd(&self, rb: &mut ReplyBuffer) {
         if let Some(ref motd) = self.motd {
-            rb.reply(rpl::MOTDSTART).fmt_param(lines_motd_start!(&self.domain));
+            rb.reply(rpl::MOTDSTART).fmt_trailing_param(lines_motd_start!(&self.domain));
 
             for line in motd.lines() {
                 rb.reply(rpl::MOTD).fmt_trailing_param(format_args!("- {}", line));
