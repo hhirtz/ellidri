@@ -88,7 +88,7 @@ impl State {
     }
 
     /// Updates the state according to the given message from the given client.
-    pub async fn handle_message(&self, id: usize, msg: Message<'_>) -> Result<u32, ()> {
+    pub async fn handle_message(&self, id: usize, msg: Message<'_>) -> u32 {
         self.0.lock().await.handle_message(id, msg)
     }
 
@@ -199,7 +199,7 @@ impl StateInner {
     }
 
     async fn load_database(&mut self) {
-        // TODO
+        // TODO load_database
     }
 
     pub fn rehash(&mut self, config: config::State) {
@@ -256,31 +256,29 @@ impl StateInner {
         let client = self.clients.remove(id);
         self.nicks.remove(u(client.nick()));
 
+        if client.is_registered() {
+            self.channels.retain(|_, channel| {
+                channel.members.remove(&id);
+                !channel.members.is_empty()
+            });
+
+            let mut quit_notice = Buffer::new();
+            quit_notice.message(client.full_name(), Command::Quit).fmt_trailing_param(reason);
+
+            let quit_notice = MessageQueueItem::from(quit_notice);
+            client.send(quit_notice.clone());
+            self.send_notification(id, quit_notice, |_, _| true);
+        }
+
         let mut error = Buffer::new();
         error.message("", "ERROR").fmt_trailing_param(reason);
         client.send(error);
-
-        if !client.is_registered() {
-            return;
-        }
-
-        let mut quit_notice = Buffer::new();
-        quit_notice.message(client.full_name(), Command::Quit).fmt_trailing_param(reason);
-
-        let quit_notice = MessageQueueItem::from(quit_notice);
-        client.send(quit_notice.clone());
-        self.send_notification(id, quit_notice, |_, _| true);
-
-        self.channels.retain(|_, channel| {
-            channel.members.remove(&id);
-            !channel.members.is_empty()
-        });
     }
 
-    pub fn handle_message(&mut self, id: usize, msg: Message<'_>) -> Result<u32, ()> {
+    pub fn handle_message(&mut self, id: usize, msg: Message<'_>) -> u32 {
         let client = match self.clients.get(id) {
             Some(client) => client,
-            None => return Err(()),
+            None => return 999_999,
         };
 
         let label = msg.tags()
@@ -294,30 +292,30 @@ impl StateInner {
 
         if MAX_TAG_DATA_LENGTH < msg.tags.len() {
             rb.reply(rpl::ERR_INPUTTOOLONG).trailing_param(lines::INPUT_TOO_LONG);
-            return Ok(3);
+            return 3;
         }
 
         let req = match Request::new(&msg) {
             Ok(req) => req,
             Err(data::Error::ErroneousNickname(name)) => {
                 rb.reply(rpl::ERR_ERRONEUSNICKNAME).param(name).trailing_param(lines::ERRONEOUS_NICKNAME);
-                return Ok(6);
+                return 6;
             }
             Err(data::Error::InvalidCap) => {
                 rb.reply(Command::Cap).param("NAK").trailing_param(msg.params[2]);
-                return Ok(6);
+                return 6;
             }
             Err(data::Error::InvalidCapCmd(cmd)) => {
                 rb.reply(rpl::ERR_INVALIDCAPCMD).param(cmd).trailing_param(lines::UNKNOWN_COMMAND);
-                return Ok(6);
+                return 6;
             }
             Err(data::Error::NoSuchChannel(name)) => {
                 rb.reply(rpl::ERR_NOSUCHCHANNEL).param(name).trailing_param(lines::NO_SUCH_CHANNEL);
-                return Ok(6);
+                return 6;
             }
             Err(data::Error::NoSuchNick(name)) => {
                 rb.reply(rpl::ERR_NOSUCHNICK).param(name).trailing_param(lines::NO_SUCH_NICK);
-                return Ok(6);
+                return 6;
             }
             Err(data::Error::NeedMoreParams(command, n)) => {
                 match command {
@@ -334,7 +332,7 @@ impl StateInner {
                         rb.reply(rpl::ERR_NEEDMOREPARAMS).param(command.as_str()).trailing_param(lines::NEED_MORE_PARAMS);
                     }
                 }
-                return Ok(6);
+                return 6;
             }
             Err(data::Error::UnknownCommand(unknown)) => {
                 if client.is_registered() {
@@ -342,7 +340,7 @@ impl StateInner {
                 } else {
                     rb.reply(rpl::ERR_NOTREGISTERED).trailing_param(lines::NOT_REGISTERED);
                 }
-                return Ok(6);
+                return 6;
             }
         };
 
@@ -352,7 +350,7 @@ impl StateInner {
             } else {
                 rb.reply(rpl::ERR_NOTREGISTERED).trailing_param(lines::NOT_REGISTERED);
             }
-            return Ok(2);
+            return 2;
         }
 
         let points = req.points();
@@ -362,6 +360,7 @@ impl StateInner {
             client_tags: msg.tags,
         };
 
+        log::debug!("{}: {:?}", id, req);
         let res = match req.clone() {
             // Requests about general server info.
             Request::Admin => self.cmd_admin(ctx),
@@ -423,7 +422,7 @@ impl StateInner {
 
         if !self.clients.contains(id) {
             // Command handler removed the client from the network state.
-            return Err(());
+            return 999_999;
         }
 
         let used_points = if res.is_ok() {
@@ -448,7 +447,7 @@ impl StateInner {
             self.clients[id].send(rb);
         }
 
-        Ok(if is_operator { 1 } else { used_points })
+        if is_operator { 1 } else { used_points }
     }
 
     pub fn remove_if_unregistered(&mut self, id: usize) {

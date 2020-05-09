@@ -6,6 +6,8 @@ use std::fmt::Arguments;
 
 pub const BAD_PASSWORD: &str = "You're not senpai!";
 
+pub const CLOSING_LINK: &str = "Bye bye senpai!";
+
 pub const CONNECTION_RESET: &str = "This senpai left without saying anything...";
 
 pub fn quit<F, T>(reason: Option<&str>, f: F) -> T
@@ -42,8 +44,6 @@ pub const CANNOT_SEND_TO_CHAN: &str = "They can't hear you from here senpai...";
 pub const CHAN_O_PRIVS_NEEDED: &str = "You need to ask a channel operator";
 
 pub const CHANNEL_IS_FULL: &str = "Please, this channel could not take it!";
-
-pub const CLOSING_LINK: &str = "Bye bye senpai!";
 
 pub const END_OF_BAN_LIST: &str = "End of ban list";
 

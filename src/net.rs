@@ -191,8 +191,7 @@ macro_rules! rate_limit {
 
         loop {
             used_points = match $do.await {
-                Ok(Some(points)) => used_points + points,
-                Ok(None) => break Ok(()),
+                Ok(points) => used_points + points,
                 Err(err) => break Err(err),
             };
             if burst < used_points {
@@ -263,11 +262,11 @@ async fn handle(conn: impl io::AsyncRead + io::AsyncWrite, peer_addr: SocketAddr
 ///
 /// Returns `None` if the connection must be closed, `Some(points)` otherwise.  Points are used for
 /// rate limits.
-async fn handle_buffer(peer_id: usize, buf: &str, shared: &State) -> Option<u32> {
+async fn handle_buffer(peer_id: usize, buf: &str, shared: &State) -> u32 {
     if let Some(msg) = Message::parse(buf) {
-        return shared.handle_message(peer_id, msg).await.ok();
+        return shared.handle_message(peer_id, msg).await;
     }
-    Some(1)
+    1
 }
 
 async fn login_timeout(peer_id: usize, shared: State) {
