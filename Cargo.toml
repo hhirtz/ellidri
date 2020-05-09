@@ -20,10 +20,6 @@ targets = ["x86_64-unknown-linux-gnu"]
 all-features = true
 
 
-[profile.release]
-debug = true
-
-
 [dependencies]
 # Async runtime
 futures = { version = "0.3", default-features = false, features = ["async-await", "std"] }
