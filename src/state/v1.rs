@@ -240,7 +240,7 @@ impl super::StateInner {
         let client = &self.clients[ctx.id];
 
         let mut update_idle = false;
-        for (channel_name, key) in list {
+        for (channel_name, key) in list.iter() {
             let ok = self
                 .channels
                 .get(u(channel_name.get()))
@@ -345,7 +345,7 @@ impl super::StateInner {
             .reason
             .map(|reason| &reason[..reason.len().min(kicklen)]);
 
-        for kicked_nick in args.who {
+        for kicked_nick in args.who.iter() {
             let kicked = find_nick(ctx.id, ctx.rb, &self.clients, &self.nicks, kicked_nick)
                 .ok()
                 .and_then(|(id, _)| channel.members.remove(&id));
@@ -416,7 +416,7 @@ impl super::StateInner {
         let client = &self.clients[ctx.id];
         ctx.rb.lr_batch_begin();
 
-        for name in targets {
+        for name in targets.iter() {
             if let Some(channel) = self.channels.get(name.u()) {
                 if channel.secret && !client.operator && !channel.members.contains_key(&ctx.id) {
                     continue;
@@ -686,7 +686,7 @@ impl super::StateInner {
     ) -> Result {
         ctx.rb.lr_batch_begin();
 
-        for target in targets {
+        for target in targets.iter() {
             self.send_names(ctx.id, &mut ctx.rb, target);
         }
 
@@ -777,7 +777,7 @@ impl super::StateInner {
 
         let mut res = Ok(());
 
-        for channel_name in args.from {
+        for channel_name in args.from.iter() {
             ctx.rb.lr_batch_begin();
 
             let channel = match self.channels.get_mut(channel_name.u()) {
@@ -842,6 +842,12 @@ impl super::StateInner {
             if channel.members.remove(&ctx.id).is_none() {
                 return true;
             }
+
+            ctx.rb.lr_batch_begin();
+            ctx.rb
+                .message(issuer.full_name(), Command::Part)
+                .param(channel_name.get())
+                .trailing_param(lines::PART_ALL);
 
             let is_not_empty = !channel.members.is_empty();
             if is_not_empty {
@@ -1369,7 +1375,7 @@ impl super::StateInner {
         _ctx: CommandContext<'_>,
         _args: data::req::MessageAll<'_>,
     ) -> Result {
-        // TODO
+        // TODO cmd_message_all
         todo!()
     }
 

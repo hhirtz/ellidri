@@ -173,15 +173,12 @@ impl<'a, T> List<'a, T> {
     }
 }
 
-impl<'a, T> Iterator for List<'a, T>
+impl<'a, T> List<'a, T>
 where
-    T: TryFrom<&'a str>,
+    T: TryFrom<&'a str> + 'a,
 {
-    type Item = T;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        // TODO
-        todo!()
+    pub fn iter(&self) -> impl Iterator<Item = T> + 'a {
+        self.0.split(self.1).flat_map(T::try_from)
     }
 }
 
@@ -194,13 +191,13 @@ impl<'a> JoinList<'a> {
         let keys = List::new(keys, ',');
         Self(names, keys)
     }
-}
 
-impl<'a> Iterator for JoinList<'a> {
-    type Item = (ChannelName<'a>, Option<Key<'a>>);
-
-    fn next(&mut self) -> Option<Self::Item> {
-        // TODO
-        todo!()
+    pub fn iter(&self) -> impl Iterator<Item = (ChannelName<'a>, Option<Key<'a>>)> {
+        let keys = self
+            .1
+            .iter()
+            .map(Option::Some)
+            .chain(std::iter::repeat(Option::None));
+        self.0.iter().zip(keys)
     }
 }
