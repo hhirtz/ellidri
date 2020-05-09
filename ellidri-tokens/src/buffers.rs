@@ -360,7 +360,7 @@ impl ReplyBuffer {
     pub fn new(domain: &str, nickname: &str, label: &str) -> Self {
         Self::set_nick(nickname);
         Self::set_domain(domain);
-        Self::set_label(domain);
+        Self::set_label(label);
         Self {
             buf: Buffer::new(),
             batch: None,
