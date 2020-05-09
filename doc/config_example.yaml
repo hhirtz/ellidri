@@ -28,3 +28,7 @@ org_location: Europe
 org_mail:     Contact support@ellidri.org
 
 motd_file: /etc/motd
+
+database:
+    driver: sqlite
+    url: sqlite:///var/lib/ellidri/ircd.db
