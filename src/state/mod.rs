@@ -206,6 +206,7 @@ impl StateInner {
         self.domain = Arc::from(config.domain);
         self.org_name = config.org_name;
         self.org_location = config.org_location;
+        self.org_mail = config.org_mail;
         self.motd = if config.motd_file.is_empty() {
             None
         } else {
