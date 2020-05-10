@@ -313,7 +313,8 @@ impl<'a> Request<'a> {
                 }
             }
             Command::Nick => {
-                let nickname = Nickname::try_from(msg.params[0])?;
+                let nickname = Nickname::try_from(msg.params[0])
+                    .map_err(|_| Error::ErroneousNickname(msg.params[0]))?;
                 Self::Nick(nickname)
             }
             Command::SetName => {
