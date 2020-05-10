@@ -299,22 +299,27 @@ impl StateInner {
             Ok(req) => req,
             Err(data::Error::ErroneousNickname(name)) => {
                 rb.reply(rpl::ERR_ERRONEUSNICKNAME).param(name).trailing_param(lines::ERRONEOUS_NICKNAME);
+                client.send(rb);
                 return 6;
             }
             Err(data::Error::InvalidCap) => {
                 rb.reply(Command::Cap).param("NAK").trailing_param(msg.params[2]);
+                client.send(rb);
                 return 6;
             }
             Err(data::Error::InvalidCapCmd(cmd)) => {
                 rb.reply(rpl::ERR_INVALIDCAPCMD).param(cmd).trailing_param(lines::UNKNOWN_COMMAND);
+                client.send(rb);
                 return 6;
             }
             Err(data::Error::NoSuchChannel(name)) => {
                 rb.reply(rpl::ERR_NOSUCHCHANNEL).param(name).trailing_param(lines::NO_SUCH_CHANNEL);
+                client.send(rb);
                 return 6;
             }
             Err(data::Error::NoSuchNick(name)) => {
                 rb.reply(rpl::ERR_NOSUCHNICK).param(name).trailing_param(lines::NO_SUCH_NICK);
+                client.send(rb);
                 return 6;
             }
             Err(data::Error::NeedMoreParams(command, n)) => {
@@ -332,6 +337,7 @@ impl StateInner {
                         rb.reply(rpl::ERR_NEEDMOREPARAMS).param(command.as_str()).trailing_param(lines::NEED_MORE_PARAMS);
                     }
                 }
+                client.send(rb);
                 return 6;
             }
             Err(data::Error::UnknownCommand(unknown)) => {
@@ -340,6 +346,7 @@ impl StateInner {
                 } else {
                     rb.reply(rpl::ERR_NOTREGISTERED).trailing_param(lines::NOT_REGISTERED);
                 }
+                client.send(rb);
                 return 6;
             }
         };
@@ -350,6 +357,7 @@ impl StateInner {
             } else {
                 rb.reply(rpl::ERR_NOTREGISTERED).trailing_param(lines::NOT_REGISTERED);
             }
+            client.send(rb);
             return 2;
         }
 
