@@ -234,9 +234,9 @@ impl StateInner {
         log::debug!("{}: Disconnected", id);
 
         if let Some(err) = err {
-            self.remove_client(id, format_args!("{}: {}", lines::CLOSING_LINK, err));
+            self.remove_client(id, format_args!("{}", err), format_args!("{}", err));
         } else {
-            self.remove_client(id, format_args!("{}", lines::CLOSING_LINK));
+            self.remove_client(id, lines::CLOSING_LINK, lines::CONNECTION_RESET);
         }
     }
 
@@ -248,7 +248,7 @@ impl StateInner {
     /// - send a QUIT message to all cilents in these channels,
     /// - TODO: remove the client from channel invites
     /// - remove empty channels
-    fn remove_client(&mut self, id: usize, reason: impl fmt::Display + Copy) {
+    fn remove_client(&mut self, id: usize, msg_to_client: impl fmt::Display, msg_to_others: impl fmt::Display) {
         if !self.clients.contains(id) {
             return;
         }
@@ -257,21 +257,21 @@ impl StateInner {
         self.nicks.remove(u(client.nick()));
 
         if client.is_registered() {
-            self.channels.retain(|_, channel| {
-                channel.members.remove(&id);
-                !channel.members.is_empty()
-            });
-
             let mut quit_notice = Buffer::new();
-            quit_notice.message(client.full_name(), Command::Quit).fmt_trailing_param(reason);
+            quit_notice.message(client.full_name(), Command::Quit).fmt_trailing_param(msg_to_others);
 
             let quit_notice = MessageQueueItem::from(quit_notice);
             client.send(quit_notice.clone());
             self.send_notification(id, quit_notice, |_, _| true);
+
+            self.channels.retain(|_, channel| {
+                channel.members.remove(&id);
+                !channel.members.is_empty()
+            });
         }
 
         let mut error = Buffer::new();
-        error.message("", "ERROR").fmt_trailing_param(reason);
+        error.message("", "ERROR").fmt_trailing_param(msg_to_client);
         client.send(error);
     }
 
@@ -453,7 +453,7 @@ impl StateInner {
     pub fn remove_if_unregistered(&mut self, id: usize) {
         if let Some(client) = self.clients.get(id) {
             if !client.is_registered() {
-                self.remove_client(id, lines::REGISTRATION_TIMEOUT);
+                self.remove_client(id, lines::REGISTRATION_TIMEOUT, "");
             }
         }
     }
@@ -534,7 +534,10 @@ impl StateInner {
             .collect::<HashSet<_>>();
 
         for target_id in noticed {
-            let target = &self.clients[target_id];
+            let target = match self.clients.get(target_id) {
+                Some(target) => target,
+                None => continue,
+            };
 
             if issuer == target_id || !filter(target_id, target) {
                 continue;

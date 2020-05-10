@@ -383,7 +383,7 @@ impl super::StateInner {
             return Err(());
         }
         let (target_id, _) = find_nick(ctx.id, ctx.rb, &self.clients, &self.nicks, args.who)?;
-        self.remove_client(target_id, format_args!("Killed: {}", args.reason));
+        self.remove_client(target_id, format_args!("Killed: {}", args.reason), "Killed");
         Ok(())
     }
 
@@ -899,7 +899,9 @@ impl super::StateInner {
     // QUIT
 
     pub fn cmd_quit(&mut self, ctx: CommandContext<'_>, reason: Option<&str>) -> Result {
-        lines::quit(reason, |quit| self.remove_client(ctx.id, quit));
+        lines::quit(reason, |quit| {
+            self.remove_client(ctx.id, lines::CLOSING_LINK, quit)
+        });
         Ok(())
     }
 
@@ -1020,7 +1022,7 @@ impl super::StateInner {
             ctx.rb
                 .reply(rpl::ERR_PASSWDMISMATCH)
                 .trailing_param(lines::PASSWORD_MISMATCH);
-            self.remove_client(ctx.id, lines::BAD_PASSWORD);
+            self.remove_client(ctx.id, lines::BAD_PASSWORD, "");
             return Err(());
         }
 
