@@ -50,10 +50,6 @@ serde_yaml = { version = "0.8", default-features = false }
 # Time string generation (@time message tag and RPL_TIME reply)
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 
-# Masks implementation
-regex = { version = "1", default-features = false, features = ["std", "perf", "unicode-case"] }
-regex-syntax = { version = "0.6", default-features = false, features = ["unicode-case"] }
-
 # msgid tag generation
 rand_chacha = { version = "0.2", default-features = false, features = ["std"] }
 

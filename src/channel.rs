@@ -1,7 +1,6 @@
 use crate::data::modes;
 use crate::util;
 use ellidri_tokens::{mode, rpl, MessageBuffer};
-use regex as re;
 use std::collections::{HashMap, HashSet};
 
 /// Modes applied to clients on a per-channel basis.
@@ -110,9 +109,9 @@ pub struct Channel {
     pub key: Option<String>,
 
     // https://tools.ietf.org/html/rfc2811.html#section-4.3
-    pub ban_mask: re::RegexSet,
-    pub exception_mask: re::RegexSet,
-    pub invex_mask: re::RegexSet,
+    pub ban_mask: util::MaskSet,
+    pub exception_mask: util::MaskSet,
+    pub invex_mask: util::MaskSet,
 
     // Modes: https://tools.ietf.org/html/rfc2811.html#section-4.2
     pub invite_only: bool,
@@ -135,9 +134,9 @@ impl Channel {
             topic: None,
             user_limit: None,
             key: None,
-            ban_mask: re::RegexSet::new::<_, &String>(&[]).unwrap(),
-            exception_mask: re::RegexSet::new::<_, &String>(&[]).unwrap(),
-            invex_mask: re::RegexSet::new::<_, &String>(&[]).unwrap(),
+            ban_mask: util::MaskSet::new(),
+            exception_mask: util::MaskSet::new(),
+            invex_mask: util::MaskSet::new(),
             invite_only: false,
             moderated: false,
             no_msg_from_outside: false,
@@ -298,28 +297,25 @@ impl Channel {
                 self.user_limit = None;
             }
             ChangeBan(value, param) => {
-                if value {
-                    util::regexset_add(&mut self.ban_mask, param);
+                applied = if value {
+                    self.ban_mask.insert(param)
                 } else {
-                    util::regexset_remove(&mut self.ban_mask, param);
-                }
-                applied = true;
+                    self.ban_mask.remove(param)
+                };
             }
             ChangeException(value, param) => {
-                if value {
-                    util::regexset_add(&mut self.exception_mask, param);
+                applied = if value {
+                    self.exception_mask.insert(param)
                 } else {
-                    util::regexset_remove(&mut self.exception_mask, param);
-                }
-                applied = true;
+                    self.exception_mask.remove(param)
+                };
             }
             ChangeInvitation(value, param) => {
-                if value {
-                    util::regexset_add(&mut self.invex_mask, param);
+                applied = if value {
+                    self.invex_mask.insert(param)
                 } else {
-                    util::regexset_remove(&mut self.invex_mask, param);
-                }
-                applied = true;
+                    self.invex_mask.remove(param)
+                };
             }
             ChangeOperator(value, param) => {
                 let mut has_it = false;

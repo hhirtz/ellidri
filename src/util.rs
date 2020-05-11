@@ -1,87 +1,123 @@
-use ellidri_unicase::u;
 use rand_chacha::rand_core::{RngCore, SeedableRng};
 use rand_chacha::ChaChaRng;
-use regex as re;
 use std::cell::RefCell;
-use std::{iter, time};
+use std::time;
 
 thread_local! {
-    static RNG: RefCell<ChaChaRng> = RefCell::new(ChaChaRng::from_entropy());
-    static REGEX: RefCell<String> = RefCell::new(String::new());
+    static RNG: RefCell<ChaChaRng> = RefCell::new(ChaChaRng::seed_from_u64(time::SystemTime::now().duration_since(time::UNIX_EPOCH).unwrap().as_secs()));
 }
 
-const REGEX_SIZE: usize = 4096;
+pub type Masks<'a> = std::str::Split<'a, char>;
 
-fn build_regexset(mut b: re::RegexSetBuilder) -> re::RegexSet {
-    b.case_insensitive(true)
-        .size_limit(REGEX_SIZE)
-        .dfa_size_limit(REGEX_SIZE)
-        .build()
-        .unwrap()
+pub struct MaskSet {
+    raw: String,
 }
 
-fn build_regex(mut b: re::RegexBuilder) -> re::Regex {
-    b.case_insensitive(true)
-        .size_limit(REGEX_SIZE)
-        .dfa_size_limit(REGEX_SIZE)
-        .build()
-        .unwrap()
-}
+impl MaskSet {
+    pub fn new() -> Self {
+        MaskSet { raw: String::new() }
+    }
 
-fn convert_mask(dest: &mut String, mask: &str) {
-    dest.reserve(mask.len());
-    for c in mask.chars() {
-        match c {
-            '*' => dest.push_str(".*"),
-            '?' => dest.push('.'),
-            c if regex_syntax::is_meta_character(c) => {
-                dest.push('\\');
-                dest.push(c);
-            }
-            c => dest.push(c),
+    pub fn is_match(&self, s: &str) -> bool {
+        self.raw.split(',').any(|mask| match_mask(mask, s))
+    }
+
+    /// Returns whether mask has been inserted.
+    pub fn insert(&mut self, mask: &str) -> bool {
+        if self.raw.split(',').any(|m| m == mask) {
+            return false;
         }
+
+        if !self.raw.is_empty() {
+            self.raw.push(',');
+        }
+        self.raw.push_str(mask);
+
+        true
+    }
+
+    /// Returns whether mask has been removed.
+    pub fn remove(&mut self, mask: &str) -> bool {
+        if let Some(removed) = self.raw.split(',').find(|m| *m == mask) {
+            let start = removed.as_ptr() as usize - self.raw.as_ptr() as usize;
+
+            let mut end = start + removed.len();
+            if end < self.raw.len() {
+                end += 1;
+            }
+
+            self.raw.replace_range(start..end, "");
+
+            return true;
+        }
+
+        false
+    }
+
+    pub fn masks(&self) -> Masks<'_> {
+        self.raw.split(',')
     }
 }
 
-pub fn mask_to_regex(mask: &str) -> re::Regex {
-    REGEX.with(|s| {
-        let mut s = s.borrow_mut();
-        s.clear();
-        convert_mask(&mut s, mask);
-        build_regex(re::RegexBuilder::new(&s))
-    })
+// Taken from <https://golang.org/src/path/match.go?s=1084:1142#L28>
+pub fn match_mask(mut mask: &str, mut s: &str) -> bool {
+    'pattern: while !mask.is_empty() {
+        let (star, chunk) = scan_chunk(&mut mask);
+        if star && chunk.is_empty() {
+            return true;
+        }
+
+        let (rest, ok) = match_chunk(chunk, s);
+        if ok && (rest.is_empty() || !mask.is_empty()) {
+            s = rest;
+            continue;
+        }
+
+        if star {
+            for i in 0..s.len() {
+                let (rest, ok) = match_chunk(chunk, &s[i + 1..]);
+                if ok {
+                    if mask.is_empty() && !rest.is_empty() {
+                        continue;
+                    }
+                    s = rest;
+                    continue 'pattern;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    s.is_empty()
 }
 
-#[allow(clippy::into_iter_on_ref)]
-pub fn regexset_add(set: &mut re::RegexSet, mask: &str) {
-    REGEX.with(|s| {
-        let mut s = s.borrow_mut();
-        s.clear();
-        convert_mask(&mut s, mask);
-        let new_patterns = set
-            .patterns()
-            .into_iter()
-            .map(AsRef::as_ref)
-            .chain(iter::once(s.as_str()));
-        let new_set = build_regexset(re::RegexSetBuilder::new(new_patterns));
-        *set = new_set;
-    });
+fn scan_chunk<'a>(mask: &mut &'a str) -> (bool, &'a str) {
+    let initial_len = mask.len();
+    *mask = mask.trim_start_matches('*');
+    let star = mask.len() < initial_len;
+
+    let i = mask.find('*').unwrap_or(mask.len());
+    let chunk = &mask[..i];
+    *mask = &mask[i..];
+    (star, chunk)
 }
 
-pub fn regexset_remove(set: &mut re::RegexSet, mask: &str) {
-    REGEX.with(|s| {
-        let mut s = s.borrow_mut();
-        s.clear();
-        convert_mask(&mut s, mask);
-        let s = u(s.as_str());
-        let new_patterns = set
-            .patterns()
-            .into_iter()
-            .map(AsRef::as_ref)
-            .filter(|p| u(p) != s);
-        let new_set = build_regexset(re::RegexSetBuilder::new(new_patterns));
-        *set = new_set;
-    });
+fn match_chunk<'a>(chunk: &str, mut s: &'a str) -> (&'a str, bool) {
+    for fc in chunk.chars() {
+        let mut it = s.chars();
+        let fs = match it.next() {
+            Some(fs) => fs,
+            None => return ("", false),
+        };
+
+        if fc != '?' && fc != fs {
+            return ("", false);
+        }
+        s = it.as_str();
+    }
+
+    (s, true)
 }
 
 pub fn new_message_id() -> String {
@@ -124,3 +160,35 @@ impl PendingStream {
         futures::future::pending()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_mask_match() {
+        let cases = [
+            ("abc", "abc", true),
+            ("*", "abc", true),
+            ("*c", "abc", true),
+            ("a*", "a", true),
+            ("a*", "abc", true),
+            ("a*/b", "abc/b", true),
+            ("a*b?c*x", "abxbbxdbxebxczzx", true),
+            ("a*b?c*x", "abxbbxdbxebxczzy", false),
+            ("a?b", "a☺b", true),
+            ("a???b", "a☺b", false),
+            ("*x", "xxx", true),
+        ];
+
+        for (mask, s, is_match) in &cases {
+            assert_eq!(
+                match_mask(mask, s),
+                *is_match,
+                "match_mask({:?}, {:?})",
+                mask,
+                s
+            );
+        }
+    }
+} // mod tests

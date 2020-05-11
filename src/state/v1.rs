@@ -486,7 +486,7 @@ impl super::StateInner {
             return Err(());
         }
 
-        let reply_list = |rb: &mut ReplyBuffer, item, end, line: &str, it: &[String]| {
+        let reply_list = |rb: &mut ReplyBuffer, item, end, line: &str, it: util::Masks<'_>| {
             for i in it {
                 rb.reply(item).param(args.channel.get()).param(i);
             }
@@ -507,7 +507,7 @@ impl super::StateInner {
                         rpl::BANLIST,
                         rpl::ENDOFBANLIST,
                         lines::END_OF_BAN_LIST,
-                        channel.ban_mask.patterns(),
+                        channel.ban_mask.masks(),
                     );
                 }
                 Ok(mode::ChannelChange::GetExceptions) => {
@@ -516,7 +516,7 @@ impl super::StateInner {
                         rpl::EXCEPTLIST,
                         rpl::ENDOFEXCEPTLIST,
                         lines::END_OF_EXCEPT_LIST,
-                        channel.exception_mask.patterns(),
+                        channel.exception_mask.masks(),
                     );
                 }
                 Ok(mode::ChannelChange::GetInvitations) => {
@@ -525,7 +525,7 @@ impl super::StateInner {
                         rpl::INVITELIST,
                         rpl::ENDOFINVITELIST,
                         lines::END_OF_INVITE_LIST,
-                        channel.exception_mask.patterns(),
+                        channel.exception_mask.masks(),
                     );
                 }
                 Ok(change) => {
@@ -1204,13 +1204,12 @@ impl super::StateInner {
             return Err(());
         }
 
-        let regex = args.mask.to_regex();
         ctx.rb.lr_batch_begin();
 
         if args.mask.is_channel() {
             self.channels
                 .iter()
-                .filter(|(name, _)| regex.is_match(name.get()))
+                .filter(|(name, _)| args.mask.is_match(name.get()))
                 .flat_map(|(name, channel)| {
                     channel
                         .members
@@ -1222,7 +1221,7 @@ impl super::StateInner {
                 });
         } else {
             for (nick, id) in &self.nicks {
-                if !regex.is_match(nick.get()) {
+                if !args.mask.is_match(nick.get()) {
                     continue;
                 }
                 self.who_user(ctx.id, &mut ctx.rb, issuer, *id, args.filter);

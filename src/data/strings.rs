@@ -55,8 +55,8 @@ impl Mask<'_> {
         is_namespace(first)
     }
 
-    pub fn to_regex(&self) -> regex::Regex {
-        util::mask_to_regex(self.0)
+    pub fn is_match(&self, s: &str) -> bool {
+        util::match_mask(self.0, s)
     }
 }
 
