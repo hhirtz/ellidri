@@ -40,7 +40,7 @@
 //! not kept track of, thus ellidri might reload the same TLS identity for a binding (it is fine to
 //! let it do we are not reading thousands for TLS identities here).
 
-use crate::{config, Database, net, State};
+use crate::{config, net, State};
 use futures::FutureExt;
 use std::future::Future;
 use std::net::SocketAddr;
@@ -191,19 +191,7 @@ impl Control {
 
         let mut runtime = create_runtime(cfg.workers);
 
-        let db = if let Some(db_cfg) = cfg.database.clone() {
-            match runtime.block_on(Database::new(db_cfg)) {
-                Ok(db) => Some(db),
-                Err(err) => {
-                    log::warn!("Failed to initialize the database: {}", err);
-                    None
-                }
-            }
-        } else {
-            None
-        };
-
-        let shared = runtime.block_on(State::new(cfg.state, db, rehash.clone()));
+        let shared = runtime.block_on(State::new(cfg.state, rehash.clone()));
 
         let bindings = load_bindings(cfg.bindings, &shared, &stop, &mut runtime);
 

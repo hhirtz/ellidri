@@ -2,7 +2,7 @@
 
 #![allow(clippy::needless_pass_by_value)]
 
-use crate::{Channel, Client, config, data, Database, lines, util};
+use crate::{Channel, Client, config, data, lines, util};
 use crate::client::{MessageQueue, MessageQueueItem};
 use crate::data::Request;
 use ellidri_tokens::{mode, rpl, Buffer, Command, Message, ReplyBuffer};
@@ -56,8 +56,8 @@ impl State {
     /// Intialize the IRC state from the given configuration.
     ///
     /// `rehash` will be notified/pinged whenever an operator sends a REHASH command.
-    pub async fn new(config: config::State, db: Option<Database>, rehash: Arc<Notify>) -> Self {
-        let inner = StateInner::new(config, db, rehash).await;
+    pub async fn new(config: config::State, rehash: Arc<Notify>) -> Self {
+        let inner = StateInner::new(config, rehash).await;
         Self(Arc::new(Mutex::new(inner)))
     }
 
@@ -104,8 +104,6 @@ impl State {
 
 /// The actual shared data (state) of the IRC server.
 pub(crate) struct StateInner {
-    db: Option<Database>,
-
     /// The domain of the server. This string is used as a prefix for replies sent to clients.
     domain: Arc<str>,
 
@@ -160,7 +158,7 @@ pub(crate) struct StateInner {
 }
 
 impl StateInner {
-    pub async fn new(config: config::State, db: Option<Database>, rehash: Arc<Notify>) -> Self {
+    pub async fn new(config: config::State, rehash: Arc<Notify>) -> Self {
         log::info!("Loading MOTD from {:?}", config.motd_file);
         let motd = match fs::read_to_string(&config.motd_file) {
             Ok(motd) => Some(motd),
@@ -169,8 +167,7 @@ impl StateInner {
                 None
             }
         };
-        let mut res = Self {
-            db,
+        Self {
             domain: Arc::from(config.domain),
             org_name: config.org_name,
             org_location: config.org_location,
@@ -193,13 +190,7 @@ impl StateInner {
             userlen: config.userlen,
             login_timeout: config.login_timeout,
             rehash,
-        };
-        res.load_database().await;
-        res
-    }
-
-    async fn load_database(&mut self) {
-        // TODO load_database
+        }
     }
 
     pub fn rehash(&mut self, config: config::State) {

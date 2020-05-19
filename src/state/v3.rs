@@ -30,12 +30,6 @@ impl super::StateInner {
 
         let trailing = msg.raw_trailing_param();
         trailing.push_str(data::cap::ls_common());
-        if self.db.is_some() {
-            trailing.push_str(" sasl");
-            if client.cap_version == data::cap::Version::V302 {
-                trailing.push_str("=PLAIN,EXTERNAL");
-            }
-        }
 
         Ok(())
     }

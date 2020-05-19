@@ -23,7 +23,6 @@ all-features = true
 [dependencies]
 # Async runtime
 futures = { version = "0.3", default-features = false, features = ["async-await", "std"] }
-futures-util = { version = "0.3", default-features = false }
 slab = { version = "0.4", default-features = false }
 tokio = { version = "0.2", default-features = false, features = ["blocking", "io-util", "rt-threaded", "signal", "sync", "tcp", "time"] }
 
@@ -38,8 +37,7 @@ ellidri-unicase = { version = "2.1.0", path = "ellidri-unicase" }
 ellidri-reader = { version = "0.1", path = "ellidri-reader" }
 ellidri-tokens = { version = "0.1.0", path = "ellidri-tokens" }
 
-# Logging and CLI
-clap = { version = "2.33", default-features = false }
+# Logging
 env_logger = { version = "0.7", default-features = false }
 log = { version = "0.4", default-features = false, features = ["max_level_trace", "release_max_level_info"] }
 
@@ -51,9 +49,5 @@ serde_yaml = { version = "0.8", default-features = false }
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 
 # msgid tag generation
-rand_chacha = { version = "0.2", default-features = false, features = ["std"] }
-
-# SASL
 base64 = { version = "0.12", default-features = false, features = ["std"] }
-bcrypt = { version = "0.7", default-features = false }
-sqlx = { version = "0.3", default-features = false, features = ["runtime-tokio", "macros", "sqlite"] }
+rand_chacha = { version = "0.2", default-features = false, features = ["std"] }

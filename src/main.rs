@@ -13,16 +13,14 @@
 use crate::channel::Channel;
 use crate::client::Client;
 use crate::control::Control;
-use crate::db::Database;
 use crate::state::State;
-use std::env;
+use std::{env, process};
 
 mod channel;
 mod client;
 mod config;
 mod control;
 mod data;
-mod db;
 #[macro_use]
 mod lines;
 mod net;
@@ -44,19 +42,7 @@ pub fn main() {
         })
         .init();
 
-    let matches = clap::App::new(env!("CARGO_PKG_NAME"))
-        .version(env!("CARGO_PKG_VERSION"))
-        .author(env!("CARGO_PKG_AUTHORS"))
-        .about(env!("CARGO_PKG_DESCRIPTION"))
-        .arg(
-            clap::Arg::with_name("CONFIG_FILE")
-                .long("--config")
-                .value_name("CONFIG_FILE")
-                .help("ellidri's configuration file"),
-        )
-        .get_matches();
-
-    let config_path = matches.value_of("CONFIG_FILE").unwrap();
+    let config_path = parse_args();
     let (mut runtime, control) = Control::new(config_path.to_owned());
 
     runtime.spawn(control.run());
@@ -65,4 +51,26 @@ pub fn main() {
 
 fn infinite() -> impl std::future::Future<Output = ()> {
     futures::future::pending()
+}
+
+fn parse_args() -> String {
+    let mut args = env::args();
+
+    let program = args.next().unwrap();
+
+    let config_path = args.next().unwrap_or_else(|| {
+        eprintln!("Usage: {} CONFIG_FILE", program);
+        process::exit(1);
+    });
+
+    if config_path == "-h" || config_path == "--help" {
+        eprintln!("ellidri {}", env!("CARGO_PKG_VERSION"));
+        eprintln!("Usage: {} CONFIG_FILE", program);
+        process::exit(1);
+    } else if config_path == "-v" || config_path == "--version" {
+        eprintln!("ellidri {}", env!("CARGO_PKG_VERSION"));
+        process::exit(1);
+    }
+
+    config_path
 }

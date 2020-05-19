@@ -122,36 +122,6 @@ pub struct State {
     pub login_timeout: u64,
 }
 
-pub mod db {
-    use super::*;
-
-    #[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]
-    pub enum Driver {
-        #[serde(rename = "sqlite")]
-        Sqlite,
-    }
-
-    #[derive(Clone, Debug, Deserialize, Serialize)]
-    pub struct Info {
-        pub driver: Driver,
-        pub url: String,
-
-        #[serde(default = "db_max_size")]
-        pub max_size: u32,
-
-        #[serde(default = "db_min_size")]
-        pub min_size: u32,
-
-        #[serde(default = "db_connect_timeout")]
-        pub connect_timeout: u64,
-
-        pub idle_timeout: Option<u64>,
-        // Don't advertise "max_lifetime" because sqlx leaks when it's too high:
-        // <https://docs.rs/sqlx-core/0.3.5/src/sqlx_core/pool/options.rs.html#30>
-        //pub max_lifetime: u64,
-    }
-}
-
 /// The whole configuration.
 #[derive(Deserialize, Serialize)]
 pub struct Config {
@@ -166,8 +136,6 @@ pub struct Config {
 
     #[serde(flatten)]
     pub state: State,
-
-    pub database: Option<db::Info>,
 }
 
 fn bindings() -> Vec<Binding> {
@@ -258,7 +226,6 @@ impl Config {
             bindings: bindings(),
             workers: 0,
             state: State::sample(),
-            database: None,
         }
     }
 
