@@ -12,7 +12,7 @@
 
 use crate::channel::Channel;
 use crate::client::Client;
-use crate::control::Control;
+use crate::config::Config;
 use crate::state::State;
 use std::{env, process};
 
@@ -43,9 +43,7 @@ pub fn main() {
         .init();
 
     let config_path = parse_args();
-    let (mut runtime, control) = Control::new(config_path.to_owned());
-
-    runtime.block_on(control.run());
+    control::load_config_and_run(config_path);
 }
 
 fn parse_args() -> String {

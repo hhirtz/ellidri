@@ -40,7 +40,8 @@
 //! not kept track of, thus ellidri might reload the same TLS identity for a binding (it is fine to
 //! let it do we are not reading thousands for TLS identities here).
 
-use crate::{config, net, State};
+use crate::{Config, net, State};
+use crate::config::{Binding, Tls};
 use std::future::Future;
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -102,20 +103,16 @@ fn create_runtime(workers: usize) -> rt::Runtime {
 /// It spawns all the generated bindings on the runtime, and returns their listening address and
 /// command channel.
 fn load_bindings(
-    bindings: Vec<config::Binding>,
+    bindings: Vec<Binding>,
     shared: &State,
     stop: &mpsc::Sender<SocketAddr>,
-    runtime: &mut rt::Runtime,
 ) -> Vec<(SocketAddr, mpsc::Sender<Command>)> {
     let mut res = Vec::with_capacity(bindings.len());
     let mut store = net::TlsIdentityStore::default();
 
-    for config::Binding { address, tls } in bindings {
+    for Binding { address, tls } in bindings {
         let (handle, commands) = mpsc::channel(8);
-        if let Some(config::Tls {
-            certificate, key, ..
-        }) = tls
-        {
+        if let Some(Tls { certificate, key, ..  }) = tls {
             let acceptor = match store.acceptor(certificate, key) {
                 Ok(acceptor) => acceptor,
                 Err(_) => process::exit(1),
@@ -128,134 +125,15 @@ fn load_bindings(
                 commands,
             );
             res.push((address, handle));
-            runtime.spawn(server);
+            tokio::spawn(server);
         } else {
             let server = net::listen(address, shared.clone(), None, stop.clone(), commands);
             res.push((address, handle));
-            runtime.spawn(server);
+            tokio::spawn(server);
         }
     }
 
     res
-}
-
-/// The main task controler.
-///
-/// `Control` chooses which tasks are run.  See the module documentation for details.
-pub struct Control {
-    /// The path to the configuration file.
-    config_path: String,
-
-    /// The shared IRC state.
-    shared: crate::State,
-
-    /// The sending end of the channel used to track binding tasks' failures.
-    ///
-    /// It is shared with the binding tasks, so that they can report back when they fail.  Used to
-    /// exit the program when no binding task is up.
-    stop: mpsc::Sender<SocketAddr>,
-
-    /// The receiving end of the channel used to track binding tasks' failures.
-    failures: mpsc::Receiver<SocketAddr>,
-
-    /// A channel to receive a notification when an operator sends REHASH.
-    ///
-    /// It is shared with `Control.shared`, which pings on this channel when REHASH is received.
-    rehash: Arc<Notify>,
-
-    /// The list of socket addresses (IP address + TCP port) of the running binding tasks.
-    ///
-    /// `Control` keeps track of this in several ways:
-    ///
-    /// - When an address is received on the `failures` channel, it removes the relevant entry in
-    ///   this array,
-    /// - When reloading, it adds and removes the new and old bindings respectively.
-    ///
-    /// Note:  The binding tasks listen for the command channel, when this (only) sending end is
-    /// dropped, the binding task will stop.  `Control` should take care not to clone the sending
-    /// end, so this behavior doesn't change.
-    bindings: Vec<(SocketAddr, mpsc::Sender<Command>)>,
-}
-
-impl Control {
-    /// Generates, from the given configuration file path, a new `Control` and a new tokio runtime.
-    pub fn new(config_path: String) -> (rt::Runtime, Self) {
-        let (stop, failures) = mpsc::channel(8);
-        let rehash = Arc::new(Notify::new());
-
-        let cfg = config::Config::from_file(&config_path).unwrap_or_else(|err| {
-            log::error!("Failed to read {:?}: {}", config_path, err);
-            process::exit(1);
-        });
-
-        let mut runtime = create_runtime(cfg.workers);
-
-        let shared = runtime.block_on(State::new(cfg.state, rehash.clone()));
-
-        let bindings = load_bindings(cfg.bindings, &shared, &stop, &mut runtime);
-
-        let control = Self {
-            config_path,
-            shared,
-            stop,
-            failures,
-            rehash,
-            bindings,
-        };
-        (runtime, control)
-    }
-
-    /// Lets `Control` do its things.
-    ///
-    /// This task must not be run with `runtime.block_on()`, but instead `runtime.spawn`.  It will
-    /// indeed use calls that cannot be made on the main thread (e.g. `tokio::block_in_place`).
-    pub async fn run(self) {
-        #[cfg(unix)]
-        let mut signals = unix::signal(unix::SignalKind::user_defined1()).unwrap_or_else(|err| {
-            log::error!(
-                "Cannot listen for signals to reload the configuration: {}",
-                err
-            );
-            process::exit(1);
-        });
-
-        #[cfg(not(unix))]
-        let signals = tokio::stream::pending();
-
-        let Self {
-            config_path,
-            shared,
-            stop,
-            mut failures,
-            rehash,
-            mut bindings,
-        } = self;
-
-        loop {
-            tokio::select! {
-                addr = failures.recv() => match addr {
-                    Some(addr) => for i in 0..bindings.len() {
-                        if bindings[i].0 == addr {
-                            bindings.swap_remove(i);
-                            break;
-                        }
-                    }
-                    None => {
-                        // `failures.recv()` returns `None` when all senders have been dropped, so
-                        // when all bindings tasks have stopped.
-                        log::error!("No binding left, exiting.");
-                        return;
-                    }
-                },
-                _ = rehash.notified() => {
-                    do_rehash(config_path.clone(), &shared, stop.clone(), &mut bindings).await;
-                },
-                _ = signals.recv() => {
-                    do_rehash(config_path.clone(), &shared, stop.clone(), &mut bindings).await;
-                },
-            }
-        }
-    }
 }
 
 /// Reloads the configuration at `config_path`.
@@ -334,8 +212,8 @@ fn reload_config(
     config_path: String,
     shared: State,
     stop: mpsc::Sender<SocketAddr>,
-) -> Option<(config::Config, Vec<LoadedBinding<impl Future<Output = ()>>>)> {
-    let mut cfg = match config::Config::from_file(&config_path) {
+) -> Option<(Config, Vec<LoadedBinding<impl Future<Output = ()>>>)> {
+    let mut cfg = match Config::from_file(&config_path) {
         Ok(cfg) => cfg,
         Err(err) => {
             log::error!("Failed to read {:?}: {}", config_path, err);
@@ -361,19 +239,16 @@ fn reload_config(
 ///
 /// Otherwise both functions have the same behavior.
 fn reload_bindings(
-    bindings: &[config::Binding],
+    bindings: &[Binding],
     shared: &State,
     stop: &mpsc::Sender<SocketAddr>,
 ) -> Vec<LoadedBinding<impl Future<Output = ()>>> {
     let mut res = Vec::with_capacity(bindings.len());
     let mut store = net::TlsIdentityStore::default();
 
-    for config::Binding { address, tls } in bindings {
+    for Binding { address, tls } in bindings {
         let (handle, commands) = mpsc::channel(8);
-        if let Some(config::Tls {
-            certificate, key, ..
-        }) = tls
-        {
+        if let Some(Tls { certificate, key, ..  }) = tls {
             let acceptor = match store.acceptor(certificate, key) {
                 Ok(acceptor) => acceptor,
                 Err(_) => continue,
@@ -403,4 +278,60 @@ fn reload_bindings(
     }
 
     res
+}
+
+pub fn load_config_and_run(config_path: String) {
+    let cfg = Config::from_file(&config_path).unwrap_or_else(|err| {
+        log::error!("Failed to read {:?}: {}", config_path, err);
+        process::exit(1);
+    });
+
+    let mut runtime = create_runtime(cfg.workers);
+
+    runtime.block_on(run(config_path, cfg));
+}
+
+pub async fn run(config_path: String, cfg: Config) {
+    #[cfg(unix)]
+    let mut signals = unix::signal(unix::SignalKind::user_defined1()).unwrap_or_else(|err| {
+        log::error!(
+            "Cannot listen for signals to reload the configuration: {}",
+            err
+        );
+        process::exit(1);
+    });
+
+    #[cfg(not(unix))]
+    let signals = tokio::stream::pending();
+
+    let (stop, mut failures) = mpsc::channel(8);
+    let rehash = Arc::new(Notify::new());
+
+    let shared = State::new(cfg.state, rehash.clone()).await;
+    let mut bindings = load_bindings(cfg.bindings, &shared, &stop);
+
+    loop {
+        tokio::select! {
+            addr = failures.recv() => match addr {
+                Some(addr) => for i in 0..bindings.len() {
+                    if bindings[i].0 == addr {
+                        bindings.swap_remove(i);
+                        break;
+                    }
+                }
+                None => {
+                    // `failures.recv()` returns `None` when all senders have been dropped, so
+                    // when all bindings tasks have stopped.
+                    log::error!("No binding left, exiting.");
+                    return;
+                }
+            },
+            _ = rehash.notified() => {
+                do_rehash(config_path.clone(), &shared, stop.clone(), &mut bindings).await;
+            },
+            _ = signals.recv() => {
+                do_rehash(config_path.clone(), &shared, stop.clone(), &mut bindings).await;
+            },
+        }
+    }
 }
