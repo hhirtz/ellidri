@@ -12,6 +12,10 @@ fn is_wildcard(c: char) -> bool {
     c == '?' || c == '*'
 }
 
+fn is_prefix(c: char) -> bool {
+    c == '~' || c == '&' || c == '@' || c == '%' || c == '+'
+}
+
 fn is_valid(c: char) -> bool {
     c != ' ' && c != ',' && c != ':'
 }
@@ -23,9 +27,11 @@ fn is_valid_mask(s: &str) -> bool {
 }
 
 fn is_valid_name(s: &str) -> bool {
-    !s.is_empty()
-        && s.chars()
-            .all(|c| is_valid(c) && !is_namespace(c) && !is_wildcard(c))
+    s.chars().next().map_or(false, |first| {
+        !is_prefix(first)
+            && s.chars()
+                .all(|c| is_valid(c) && !is_namespace(c) && !is_wildcard(c))
+    })
 }
 
 fn is_valid_channel_name(s: &str) -> bool {
