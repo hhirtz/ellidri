@@ -22,9 +22,8 @@ all-features = true
 
 [dependencies]
 # Async runtime
-futures = { version = "0.3", default-features = false, features = ["async-await", "std"] }
 slab = { version = "0.4", default-features = false }
-tokio = { version = "0.2", default-features = false, features = ["blocking", "io-util", "rt-threaded", "signal", "sync", "tcp", "time"] }
+tokio = { version = "0.2", default-features = false, features = ["blocking", "io-util", "macros", "rt-threaded", "signal", "stream", "sync", "tcp", "time"] }
 
 # TLS
 tokio-rustls = { version = "0.13", default-features = false }

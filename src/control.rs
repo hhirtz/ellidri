@@ -41,7 +41,6 @@
 //! let it do we are not reading thousands for TLS identities here).
 
 use crate::{config, net, State};
-use futures::FutureExt;
 use std::future::Future;
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -221,7 +220,7 @@ impl Control {
         });
 
         #[cfg(not(unix))]
-        let signals = crate::util::PendingStream;
+        let signals = tokio::stream::pending();
 
         let Self {
             config_path,
@@ -233,8 +232,8 @@ impl Control {
         } = self;
 
         loop {
-            futures::select! {
-                addr = failures.recv().fuse() => match addr {
+            tokio::select! {
+                addr = failures.recv() => match addr {
                     Some(addr) => for i in 0..bindings.len() {
                         if bindings[i].0 == addr {
                             bindings.swap_remove(i);
@@ -248,11 +247,11 @@ impl Control {
                         return;
                     }
                 },
-                _ = rehash.notified().fuse() => {
-                    do_rehash(&config_path, &shared, &stop, &mut bindings).await;
+                _ = rehash.notified() => {
+                    do_rehash(config_path.clone(), &shared, stop.clone(), &mut bindings).await;
                 },
-                _ = signals.recv().fuse() => {
-                    do_rehash(&config_path, &shared, &stop, &mut bindings).await;
+                _ = signals.recv() => {
+                    do_rehash(config_path.clone(), &shared, stop.clone(), &mut bindings).await;
                 },
             }
         }
@@ -268,16 +267,17 @@ impl Control {
 /// - Add new bindings, or send them a command to listen for raw TCP or TLS connections,
 /// - Update the shared state.
 async fn do_rehash(
-    config_path: &str,
+    config_path: String,
     shared: &State,
-    stop: &mpsc::Sender<SocketAddr>,
+    stop: mpsc::Sender<SocketAddr>,
     bindings: &mut Vec<(SocketAddr, mpsc::Sender<Command>)>,
 ) {
     log::info!("Reloading configuration from {:?}", config_path);
-    let reloaded = task::block_in_place(|| reload_config(config_path, shared, stop));
+    let shared_clone = shared.clone();
+    let reloaded = task::spawn_blocking(|| reload_config(config_path, shared_clone, stop)).await;
     let (cfg, new_bindings) = match reloaded {
-        Some(reloaded) => reloaded,
-        None => return,
+        Ok(Some(reloaded)) => reloaded,
+        _ => return,
     };
 
     let mut i = 0;
@@ -331,11 +331,11 @@ async fn do_rehash(
 /// shared state can use the field as-is, since it must not use blocking operations such as reading
 /// a file.
 fn reload_config(
-    config_path: &str,
-    shared: &State,
-    stop: &mpsc::Sender<SocketAddr>,
+    config_path: String,
+    shared: State,
+    stop: mpsc::Sender<SocketAddr>,
 ) -> Option<(config::Config, Vec<LoadedBinding<impl Future<Output = ()>>>)> {
-    let mut cfg = match config::Config::from_file(config_path) {
+    let mut cfg = match config::Config::from_file(&config_path) {
         Ok(cfg) => cfg,
         Err(err) => {
             log::error!("Failed to read {:?}: {}", config_path, err);
@@ -349,7 +349,7 @@ fn reload_config(
             String::new()
         }
     };
-    let new_bindings = reload_bindings(&cfg.bindings, shared, stop);
+    let new_bindings = reload_bindings(&cfg.bindings, &shared, &stop);
     Some((cfg, new_bindings))
 }
 

@@ -45,12 +45,7 @@ pub fn main() {
     let config_path = parse_args();
     let (mut runtime, control) = Control::new(config_path.to_owned());
 
-    runtime.spawn(control.run());
-    runtime.block_on(infinite());
-}
-
-fn infinite() -> impl std::future::Future<Output = ()> {
-    futures::future::pending()
+    runtime.block_on(control.run());
 }
 
 fn parse_args() -> String {

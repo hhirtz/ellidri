@@ -1,21 +1,14 @@
 use crate::{control, lines, State};
-
 use ellidri_reader::IrcReader;
 use ellidri_tokens::Message;
-
-use futures::future;
-use futures::FutureExt;
-
 use std::collections::HashMap;
 use std::error::Error;
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::{fs, str};
-
 use tokio::sync::mpsc;
 use tokio::{io, net, sync, time};
-
 use tokio_rustls::rustls::internal::pemfile;
 use tokio_rustls::rustls::{NoClientAuth, ServerConfig};
 use tokio_rustls::TlsAcceptor;
@@ -121,15 +114,15 @@ pub async fn listen(
     }
 
     loop {
-        futures::select! {
-            maybe_conn = ln.accept().fuse() => match maybe_conn {
+        tokio::select! {
+            maybe_conn = ln.accept() => match maybe_conn {
                 Ok((conn, peer_addr)) => match acceptor.as_ref() {
                     Some(a) => handle_tls(conn, peer_addr, shared.clone(), a.clone()),
                     None => handle_tcp(conn, peer_addr, shared.clone()),
                 }
                 Err(err) => log::warn!("Binding {} failed to accept a connection: {}", addr, err),
             },
-            command = commands.recv().fuse() => match command {
+            command = commands.recv() => match command {
                 Some(control::Command::UsePlain) => {
                     if acceptor.is_some() {
                         log::info!("Binding {} switched to plain-text connections", addr);
@@ -192,7 +185,10 @@ macro_rules! rate_limit {
         loop {
             used_points = match $do.await {
                 Ok(points) => used_points + points,
-                Err(err) => break Err(err),
+                Err(err) => {
+                    let res: io::Result<()> = Err(err);
+                    break res;
+                }
             };
             if burst < used_points {
                 let elapsed = last_round.elapsed();
@@ -252,10 +248,13 @@ async fn handle(conn: impl io::AsyncRead + io::AsyncWrite, peer_addr: SocketAddr
         Ok(())
     };
 
-    futures::pin_mut!(incoming, outgoing);
+    let res: Option<io::Error>;
+    tokio::select! {
+        r = incoming => res = r.err(),
+        r = outgoing => res = r.err(),
+    }
 
-    let res = future::select(incoming, outgoing).await;
-    shared.peer_quit(peer_id, res.factor_first().0.err()).await;
+    shared.peer_quit(peer_id, res).await;
 }
 
 /// Handle a line from the client.
