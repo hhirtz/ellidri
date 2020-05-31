@@ -3,7 +3,7 @@
 use std::str;
 
 /// User modes supported by ellidri.  Advertised in welcome messages.
-pub const USER_MODES: &str = "aiorsw";
+pub const USER_MODES: &str = "aio";
 
 /// Channel modes that have no parameters and are supported by ellidri.  Advertised in welcome
 /// messages.
