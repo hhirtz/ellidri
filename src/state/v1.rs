@@ -437,7 +437,7 @@ impl super::StateInner {
 
     pub fn cmd_lusers(&self, mut ctx: CommandContext<'_>) -> Result {
         ctx.rb.lr_batch_begin();
-        self.send_lusers(&mut ctx.rb);
+        self.send_lusers(ctx.id, &mut ctx.rb);
         Ok(())
     }
 

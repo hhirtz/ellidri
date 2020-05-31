@@ -572,9 +572,9 @@ impl StateInner {
             .trailing_param(lines::I_SUPPORT);
     }
 
-    fn send_lusers(&self, rb: &mut ReplyBuffer) {
+    fn send_lusers(&self, id: usize, rb: &mut ReplyBuffer) {
         rb.reply(rpl::LUSERCLIENT)
-            .fmt_param(lines_luser_client!(self.clients.len()));
+            .fmt_trailing_param(lines_luser_client!(self.clients.len()));
 
         let (op, unknown) = self
             .clients
@@ -589,24 +589,39 @@ impl StateInner {
                 }
             });
         if 0 < op {
-            rb.reply(rpl::LUSEROP).fmt_param(op).trailing_param(lines::LUSER_OP);
+            rb.reply(rpl::LUSEROP)
+                .fmt_param(op)
+                .trailing_param(lines::LUSER_OP);
         }
         if 0 < unknown {
-            rb.reply(rpl::LUSERUNKNOWN).fmt_param(&unknown).trailing_param(lines::LUSER_UNKNOWN);
+            rb.reply(rpl::LUSERUNKNOWN)
+                .fmt_param(&unknown)
+                .trailing_param(lines::LUSER_UNKNOWN);
         }
-        if !self.channels.is_empty() {
-            let n = self.channels.values().filter(|c| !c.secret).count();
-            rb.reply(rpl::LUSERCHANNELS).fmt_param(&n).trailing_param(lines::LUSER_CHANNELS);
+
+        let channels = self
+            .channels
+            .values()
+            .filter(|c| !c.secret || c.members.contains_key(&id))
+            .count();
+        if 0 < channels {
+            rb.reply(rpl::LUSERCHANNELS)
+                .fmt_param(channels)
+                .trailing_param(lines::LUSER_CHANNELS);
         }
-        rb.reply(rpl::LUSERME).fmt_param(lines_luser_me!(self.clients.len()));
+
+        rb.reply(rpl::LUSERME)
+            .fmt_trailing_param(lines_luser_me!(self.clients.len()));
     }
 
     fn send_motd(&self, rb: &mut ReplyBuffer) {
         if let Some(ref motd) = self.motd {
-            rb.reply(rpl::MOTDSTART).fmt_trailing_param(lines_motd_start!(&self.domain));
+            rb.reply(rpl::MOTDSTART)
+                .fmt_trailing_param(lines_motd_start!(&self.domain));
 
             for line in motd.lines() {
-                rb.reply(rpl::MOTD).fmt_trailing_param(format_args!("- {}", line));
+                rb.reply(rpl::MOTD)
+                    .fmt_trailing_param(format_args!("- {}", line));
             }
 
             rb.reply(rpl::ENDOFMOTD).trailing_param(lines::END_OF_MOTD);
@@ -681,7 +696,7 @@ impl StateInner {
             .param(mode::SIMPLE_CHAN_MODES)
             .param(mode::EXTENDED_CHAN_MODES);
         self.send_i_support(rb);
-        self.send_lusers(rb);
+        self.send_lusers(id, rb);
         self.send_motd(rb);
     }
 }
