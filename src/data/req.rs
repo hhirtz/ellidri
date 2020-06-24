@@ -428,10 +428,10 @@ impl<'a> Request<'a> {
 
             // Client session related requests.
             Self::Authenticate(_) => 16,
-            Self::CapLs(_) => 2,
-            Self::CapList => 2,
-            Self::CapReq(_) => 2,
-            Self::CapEnd => 2,
+            Self::CapLs(_) => 1,
+            Self::CapList => 1,
+            Self::CapReq(_) => 1,
+            Self::CapEnd => 1,
             Self::Pass(_) => 2,
             Self::Ping(_) => 2,
             Self::Pong(_) => 2,
