@@ -686,6 +686,7 @@ impl StateInner {
     fn send_welcome(&self, id: usize, rb: &mut ReplyBuffer) {
         let client = &self.clients[id];
 
+        rb.lr_batch_begin();
         rb.reply(rpl::WELCOME).fmt_trailing_param(lines_welcome!(client.nick()));
         rb.reply(rpl::YOURHOST).fmt_trailing_param(lines_your_host!(&self.domain, SERVER_VERSION));
         rb.reply(rpl::CREATED).fmt_trailing_param(lines_created!(&self.created_at));
