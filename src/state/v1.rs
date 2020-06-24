@@ -1187,6 +1187,11 @@ impl super::StateInner {
             }
         }
 
+        ctx.rb
+            .reply(rpl::ENDOFWHO)
+            .param(args.mask.get())
+            .trailing_param(lines::END_OF_WHO);
+
         Ok(())
     }
 
