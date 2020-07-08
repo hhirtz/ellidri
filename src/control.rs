@@ -47,9 +47,11 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use std::{fs, process};
 use tokio::runtime as rt;
-use tokio::signal::unix;
 use tokio::sync::{mpsc, Notify};
 use tokio::task;
+
+#[cfg(unix)]
+use tokio::signal::unix;
 
 /// A command from `Control` to binding tasks.
 pub enum Command {
