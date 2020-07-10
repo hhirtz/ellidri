@@ -50,9 +50,6 @@ use tokio::runtime as rt;
 use tokio::sync::{mpsc, Notify};
 use tokio::task;
 
-#[cfg(unix)]
-use tokio::signal::unix;
-
 /// A command from `Control` to binding tasks.
 pub enum Command {
     /// Ask the binding task to listen for raw TCP connections and not use TLS.
@@ -294,17 +291,24 @@ pub fn load_config_and_run(config_path: String) {
 }
 
 pub async fn run(config_path: String, cfg: Config) {
-    #[cfg(unix)]
-    let mut signals = unix::signal(unix::SignalKind::user_defined1()).unwrap_or_else(|err| {
-        log::error!(
-            "Cannot listen for signals to reload the configuration: {}",
-            err
-        );
+    let signal_fail = |err| {
+        log::error!("Cannot listen for signals to reload the configuration: {}", err);
         process::exit(1);
-    });
+    };
 
-    #[cfg(not(unix))]
-    let signals = tokio::stream::pending();
+    #[cfg(unix)]
+    let mut signals = {
+        use tokio::signal::unix;
+
+        unix::signal(unix::SignalKind::user_defined1()).unwrap_or_else(signal_fail)
+    };
+
+    #[cfg(windows)]
+    let mut signals = {
+        use tokio::signal::windows;
+
+        windows::ctrl_break().unwrap_or_else(signal_fail)
+    };
 
     let (stop, mut failures) = mpsc::channel(8);
     let rehash = Arc::new(Notify::new());
