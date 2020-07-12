@@ -70,7 +70,9 @@ impl ConnectionState {
         match self {
             ConnectionState::ConnectionEstablished => match request {
                 CapLs { .. } | CapReq { .. } => Ok(ConnectionState::CapGiven),
-                Authenticate { .. } | CapEnd | Pass { .. } | Ping { .. } => Ok(self),
+                Authenticate { .. } | CapEnd | CapList { .. } | Pass { .. } | Ping { .. } => {
+                    Ok(self)
+                }
                 Nick { .. } => Ok(ConnectionState::NickGiven),
                 User { .. } => Ok(ConnectionState::UserGiven),
                 Quit { .. } => Ok(ConnectionState::Quit),
@@ -78,23 +80,33 @@ impl ConnectionState {
             },
             ConnectionState::NickGiven => match request {
                 CapLs { .. } | CapReq { .. } => Ok(ConnectionState::CapGiven),
-                Authenticate { .. } | CapEnd | Nick { .. } | Pass { .. } | Ping { .. } => Ok(self),
+                Authenticate { .. }
+                | CapEnd
+                | CapList { .. }
+                | Nick { .. }
+                | Pass { .. }
+                | Ping { .. } => Ok(self),
                 User { .. } => Ok(ConnectionState::Registered),
                 Quit { .. } => Ok(ConnectionState::Quit),
                 _ => Err(()),
             },
             ConnectionState::UserGiven => match request {
                 CapLs { .. } | CapReq { .. } => Ok(ConnectionState::CapGiven),
-                Authenticate { .. } | CapEnd | Pass { .. } | Ping { .. } => Ok(self),
+                Authenticate { .. } | CapEnd | CapList { .. } | Pass { .. } | Ping { .. } => {
+                    Ok(self)
+                }
                 Nick { .. } => Ok(ConnectionState::Registered),
                 Quit { .. } => Ok(ConnectionState::Quit),
                 _ => Err(()),
             },
             ConnectionState::CapGiven => match request {
                 CapEnd => Ok(ConnectionState::ConnectionEstablished),
-                Authenticate { .. } | CapLs { .. } | CapReq { .. } | Pass { .. } | Ping { .. } => {
-                    Ok(self)
-                }
+                Authenticate { .. }
+                | CapList { .. }
+                | CapLs { .. }
+                | CapReq { .. }
+                | Pass { .. }
+                | Ping { .. } => Ok(self),
                 Nick { .. } => Ok(ConnectionState::CapNickGiven),
                 User { .. } => Ok(ConnectionState::CapUserGiven),
                 Quit { .. } => Ok(ConnectionState::Quit),
@@ -103,6 +115,7 @@ impl ConnectionState {
             ConnectionState::CapNickGiven => match request {
                 CapEnd => Ok(ConnectionState::NickGiven),
                 Authenticate { .. }
+                | CapList { .. }
                 | CapLs { .. }
                 | CapReq { .. }
                 | Nick { .. }
@@ -114,9 +127,12 @@ impl ConnectionState {
             },
             ConnectionState::CapUserGiven => match request {
                 CapEnd => Ok(ConnectionState::UserGiven),
-                Authenticate { .. } | CapLs { .. } | CapReq { .. } | Pass { .. } | Ping { .. } => {
-                    Ok(self)
-                }
+                Authenticate { .. }
+                | CapList { .. }
+                | CapLs { .. }
+                | CapReq { .. }
+                | Pass { .. }
+                | Ping { .. } => Ok(self),
                 Nick { .. } => Ok(ConnectionState::CapNegotiation),
                 Quit { .. } => Ok(ConnectionState::Quit),
                 _ => Err(()),
@@ -124,6 +140,7 @@ impl ConnectionState {
             ConnectionState::CapNegotiation => match request {
                 CapEnd => Ok(ConnectionState::Registered),
                 Authenticate { .. }
+                | CapList { .. }
                 | CapLs { .. }
                 | CapReq { .. }
                 | Nick { .. }
