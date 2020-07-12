@@ -286,6 +286,7 @@ impl super::StateInner {
         clients: &super::ClientMap,
         channel: &Channel,
         channel_name: &str,
+        kicked_id: usize,
         kicked_nick: &str,
         reason: Option<&str>,
     ) {
@@ -314,6 +315,7 @@ impl super::StateInner {
         for member in channel.members.keys().filter(|m| **m != id) {
             clients[*member].send(msg.clone());
         }
+        clients[kicked_id].send(msg);
     }
 
     pub fn cmd_kick(&mut self, mut ctx: CommandContext<'_>, args: data::req::Kick<'_>) -> Result {
@@ -346,16 +348,17 @@ impl super::StateInner {
             .map(|reason| &reason[..reason.len().min(kicklen)]);
 
         for kicked_nick in args.who.iter() {
-            let kicked = find_nick(ctx.id, ctx.rb, &self.clients, &self.nicks, kicked_nick)
+            let kicked_id = find_nick(ctx.id, ctx.rb, &self.clients, &self.nicks, kicked_nick)
                 .ok()
-                .and_then(|(id, _)| channel.members.remove(&id));
-            if kicked.is_some() {
+                .and_then(|(id, _)| channel.members.remove(&id).map(|_| id));
+            if let Some(kicked_id) = kicked_id {
                 Self::send_kick(
                     ctx.id,
                     &mut ctx.rb,
                     &self.clients,
                     channel,
                     args.from.get(),
+                    kicked_id,
                     kicked_nick.get(),
                     reason,
                 );
