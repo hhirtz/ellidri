@@ -295,7 +295,7 @@ impl StateInner {
                 return 6;
             }
             Err(data::Error::InvalidCap) => {
-                rb.reply(Command::Cap).param("NAK").trailing_param(msg.params[2]);
+                rb.reply(Command::Cap).param("NAK").trailing_param(msg.params[1]);
                 client.send(rb);
                 return 6;
             }
