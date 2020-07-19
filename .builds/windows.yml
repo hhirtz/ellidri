@@ -1,0 +1,32 @@
+image: archlinux
+sources:
+    - https://git.sr.ht/~taiite/ellidri
+secrets:
+    - 030fce6b-4bb4-4dd7-b6bc-0b4adad09afb
+environment:
+    RUST_BACKTRACE: 1
+    PACMAN_CONF: |
+        \n
+        [ownstuff]\n
+        Server = https://martchus.no-ip.biz/repo/arch/$repo/os/$arch\n
+        SigLevel = PackageOptional\n
+        \n
+        [archlinuxcn]\n
+        Server = http://repo.archlinuxcn.org/$arch\n
+        SigLevel = Never\n
+    CARGO_CONF: |
+        \n
+        [target.x86_64-pc-windows-gnu]\n
+        linker = "/usr/bin/x86_64-w64-mingw32-gcc"\n
+        ar = "/usr/x86_64-w64-mingw32/bin/ar"\n
+tasks:
+    - setup: |
+        echo -e $PACMAN_CONF | sudo tee -a /etc/pacman.conf
+        mkdir -p ~/.cargo
+        echo -e $CARGO_CONF >~/.cargo/config
+        sudo pacman -Syu --noconfirm --noprogressbar mingw-w64-gcc cargo-nightly rust-nightly rust-std-nightly-x86_64-pc-windows-gnu
+    - build: |
+        cd ellidri
+        cargo build --locked --target x86_64-pc-windows-gnu --release
+    - deploy: |
+        scp -o StrictHostKeyChecking=no -i ~/.ssh/030fce6b-4bb4-4dd7-b6bc-0b4adad09afb -q -P 15500 ellidri/target/x86_64-pc-windows-gnu/release/ellidri.exe moe@ellidri.org:/srv/http/ellidri.org/dl/l64/ellidri.exe

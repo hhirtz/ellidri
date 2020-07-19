@@ -1,0 +1,20 @@
+image: alpine/edge
+packages:
+    - cargo
+sources:
+    - https://git.sr.ht/~taiite/ellidri
+secrets:
+    - 030fce6b-4bb4-4dd7-b6bc-0b4adad09afb
+environment:
+    RUST_BACKTRACE: 1
+tasks:
+    - build: |
+        cd ellidri
+        cargo build --locked
+        cargo build --locked --release
+    - test: |
+        cd ellidri
+        cargo test --locked --no-fail-fast
+        cargo test --locked --no-fail-fast -p ellidri-tokens
+    - deploy: |
+        scp -o StrictHostKeyChecking=no -i ~/.ssh/030fce6b-4bb4-4dd7-b6bc-0b4adad09afb -q -P 15500 ellidri/target/release/ellidri moe@ellidri.org:/srv/http/ellidri.org/dl/l64/ellidri
