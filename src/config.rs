@@ -125,9 +125,6 @@ pub struct State {
 /// The whole configuration.
 #[derive(Deserialize, Serialize)]
 pub struct Config {
-    #[serde(rename = "unsafe", default)]
-    pub is_unsafe: bool,
-
     #[serde(default = "bindings")]
     pub bindings: Vec<Binding>,
 
@@ -185,50 +182,7 @@ fn login_timeout() -> u64 {
     60_000
 }
 
-fn db_max_size() -> u32 {
-    10
-}
-fn db_min_size() -> u32 {
-    0
-}
-fn db_connect_timeout() -> u64 {
-    10_000
-}
-
-impl State {
-    pub fn sample() -> Self {
-        Self {
-            domain: domain(),
-            default_chan_mode: default_chan_mode(),
-            motd_file: motd_file(),
-            password: String::new(),
-            opers: Vec::new(),
-            org_name: org(),
-            org_location: org(),
-            org_mail: org(),
-            awaylen: awaylen(),
-            channellen: channellen(),
-            keylen: keylen(),
-            kicklen: kicklen(),
-            namelen: namelen(),
-            nicklen: nicklen(),
-            topiclen: topiclen(),
-            userlen: userlen(),
-            login_timeout: login_timeout(),
-        }
-    }
-}
-
 impl Config {
-    pub fn sample() -> Self {
-        Self {
-            is_unsafe: false,
-            bindings: bindings(),
-            workers: 0,
-            state: State::sample(),
-        }
-    }
-
     /// Reads the configuration file at the given path.
     pub fn from_file(path: impl AsRef<path::Path>) -> Result<Self> {
         let contents = fs::read_to_string(path)?;

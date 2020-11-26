@@ -164,22 +164,6 @@ macro_rules! lines_welcome {
     };
 }
 
-//
-// SASL
-//
-
-pub const SASL_ABORTED: &str = "ABORT BAKA";
-
-pub const SASL_ALREADY: &str = "I can't authenticate you again senpai!";
-
-pub const SASL_FAILED: &str = "it's not like I wanted to do my best for you, but it didn't worked";
-
-pub const SASL_MECHS: &str = "please use these to authenticate!";
-
-pub const SASL_SUCCESSFUL: &str = "sugoi~~! looks like it worked!";
-
-pub const SASL_TOO_LONG: &str = "senpai, it's too big!";
-
 #[macro_export]
 macro_rules! lines_logged_in {
     ( $user:expr ) => {

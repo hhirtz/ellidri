@@ -389,7 +389,6 @@ impl StateInner {
             Request::TopicSet(args) => self.cmd_topic_set(ctx, args),
 
             // Client session related requests.
-            Request::Authenticate(args) => self.cmd_authenticate(ctx, args),
             Request::CapLs(args) => self.cmd_cap_ls(ctx, args),
             Request::CapList => self.cmd_cap_list(ctx),
             Request::CapReq(args) => self.cmd_cap_req(ctx, args),

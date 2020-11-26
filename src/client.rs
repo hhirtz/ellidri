@@ -70,9 +70,7 @@ impl ConnectionState {
         match self {
             ConnectionState::ConnectionEstablished => match request {
                 CapLs { .. } | CapReq { .. } => Ok(ConnectionState::CapGiven),
-                Authenticate { .. } | CapEnd | CapList { .. } | Pass { .. } | Ping { .. } => {
-                    Ok(self)
-                }
+                CapEnd | CapList { .. } | Pass { .. } | Ping { .. } => Ok(self),
                 Nick { .. } => Ok(ConnectionState::NickGiven),
                 User { .. } => Ok(ConnectionState::UserGiven),
                 Quit { .. } => Ok(ConnectionState::Quit),
@@ -80,33 +78,23 @@ impl ConnectionState {
             },
             ConnectionState::NickGiven => match request {
                 CapLs { .. } | CapReq { .. } => Ok(ConnectionState::CapGiven),
-                Authenticate { .. }
-                | CapEnd
-                | CapList { .. }
-                | Nick { .. }
-                | Pass { .. }
-                | Ping { .. } => Ok(self),
+                CapEnd | CapList { .. } | Nick { .. } | Pass { .. } | Ping { .. } => Ok(self),
                 User { .. } => Ok(ConnectionState::Registered),
                 Quit { .. } => Ok(ConnectionState::Quit),
                 _ => Err(()),
             },
             ConnectionState::UserGiven => match request {
                 CapLs { .. } | CapReq { .. } => Ok(ConnectionState::CapGiven),
-                Authenticate { .. } | CapEnd | CapList { .. } | Pass { .. } | Ping { .. } => {
-                    Ok(self)
-                }
+                CapEnd | CapList { .. } | Pass { .. } | Ping { .. } => Ok(self),
                 Nick { .. } => Ok(ConnectionState::Registered),
                 Quit { .. } => Ok(ConnectionState::Quit),
                 _ => Err(()),
             },
             ConnectionState::CapGiven => match request {
                 CapEnd => Ok(ConnectionState::ConnectionEstablished),
-                Authenticate { .. }
-                | CapList { .. }
-                | CapLs { .. }
-                | CapReq { .. }
-                | Pass { .. }
-                | Ping { .. } => Ok(self),
+                CapList { .. } | CapLs { .. } | CapReq { .. } | Pass { .. } | Ping { .. } => {
+                    Ok(self)
+                }
                 Nick { .. } => Ok(ConnectionState::CapNickGiven),
                 User { .. } => Ok(ConnectionState::CapUserGiven),
                 Quit { .. } => Ok(ConnectionState::Quit),
@@ -114,8 +102,7 @@ impl ConnectionState {
             },
             ConnectionState::CapNickGiven => match request {
                 CapEnd => Ok(ConnectionState::NickGiven),
-                Authenticate { .. }
-                | CapList { .. }
+                CapList { .. }
                 | CapLs { .. }
                 | CapReq { .. }
                 | Nick { .. }
@@ -127,20 +114,16 @@ impl ConnectionState {
             },
             ConnectionState::CapUserGiven => match request {
                 CapEnd => Ok(ConnectionState::UserGiven),
-                Authenticate { .. }
-                | CapList { .. }
-                | CapLs { .. }
-                | CapReq { .. }
-                | Pass { .. }
-                | Ping { .. } => Ok(self),
+                CapList { .. } | CapLs { .. } | CapReq { .. } | Pass { .. } | Ping { .. } => {
+                    Ok(self)
+                }
                 Nick { .. } => Ok(ConnectionState::CapNegotiation),
                 Quit { .. } => Ok(ConnectionState::Quit),
                 _ => Err(()),
             },
             ConnectionState::CapNegotiation => match request {
                 CapEnd => Ok(ConnectionState::Registered),
-                Authenticate { .. }
-                | CapList { .. }
+                CapList { .. }
                 | CapLs { .. }
                 | CapReq { .. }
                 | Nick { .. }
@@ -163,9 +146,6 @@ impl ConnectionState {
     }
 }
 
-pub const AUTHENTICATE_CHUNK_LEN: usize = 400;
-pub const AUTHENTICATE_WHOLE_LEN: usize = 1024;
-
 const FULL_NAME_LENGTH: usize = 64;
 
 /// Client data.
@@ -181,10 +161,6 @@ pub struct Client {
     pub cap_version: data::cap::Version,
     pub cap_enabled: data::Capabilities,
     state: ConnectionState,
-
-    auth_buffer: String,
-    auth_buffer_complete: bool,
-    auth_id: Option<usize>,
 
     nick: String,
     user: String,
@@ -224,9 +200,6 @@ impl Client {
             cap_version: data::cap::Version::V300,
             cap_enabled: data::Capabilities::default(),
             state: ConnectionState::default(),
-            auth_buffer: String::new(),
-            auth_buffer_complete: false,
-            auth_id: None,
             nick: String::from("*"),
             user: String::new(),
             real: String::new(),
@@ -282,45 +255,6 @@ impl Client {
         self.state == ConnectionState::Registered
     }
 
-    pub fn auth_id(&self) -> Option<usize> {
-        self.auth_id
-    }
-
-    pub fn auth_set_id(&mut self, auth_id: usize) {
-        self.auth_id = Some(auth_id);
-    }
-
-    pub fn auth_buffer_push(&mut self, buf: &str) -> Result<bool, ()> {
-        if self.auth_buffer_complete {
-            self.auth_buffer_complete = false;
-            self.auth_buffer.clear();
-        }
-        if AUTHENTICATE_CHUNK_LEN < buf.len()
-            || AUTHENTICATE_WHOLE_LEN < self.auth_buffer.len() + buf.len()
-        {
-            return Err(());
-        }
-        if buf != "+" {
-            self.auth_buffer.push_str(buf);
-        }
-        self.auth_buffer_complete = buf.len() < AUTHENTICATE_CHUNK_LEN;
-        Ok(self.auth_buffer_complete)
-    }
-
-    pub fn auth_buffer_decode(&self) -> Result<Vec<u8>, base64::DecodeError> {
-        if !self.auth_buffer_complete {
-            return Err(base64::DecodeError::InvalidLength);
-        }
-        base64::decode(&self.auth_buffer)
-    }
-
-    /// Free authentication-related buffers and reset authentication state.
-    pub fn auth_reset(&mut self) {
-        self.auth_buffer = String::new();
-        self.auth_buffer_complete = false;
-        self.auth_id = None;
-    }
-
     pub fn full_name(&self) -> &str {
         &self.full_name
     }
@@ -374,10 +308,6 @@ impl Client {
 
     pub fn account(&self) -> Option<&str> {
         self.account.as_ref().map(|s| s.as_ref())
-    }
-
-    pub fn log_in(&mut self, account: String) {
-        self.account = Some(account);
     }
 
     pub fn signon_time(&self) -> u64 {

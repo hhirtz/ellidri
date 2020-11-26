@@ -52,10 +52,6 @@ impl Mask<'_> {
         self.0
     }
 
-    pub fn u(&self) -> &UniCase<str> {
-        u(self.0)
-    }
-
     pub fn is_channel(&self) -> bool {
         let first = self.0.chars().next().unwrap();
         is_namespace(first)
@@ -151,12 +147,6 @@ impl<'a> TryFrom<&'a str> for Key<'a> {
 
 #[derive(Clone, Copy, Debug)]
 pub struct HostName<'a>(&'a str);
-
-impl HostName<'_> {
-    pub fn get(&self) -> &str {
-        self.0
-    }
-}
 
 impl<'a> TryFrom<&'a str> for HostName<'a> {
     type Error = ();

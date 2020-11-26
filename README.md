@@ -26,16 +26,13 @@ have their own `README.md`.
 
 ## Features
 
-- RFC [1459][r1] and [2812][r2] compliance (almost! see [#1][i1])
-- IRCv3 support
-- IRC over WebSockets
+- IRCv3 server
 - Configurable via a file that can be reloaded at runtime
-- SASL support with SQLite and PostgreSQL
 - kawaii messages
 
 [Supported extensions][ext]: `account-notify`, `away-notify`, `batch`,
 `cap-notify`, `echo-message`, `extended-join`, `invite-notify`,
-`labeled-response`, `message-ids`, `message-tags`, `multi-prefix`, `sasl`,
+`labeled-response`, `message-ids`, `message-tags`, `multi-prefix`,
 `server-time`, `setname`, `userhost-in-names`
 
 ellidri doesn't support any server-to-server (S2S) protocol.  As such, it is
@@ -46,7 +43,6 @@ casemapping.
 
 [r1]: https://tools.ietf.org/html/rfc1459
 [r2]: https://tools.ietf.org/html/rfc2812
-[i1]: https://todo.sr.ht/~taiite/ellidri/1
 [ext]: https://ircv3.net/irc/
 
 
@@ -54,10 +50,7 @@ casemapping.
 
 Prerequisites:
 
-- The Rust compiler (at least version 1.39, or v1.41 when using PostgreSQL) and
-  Cargo: <https://rustup.rs/>
-- SQLite 3 (if the `sqlite` feature is enabled)
-- PostgreSQL client libraries (if the `postgres` feature is enabled)
+- The Rust compiler and Cargo: <https://rustup.rs/>
 
 Install ellidri with `cargo install ellidri`, or with the [AUR package][aur].
 

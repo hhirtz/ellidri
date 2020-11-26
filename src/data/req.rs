@@ -135,7 +135,6 @@ pub enum Request<'a> {
     TopicSet(TopicSet<'a>),
 
     // Client session related requests.
-    Authenticate(auth::Payload<'a>),
     CapLs(cap::Version),
     CapList,
     CapReq(cap::Diff),
@@ -242,10 +241,7 @@ impl<'a> Request<'a> {
                 }
             }
 
-            Command::Authenticate => {
-                let payload = auth::Payload::from(msg.params[0]);
-                Self::Authenticate(payload)
-            }
+            Command::Authenticate => return Err(Error::UnknownCommand("AUTHENTICATE")),
             Command::Cap => match msg.params[0] {
                 "LS" => {
                     let version = cap::Version::from(msg.params[1]);
@@ -427,7 +423,6 @@ impl<'a> Request<'a> {
             Self::TopicSet(_) => 7,
 
             // Client session related requests.
-            Self::Authenticate(_) => 16,
             Self::CapLs(_) => 1,
             Self::CapList => 1,
             Self::CapReq(_) => 1,

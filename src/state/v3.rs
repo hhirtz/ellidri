@@ -50,17 +50,6 @@ impl super::StateInner {
     }
 }
 
-/// Handlers for commands related to SASL specifications.
-impl super::StateInner {
-    pub fn cmd_authenticate(
-        &mut self,
-        _ctx: CommandContext<'_>,
-        _payload: data::auth::Payload<'_>,
-    ) -> Result {
-        todo!()
-    }
-}
-
 /// Handlers for commands related to the setname specification.
 impl super::StateInner {
     pub fn cmd_setname(&mut self, ctx: CommandContext<'_>, realname: &str) -> Result {

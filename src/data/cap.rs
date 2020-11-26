@@ -150,10 +150,6 @@ caps! {
 }
 
 impl Capabilities {
-    pub fn has_labeled_response(&self) -> bool {
-        self.batch && self.labeled_response
-    }
-
     pub fn has_message_tags(&self) -> bool {
         self.message_tags || self.server_time
     }

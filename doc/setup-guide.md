@@ -8,7 +8,6 @@ a working installation of ellidri.  Namely,
 3. Create a user on your system
 4. Generate or localize your certificates
 5. Write ellidri's configuration file
-6. Enable SASL with SQLite
 
 This guide assume the following locations:
 
@@ -74,8 +73,3 @@ After any change you make to the configuration file, you can apply them with
 `systemctl reload ellidri`.
 
 [config]: https://git.sr.ht/~taiite/ellidri/tree/master/doc/config_example.yaml
-
-
-## 6. Enable SASL with SQLite
-
-TODO

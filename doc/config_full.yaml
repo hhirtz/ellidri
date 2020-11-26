@@ -11,22 +11,6 @@
 # For an example configuration file, see `config_example.yaml`.
 
 
-# Whether ellidri can be started in an unsafe state.
-#
-# If you are using ellidri for a server on production, you want to set this to
-# false and solve any problem that may arise when starting ellidri.  If you
-# configure ellidri in an unsafe manner, it will display an error message and
-# quit.  If you want to start ellidri anyway, set this to true; then ellidri
-# will display a warning and continue.
-#
-# Unsafe configurations are configurations that fulfill any of the following:
-# - has a plain-text or WebSocket binding on a public IP,
-# - has a TLS binding with a self-signed certificate on a public IP,
-#
-# The definition of configuration unsafety may change over time.
-unsafe: false
-
-
 # Domain of the IRC server
 #
 # It is sent through most replies to clients as a prefix, and should be the same
@@ -106,56 +90,7 @@ opers:
 password: My password can't be this cute!
 
 
-# Database URL
-#
-# Specify the URL to the database ellidri should use for SASL.  If unset,
-# ellidri will disable SASL.  While ellidri tries its best at all times to serve
-# its users, it cannot reload the database once started.  Please bear with it!
-#
-# The format of the setting is  <driver>://<url>
-#
-# Supported drivers:
-# - mysql
-# - postgres (aliases: psql, postgresql)
-# - sqlite
-#
-# For sqlite, the url is the path to the file.  In-memory databases are not supported.
-#
-# For postgres, the url must follow the key-value format specified at:
-# <https://docs.rs/postgres/0.17.0/postgres/config/struct.Config.html>
-#
-# Simple SQLite example:
-#database:
-#    driver: sqlite
-#    url: sqlite:///var/lib/ellidri/ellidri.db
-#
-# More complex example with PostgreSQL:
-database:
-    # The URL to the PostgreSQL instance.  See here for more details:
-    # <https://docs.rs/postgres/0.17.0/postgres/config/struct.Config.html>
-    url: postgres://host=/run/postgresql,localhost database=ellidri
-
-    # The values below are optional and their default are shown.
-
-    # Disabled by default, this is the number of *milliseconds* ellidri should
-    # wait before closing an inactive connection.  You'll want to set this if
-    # you are billed on usage of the database.
-    idle_timeout:
-
-    # ellidri will not make more connections to the database than this.
-    max_pool_size: 10
-
-    # ellidri will make at least this number of connections to the database.
-    min_pool_size: 0
-
-    # If a connection to a database cannot be established within this number of
-    # *milliseconds*, then ellidri will stop trying to connect and write an
-    # error message.
-    connect_timeout: 10000
-
-
 # Misc settings
-
 
 # Number of worker threads
 #
