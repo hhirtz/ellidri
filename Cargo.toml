@@ -1,5 +1,5 @@
 [workspace]
-members = [".", "ellidri-reader", "ellidri-tokens", "ellidri-unicase"]
+members = [".", "ellidri-tokens", "ellidri-unicase"]
 
 
 [package]
@@ -33,7 +33,6 @@ tokio-rustls = { version = "0.13", default-features = false }
 ellidri-unicase = { version = "2.1.0", path = "ellidri-unicase" }
 
 # IRC parsing
-ellidri-reader = { version = "0.1", path = "ellidri-reader" }
 ellidri-tokens = { version = "0.1.0", path = "ellidri-tokens" }
 
 # Logging

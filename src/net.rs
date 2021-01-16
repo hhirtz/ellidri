@@ -1,5 +1,4 @@
 use crate::{control, lines, State};
-use ellidri_reader::IrcReader;
 use ellidri_tokens::Message;
 use std::collections::HashMap;
 use std::error::Error;
@@ -9,12 +8,14 @@ use std::sync::Arc;
 use std::{fs, str};
 use tokio::sync::mpsc;
 use tokio::{io, net, sync, time};
+use tokio::io::{AsyncBufReadExt, AsyncReadExt};
 use tokio_rustls::rustls::internal::pemfile;
 use tokio_rustls::rustls::{NoClientAuth, ServerConfig};
 use tokio_rustls::TlsAcceptor;
 
 const KEEPALIVE_SECS: u64 = 75;
 const TLS_TIMEOUT_SECS: u64 = 30;
+const MAX_MESSAGE_LENGTH: u64 = 4096;
 
 /// `TlsAcceptor` cache, to avoid reading the same files several times.
 #[derive(Default)]
@@ -217,7 +218,7 @@ macro_rules! rate_limit {
 /// Returns a future that handles an IRC connection.
 async fn handle(conn: impl io::AsyncRead + io::AsyncWrite, peer_addr: SocketAddr, shared: State) {
     let (reader, mut writer) = io::split(conn);
-    let mut reader = IrcReader::new(reader, 512);
+    let mut reader = io::BufReader::new(reader);
 
     let (msg_queue, mut outgoing_msgs) = sync::mpsc::unbounded_channel();
     let peer_id = shared.peer_joined(peer_addr, msg_queue).await;
@@ -227,7 +228,7 @@ async fn handle(conn: impl io::AsyncRead + io::AsyncWrite, peer_addr: SocketAddr
         let mut buf = String::new();
         rate_limit!(125, 32, async {
             buf.clear();
-            let n = reader.read_message(&mut buf).await?;
+            let n = (&mut reader).take(MAX_MESSAGE_LENGTH).read_line(&mut buf).await?;
             if n == 0 {
                 return Err(io::Error::new(
                     io::ErrorKind::UnexpectedEof,
