@@ -36,7 +36,7 @@ ellidri-unicase = { version = "2.1.0", path = "ellidri-unicase" }
 ellidri-tokens = { version = "0.1.0", path = "ellidri-tokens" }
 
 # Logging
-env_logger = { version = "0.7", default-features = false }
+env_logger = { version = "0.8", default-features = false }
 log = { version = "0.4", default-features = false, features = ["max_level_trace", "release_max_level_info"] }
 
 # Configuration
@@ -47,5 +47,5 @@ serde_yaml = { version = "0.8", default-features = false }
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 
 # msgid tag generation
-base64 = { version = "0.12", default-features = false, features = ["std"] }
-rand_chacha = { version = "0.2", default-features = false, features = ["std"] }
+base64 = { version = "0.13", default-features = false, features = ["std"] }
+rand_chacha = { version = "0.3", default-features = false, features = ["std"] }
