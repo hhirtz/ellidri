@@ -916,7 +916,7 @@ impl super::StateInner {
                 .reply(rpl::REHASHING)
                 .param("--")
                 .trailing_param(lines::REHASHING);
-            self.rehash.notify();
+            self.rehash.notify_one();
             Ok(())
         } else {
             ctx.rb

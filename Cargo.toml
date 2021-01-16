@@ -23,10 +23,10 @@ all-features = true
 [dependencies]
 # Async runtime
 slab = { version = "0.4", default-features = false }
-tokio = { version = "0.2", default-features = false, features = ["blocking", "io-util", "macros", "rt-threaded", "signal", "stream", "sync", "tcp", "time"] }
+tokio = { version = "1.0", default-features = false, features = ["io-util", "macros", "net", "rt-multi-thread", "signal", "sync", "time"] }
 
 # TLS
-tokio-rustls = { version = "0.13", default-features = false }
+tokio-rustls = { version = "0.22", default-features = false }
 
 # Case-insensitive HashMap.
 # Separated from the main crate because it contains unsafe code.

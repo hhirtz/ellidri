@@ -13,7 +13,6 @@ use tokio_rustls::rustls::internal::pemfile;
 use tokio_rustls::rustls::{NoClientAuth, ServerConfig};
 use tokio_rustls::TlsAcceptor;
 
-const KEEPALIVE_SECS: u64 = 75;
 const TLS_TIMEOUT_SECS: u64 = 30;
 const MAX_MESSAGE_LENGTH: u64 = 4096;
 
@@ -96,10 +95,10 @@ pub async fn listen(
     addr: SocketAddr,
     shared: State,
     mut acceptor: Option<Arc<TlsAcceptor>>,
-    mut stop: mpsc::Sender<SocketAddr>,
+    stop: mpsc::Sender<SocketAddr>,
     mut commands: mpsc::Receiver<control::Command>,
 ) {
-    let mut ln = match net::TcpListener::bind(&addr).await {
+    let ln = match net::TcpListener::bind(&addr).await {
         Ok(ln) => ln,
         Err(err) => {
             log::error!("Binding {} failed to come online: {}", addr, err);
@@ -148,10 +147,6 @@ pub async fn listen(
 }
 
 fn handle_tcp(conn: net::TcpStream, peer_addr: SocketAddr, shared: State) {
-    if let Err(err) = conn.set_keepalive(Some(time::Duration::from_secs(KEEPALIVE_SECS))) {
-        log::warn!("Failed to set TCP keepalive: {}", err);
-        return;
-    }
     tokio::spawn(handle(conn, peer_addr, shared));
 }
 
@@ -161,10 +156,6 @@ fn handle_tls(
     shared: State,
     acceptor: Arc<TlsAcceptor>,
 ) {
-    if let Err(err) = conn.set_keepalive(Some(time::Duration::from_secs(KEEPALIVE_SECS))) {
-        log::warn!("Failed to set TCP keepalive for {}: {}", peer_addr, err);
-        return;
-    }
     tokio::spawn(async move {
         let tls_handshake_timeout = time::Duration::from_secs(TLS_TIMEOUT_SECS);
         let tls_handshake = time::timeout(tls_handshake_timeout, acceptor.accept(conn));
@@ -206,7 +197,7 @@ macro_rules! rate_limit {
                 if burst < used_points {
                     let wait_millis = (used_points - burst) * rate;
                     let wait = time::Duration::from_millis(wait_millis as u64);
-                    time::delay_for(wait).await;
+                    time::sleep(wait).await;
                     used_points = burst;
                     last_round += wait;
                 }
@@ -271,6 +262,6 @@ async fn handle_buffer(peer_id: usize, buf: &str, shared: &State) -> u32 {
 
 async fn login_timeout(peer_id: usize, shared: State) {
     let timeout = shared.login_timeout().await;
-    time::delay_for(time::Duration::from_millis(timeout)).await;
+    time::sleep(time::Duration::from_millis(timeout)).await;
     shared.remove_if_unregistered(peer_id).await;
 }

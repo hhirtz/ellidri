@@ -77,14 +77,16 @@ struct LoadedBinding<F> {
 
 /// Creates a tokio runtime with the given number of worker threads.
 fn create_runtime(workers: usize) -> rt::Runtime {
-    let mut builder = rt::Builder::new();
+    let mut builder;
 
-    if workers != 0 {
-        builder.core_threads(workers);
+    if workers == 0 {
+        builder = rt::Builder::new_current_thread();
+    } else {
+        builder = rt::Builder::new_multi_thread();
+        builder.worker_threads(workers);
     }
 
     builder
-        .threaded_scheduler()
         .enable_io()
         .enable_time()
         .build()
@@ -284,9 +286,7 @@ pub fn load_config_and_run(config_path: String) {
         log::error!("Failed to read {:?}: {}", config_path, err);
         process::exit(1);
     });
-
-    let mut runtime = create_runtime(cfg.workers);
-
+    let runtime = create_runtime(cfg.workers);
     runtime.block_on(run(config_path, cfg));
 }
 
