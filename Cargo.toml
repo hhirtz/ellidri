@@ -5,7 +5,7 @@ members = [".", "ellidri-tokens", "ellidri-unicase"]
 [package]
 name = "ellidri"
 version = "3.0.0"
-authors = ["Hubert Hirtz <hubert.hirtz@laposte.net>"]
+authors = ["Hubert Hirtz <hubert@hirtz.pm>"]
 edition = "2018"
 description = "Your kawaii IRC server"
 homepage = "https://sr.ht/~taiite/ellidri"
