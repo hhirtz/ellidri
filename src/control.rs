@@ -77,15 +77,10 @@ struct LoadedBinding<F> {
 
 /// Creates a tokio runtime with the given number of worker threads.
 fn create_runtime(workers: usize) -> rt::Runtime {
-    let mut builder;
-
-    if workers == 0 {
-        builder = rt::Builder::new_current_thread();
-    } else {
-        builder = rt::Builder::new_multi_thread();
+    let mut builder = rt::Builder::new_multi_thread();
+    if workers != 0 {
         builder.worker_threads(workers);
     }
-
     builder
         .enable_io()
         .enable_time()
