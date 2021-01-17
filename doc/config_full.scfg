@@ -8,14 +8,14 @@
 # your real domain name, and "bindings", which you probably want to be set to
 # listen on all addresses with your TLS key and certs.
 #
-# For an example configuration file, see `config_example.yaml`.
+# For an example configuration file, see `config_example.scfg`.
 
 
 # Domain of the IRC server
 #
 # It is sent through most replies to clients as a prefix, and should be the same
 # as the domain name of the server (not the IRC network).
-domain: ellidri.localdomain
+domain ellidri.localdomain
 
 
 # Network bindings
@@ -24,27 +24,24 @@ domain: ellidri.localdomain
 # only listens to 127.0.0.1:6667 for plain-text connections.
 #
 # Example:
-bindings:
-    # A plain-text binding on localhost, port 6667
-    - address: 127.0.0.1:6667
-
-    # A TLS binding with the given chain of certificates and key, both must be
-    # RSA or ECDSA.
-    - address: 0.0.0.0:6697
-      certificate: /etc/ellidri.d/fullchain.pem
-      key: /etc/ellidri.d/privkey.pem
-
-      # Should clients also provide a certificate?
-      require_certificate: false
+# A plain-text binding on localhost, port 6667
+listen 127.0.0.1:6667
+# A TLS binding with the given chain of certificates and key, both must be RSA.
+listen 0.0.0.0:6697 {
+    certificate "/etc/letsencrypt/live/example.com/fullchain.pem"
+    key         "/etc/letsencrypt/live/example.com/privkey.pem"
+}
 
 
 # Informations about the organization running the IRC server
 #
 # This information should be about the server, not the network.  It is sent to
 # clients on demand.
-org_name:     unspecified
-org_location: unspecified
-org_mail:     unspecified
+admin_info {
+    name     "unspecified"
+    location "unspecified"
+    mail     "unspecified"
+}
 
 
 # The mode for new channels
@@ -56,14 +53,14 @@ org_mail:     unspecified
 # - n: users must join the channel to send messages to it
 # - s: the channel is not be visible to users from the outside
 # - t: only channel operators can set its topic
-default_chan_mode: +nst
+default_chan_mode +nst
 
 
 # The path to the MOTD file
 #
 # The Message Of The Day is sent to all new clients.  It can be changed at
 # runtime with the `REHASH` message.
-motd_file: /etc/motd
+motd_file "/etc/motd"
 
 
 # IRC operator credentials
@@ -73,11 +70,8 @@ motd_file: /etc/motd
 # needed to make multiple of these.
 #
 # For example:
-opers:
-    - name: root
-      password: A very strong password
-    - name: not-root
-      password: This is not root but weirdly has a stronger password???
+oper root "A very strong password"
+oper not-root "This is not root but weirdly has a stronger password???"
 
 
 # Server password
@@ -87,7 +81,7 @@ opers:
 # will be asked.
 #
 # For example:
-password: My password can't be this cute!
+password "My password can't be this cute!"
 
 
 # Misc settings
@@ -96,34 +90,34 @@ password: My password can't be this cute!
 #
 # Worker threads handle incoming connections and messages.  When set to 0,
 # ellidri uses the number of CPU on the machine.
-workers: 0
+workers 0
 
 
 # User input limits
 
 # Away message length limit
-awaylen: 300
+awaylen 300
 
 # Channel name length limit (including '#')
-channellen: 50
+channellen 50
 
 # Kick message length limit
-keylen: 24
+keylen 24
 
 # Kick message length limit
-kicklen: 300
+kicklen 300
 
 # Realname length limit
-namelen: 64
+namelen 64
 
 # Nickname length limit
-nicklen: 32
+nicklen 32
 
 # Topic length limit
-topiclen: 300
+topiclen 300
 
 # Username length limit
-userlen: 64
+userlen 64
 
 
 # Timeouts
@@ -132,4 +126,4 @@ userlen: 64
 #
 # Number of milliseconds until the connection is closed if the client hasn't
 # registered.
-login_timeout: 60000
+login_timeout 60000

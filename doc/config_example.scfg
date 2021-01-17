@@ -1,0 +1,21 @@
+# ellidri example configuration file
+#
+# This file is an example of what a production-ready server could use as
+# configuration for ellidri.  If you want to tweak settings futher, see
+# `config_full.scfg`.
+
+domain example.com
+
+listen 127.0.0.1:6667
+listen 0.0.0.0:6697 {
+    certificate /etc/letsencrypt/live/example.com/fullchain.pem
+    key         /etc/letsencrypt/live/example.com/privkey.pem
+}
+
+admin_info {
+    name     "Example organization"
+    location "Europe"
+    mail     "Contact support@example.com"
+}
+
+motd_file /etc/motd
