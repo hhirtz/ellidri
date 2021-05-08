@@ -132,12 +132,16 @@ pub fn new_message_id() -> String {
     std::str::from_utf8(&encoded).unwrap().to_owned()
 }
 
+/// Current time formatted for message tags.
 pub fn time_precise() -> String {
-    chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true)
+    let now = time::SystemTime::now();
+    humantime::format_rfc3339_millis(now).to_string()
 }
 
+/// Current time formatted to be human-readable.
 pub fn time_str() -> String {
-    chrono::Local::now().to_rfc2822()
+    let now = time::SystemTime::now();
+    humantime::format_rfc3339_seconds(now).to_string()
 }
 
 pub fn time() -> u64 {

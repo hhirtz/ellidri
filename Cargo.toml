@@ -43,7 +43,7 @@ log = { version = "0.4", default-features = false, features = ["max_level_trace"
 scfg = { version = "0.2", default-features = false }
 
 # Time string generation (@time message tag and RPL_TIME reply)
-chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+humantime = { version = "2", default-features = false }
 
 # msgid tag generation
 base64 = { version = "0.13", default-features = false, features = ["std"] }
