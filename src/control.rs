@@ -40,7 +40,7 @@
 //! not kept track of, thus ellidri might reload the same TLS identity for a binding (it is fine to
 //! let it do we are not reading thousands for TLS identities here).
 
-use crate::{Config, net, State};
+use crate::{Config, net, State, tls};
 use crate::config::{Binding, Tls};
 use std::future::Future;
 use std::net::SocketAddr;
@@ -56,7 +56,7 @@ pub enum Command {
     UsePlain,
 
     /// Ask the binding task to listen for TLS connections with the given acceptor.
-    UseTls(Arc<tokio_rustls::TlsAcceptor>),
+    UseTls(tls::Acceptor),
 }
 
 /// A binding task that is ready to be spawned on the runtime.
@@ -66,7 +66,7 @@ struct LoadedBinding<F> {
 
     /// Either `None` when the binding listens for raw TCP connections, or `Some(acceptor)` when the
     /// bindings listens for TLS connections with `acceptor`.
-    acceptor: Option<Arc<tokio_rustls::TlsAcceptor>>,
+    acceptor: Option<tls::Acceptor>,
 
     /// The sending end of the channel that brings commands to the task.
     handle: mpsc::Sender<Command>,
@@ -104,7 +104,7 @@ fn load_bindings(
     stop: &mpsc::Sender<SocketAddr>,
 ) -> Vec<(SocketAddr, mpsc::Sender<Command>)> {
     let mut res = Vec::with_capacity(bindings.len());
-    let mut store = net::TlsIdentityStore::default();
+    let mut store = tls::IdentityStore::default();
 
     for Binding { address, tls } in bindings {
         let (handle, commands) = mpsc::channel(8);
@@ -240,7 +240,7 @@ fn reload_bindings(
     stop: &mpsc::Sender<SocketAddr>,
 ) -> Vec<LoadedBinding<impl Future<Output = ()>>> {
     let mut res = Vec::with_capacity(bindings.len());
-    let mut store = net::TlsIdentityStore::default();
+    let mut store = tls::IdentityStore::default();
 
     for Binding { address, tls } in bindings {
         let (handle, commands) = mpsc::channel(8);

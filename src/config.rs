@@ -8,7 +8,6 @@ use ellidri_tokens::mode;
 use scfg::Scfg;
 use std::convert::TryFrom;
 use std::{fmt, fs, io, net, path};
-use tokio_rustls::webpki;
 
 pub type Result<T> = std::result::Result<T, Error>;
 
@@ -210,7 +209,7 @@ impl Config {
         }
         if let Some(domain) = get_setting_str(&doc, "domain") {
             res.state.domain = domain?;
-            if webpki::DNSNameRef::try_from_ascii_str(&res.state.domain).is_err() {
+            if res.state.domain.contains(' ') {
                 return Err(Error::InvalidDomain);
             }
         }

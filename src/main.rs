@@ -25,6 +25,7 @@ mod data;
 mod lines;
 mod net;
 mod state;
+mod tls;
 mod util;
 
 pub fn main() {

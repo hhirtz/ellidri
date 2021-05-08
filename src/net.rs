@@ -1,100 +1,21 @@
-use crate::{control, lines, State};
+use crate::{control, lines, State, tls};
 use ellidri_tokens::Message;
-use std::collections::HashMap;
-use std::error::Error;
 use std::net::SocketAddr;
-use std::path::{Path, PathBuf};
-use std::sync::Arc;
-use std::{fs, str};
+use std::str;
 use tokio::sync::mpsc;
 use tokio::{io, net, sync, time};
 use tokio::io::{AsyncBufReadExt, AsyncReadExt};
-use tokio_rustls::rustls::internal::pemfile;
-use tokio_rustls::rustls::{NoClientAuth, ServerConfig};
-use tokio_rustls::TlsAcceptor;
 
+#[cfg(feature = "tls")]
 const TLS_TIMEOUT_SECS: u64 = 30;
 const MAX_MESSAGE_LENGTH: u64 = 4096;
 
-/// `TlsAcceptor` cache, to avoid reading the same files several times.
-#[derive(Default)]
-pub struct TlsIdentityStore {
-    acceptors: HashMap<PathBuf, Arc<TlsAcceptor>>,
-}
-
-impl TlsIdentityStore {
-    /// Retrieves the acceptor at `path`, or get it from the cache if it has already been built.
-    pub fn acceptor<P1, P2>(
-        &mut self,
-        cert: P1,
-        key: P2,
-    ) -> Result<Arc<TlsAcceptor>, Box<dyn Error + 'static>>
-    where
-        P1: AsRef<Path> + Into<PathBuf>,
-        P2: AsRef<Path> + Into<PathBuf>,
-    {
-        if let Some(acceptor) = self.acceptors.get(cert.as_ref()) {
-            Ok(acceptor.clone())
-        } else {
-            let acceptor = Arc::new(build_acceptor(cert.as_ref(), key.as_ref())?);
-            self.acceptors.insert(cert.into(), acceptor.clone());
-            Ok(acceptor)
-        }
-    }
-}
-
-/// Read the file at `p`, parse the identity and builds a `TlsAcceptor` object.
-fn build_acceptor(
-    certfile: &Path,
-    keyfile: &Path,
-) -> Result<TlsAcceptor, Box<dyn Error + 'static>> {
-    let mut config = ServerConfig::new(NoClientAuth::new());
-
-    log::info!("Loading TLS certificate from {:?}", certfile.display());
-    let cert = fs::read(certfile).map_err(|err| {
-        log::error!("Failed to read {:?}: {}", certfile.display(), err);
-        err
-    })?;
-    let cert = pemfile::certs(&mut cert.as_ref()).map_err(|_| {
-        log::error!("Failed to parse {:?}", certfile.display());
-        ""
-    })?;
-
-    log::info!("Loading TLS private key from {:?}", keyfile.display());
-    let key = fs::read(keyfile).map_err(|err| {
-        log::error!("Failed to read {:?}: {}", keyfile.display(), err);
-        err
-    })?;
-    let key = {
-        let mut keys = pemfile::pkcs8_private_keys(&mut key.as_ref()).map_err(|_| {
-            log::error!("Failed to parse {:?}", keyfile.display());
-            ""
-        })?;
-        if keys.is_empty() {
-            log::error!("No key found in {:?}", keyfile.display());
-            return Err(Box::new(io::Error::new(io::ErrorKind::Other, "")));
-        }
-        keys.remove(0)
-    };
-
-    config.set_single_cert(cert, key).map_err(|err| {
-        log::error!(
-            "Failed to associate {:?} with {:?}: {}",
-            certfile.display(),
-            keyfile.display(),
-            err
-        );
-        err
-    })?;
-
-    Ok(TlsAcceptor::from(Arc::new(config)))
-}
 
 /// Returns a future that listens, accepts and handles incoming connections.
 pub async fn listen(
     addr: SocketAddr,
     shared: State,
-    mut acceptor: Option<Arc<TlsAcceptor>>,
+    mut acceptor: Option<tls::Acceptor>,
     stop: mpsc::Sender<SocketAddr>,
     mut commands: mpsc::Receiver<control::Command>,
 ) {
@@ -150,12 +71,14 @@ fn handle_tcp(conn: net::TcpStream, peer_addr: SocketAddr, shared: State) {
     tokio::spawn(handle(conn, peer_addr, shared));
 }
 
+#[cfg_attr(not(feature = "tls"), allow(unused_variables))]
 fn handle_tls(
     conn: net::TcpStream,
     peer_addr: SocketAddr,
     shared: State,
-    acceptor: Arc<TlsAcceptor>,
+    acceptor: tls::Acceptor,
 ) {
+    #[cfg(feature = "tls")]
     tokio::spawn(async move {
         let tls_handshake_timeout = time::Duration::from_secs(TLS_TIMEOUT_SECS);
         let tls_handshake = time::timeout(tls_handshake_timeout, acceptor.accept(conn));
