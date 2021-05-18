@@ -26,6 +26,7 @@ tls = ["tokio-rustls"]
 
 
 [dependencies]
+
 # Async runtime
 slab = { version = "0.4", default-features = false }
 tokio = { version = "1.0", default-features = false, features = ["io-util", "macros", "net", "rt-multi-thread", "signal", "sync", "time"] }
@@ -45,7 +46,7 @@ env_logger = { version = "0.8", default-features = false }
 log = { version = "0.4", default-features = false, features = ["max_level_trace", "release_max_level_info"] }
 
 # Configuration
-scfg = { version = "0.2", default-features = false }
+scfg = { version = "0.3", default-features = false }
 
 # Time string generation (@time message tag and RPL_TIME reply)
 humantime = { version = "2", default-features = false }
