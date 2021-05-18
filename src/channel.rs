@@ -187,10 +187,10 @@ impl Channel {
     }
 
     pub fn can_talk(&self, id: usize) -> bool {
-        if self.moderated {
-            self.members.get(&id).map_or(false, |m| m.has_voice())
+        if let Some(member) = self.members.get(&id) {
+            !self.moderated || member.has_voice()
         } else {
-            !self.no_msg_from_outside || self.members.contains_key(&id)
+            !self.moderated && !self.no_msg_from_outside
         }
     }
 

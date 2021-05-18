@@ -1395,6 +1395,14 @@ impl super::StateInner {
     ) -> Result {
         let channel = find_channel(ctx.id, &mut ctx.rb, &self.channels, args.to)?;
 
+        if channel.is_banned(self.clients[ctx.id].full_name()) {
+            log::debug!("{}:     banned from channel", ctx.id);
+            ctx.rb
+                .reply(rpl::ERR_CANNOTSENDTOCHAN)
+                .param(args.to.get())
+                .trailing_param(lines::BANNED_FROM_CHAN);
+            return Err(());
+        }
         if !channel.can_talk(ctx.id) {
             log::debug!("{}:     can't send to channel", ctx.id);
             ctx.rb
