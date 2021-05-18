@@ -273,6 +273,15 @@ impl StateInner {
             None => return 999_999,
         };
 
+        if MAX_TAG_DATA_LENGTH < msg.tags.len() {
+            let mut rb = client.reply("");
+            rb
+                .reply(rpl::ERR_INPUTTOOLONG)
+                .trailing_param(lines::INPUT_TOO_LONG);
+            client.send(rb);
+            return 3;
+        }
+
         let label = msg.tags()
             .find(|tag| tag.key == "label")
             .and_then(|tag| tag.value)
@@ -281,11 +290,6 @@ impl StateInner {
 
         let mut rb = client.reply(label);
         let is_operator = client.operator;
-
-        if MAX_TAG_DATA_LENGTH < msg.tags.len() {
-            rb.reply(rpl::ERR_INPUTTOOLONG).trailing_param(lines::INPUT_TOO_LONG);
-            return 3;
-        }
 
         let req = match Request::new(&msg) {
             Ok(req) => req,
