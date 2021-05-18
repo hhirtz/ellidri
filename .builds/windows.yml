@@ -29,4 +29,4 @@ tasks:
         cd ellidri
         cargo build --locked --target x86_64-pc-windows-gnu --release
     - deploy: |
-        scp -o StrictHostKeyChecking=no -i ~/.ssh/030fce6b-4bb4-4dd7-b6bc-0b4adad09afb -q -P 15500 ellidri/target/x86_64-pc-windows-gnu/release/ellidri.exe moe@ellidri.org:/srv/http/ellidri.org/dl/l64/ellidri.exe
+        scp -o StrictHostKeyChecking=no -i ~/.ssh/030fce6b-4bb4-4dd7-b6bc-0b4adad09afb -q -P 15500 ellidri/target/x86_64-pc-windows-gnu/release/ellidri.exe moe@ellidri.org:/srv/http/ellidri.org/dl/w64/ellidri.exe
