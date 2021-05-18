@@ -1,7 +1,7 @@
 use crate::data::modes;
 use crate::util;
 use ellidri_tokens::{mode, rpl, MessageBuffer};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 /// Modes applied to clients on a per-channel basis.
 ///
@@ -99,9 +99,6 @@ pub struct Channel {
     /// channel mode.
     pub members: HashMap<usize, MemberModes>,
 
-    /// Set of invited clients (via INVITE).
-    pub invites: HashSet<usize>,
-
     /// The topic.
     pub topic: Option<Topic>,
 
@@ -130,7 +127,6 @@ impl Channel {
     pub fn new(modes: &str) -> Self {
         let mut channel = Channel {
             members: HashMap::new(),
-            invites: HashSet::new(),
             topic: None,
             user_limit: None,
             key: None,
@@ -165,7 +161,6 @@ impl Channel {
             MemberModes::default()
         };
         self.members.insert(id, modes);
-        self.invites.remove(&id);
     }
 
     pub fn list_entry(&self, msg: MessageBuffer<'_>) {
@@ -182,8 +177,8 @@ impl Channel {
             && !self.invex_mask.is_match(nick)
     }
 
-    pub fn is_invited(&self, id: usize, nick: &str) -> bool {
-        !self.invite_only || self.invites.contains(&id) || self.invex_mask.is_match(nick)
+    pub fn is_invited(&self, nick: &str) -> bool {
+        !self.invite_only || self.invex_mask.is_match(nick)
     }
 
     pub fn can_talk(&self, id: usize) -> bool {

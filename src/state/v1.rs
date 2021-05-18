@@ -110,7 +110,7 @@ impl super::StateInner {
             return Err(());
         }
 
-        if !channel.invites.insert(who_id) {
+        if who_data.invites.contains(args.to.u()) {
             return Err(());
         }
 
@@ -125,6 +125,10 @@ impl super::StateInner {
                 .param(args.who.get())
                 .trailing_param(away_msg);
         }
+
+        self.clients[who_id]
+            .invites
+            .insert(UniCase::new(args.to.get().to_owned()));
 
         let mut invite = Buffer::with_capacity(512);
         invite
@@ -177,7 +181,7 @@ impl super::StateInner {
                 .trailing_param(lines::CHANNEL_IS_FULL);
             return Err(());
         }
-        if !channel.is_invited(ctx.id, client.nick()) {
+        if !channel.is_invited(client.nick()) && !client.invites.contains(u(channel_name)) {
             log::debug!("{}:     not invited", ctx.id);
             ctx.rb
                 .reply(rpl::ERR_INVITEONLYCHAN)
@@ -242,23 +246,21 @@ impl super::StateInner {
     pub fn cmd_join(&mut self, mut ctx: CommandContext<'_>, list: data::JoinList<'_>) -> Result {
         let client = &self.clients[ctx.id];
 
-        let mut update_idle = false;
+        let mut joined = false;
         for (channel_name, key) in list.iter() {
-            let ok = self
-                .channels
-                .get(u(channel_name.get()))
-                .map_or(Ok(()), |channel| {
-                    Self::check_join(
-                        client,
-                        channel,
-                        channel_name.get(),
-                        key.as_ref().map(data::Key::get),
-                        &mut ctx,
-                    )
-                })
-                .is_ok();
+            let can_join = match self.channels.get(channel_name.u()) {
+                Some(channel) => Self::check_join(
+                    client,
+                    channel,
+                    channel_name.get(),
+                    key.as_ref().map(data::Key::get),
+                    &mut ctx,
+                )
+                .is_ok(),
+                None => true,
+            };
 
-            if ok {
+            if can_join {
                 let default_chan_mode = &self.default_chan_mode;
                 let channel = self
                     .channels
@@ -270,12 +272,15 @@ impl super::StateInner {
                 self.send_join(ctx.id, &mut ctx.rb, channel_name.get(), client);
                 self.send_topic(&mut ctx.rb, channel_name, false);
                 self.send_names(ctx.id, &mut ctx.rb, channel_name);
-                update_idle = true;
+                joined = true;
             }
         }
-        if update_idle {
+        if joined {
             let client = &mut self.clients[ctx.id];
             client.update_idle_time();
+            for (channel_name, _) in list.iter() {
+                client.invites.remove(channel_name.u());
+            }
         }
 
         Ok(())

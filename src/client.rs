@@ -2,6 +2,8 @@
 
 use crate::{data, util};
 use ellidri_tokens::{mode, Buffer, MessageBuffer, ReplyBuffer};
+use ellidri_unicase::UniCase;
+use std::collections::HashSet;
 use std::fmt::Write as _;
 use std::sync::Arc;
 use tokio::sync::mpsc;
@@ -184,6 +186,8 @@ pub struct Client {
     pub away_message: Option<String>,
     pub invisible: bool,
     pub operator: bool,
+
+    pub invites: HashSet<UniCase<String>>,
 }
 
 impl Client {
@@ -211,6 +215,7 @@ impl Client {
             away_message: None,
             invisible: false,
             operator: false,
+            invites: HashSet::new(),
         }
     }
 

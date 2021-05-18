@@ -238,7 +238,6 @@ impl StateInner {
     /// - remove the client from `StateInner::clients`,
     /// - remove the client from each channel it was in,
     /// - send a QUIT message to all cilents in these channels,
-    /// - TODO: remove the client from channel invites
     /// - remove empty channels
     fn remove_client(&mut self, id: usize, msg_to_client: impl fmt::Display, msg_to_others: impl fmt::Display) {
         if !self.clients.contains(id) {
