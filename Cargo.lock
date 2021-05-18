@@ -46,6 +46,7 @@ dependencies = [
  "ellidri-tokens",
  "ellidri-unicase",
  "env_logger",
+ "gethostname",
  "humantime",
  "log",
  "rand_chacha",
@@ -70,6 +71,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "17392a012ea30ef05a610aa97dfb49496e71c9f676b27879922ea5bdf60d9d3f"
 dependencies = [
  "log",
+]
+
+[[package]]
+name = "gethostname"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e692e296bfac1d2533ef168d0b60ff5897b8b70a4009276834014dd8924cc028"
+dependencies = [
+ "libc",
+ "winapi",
 ]
 
 [[package]]

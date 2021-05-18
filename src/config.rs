@@ -5,6 +5,7 @@
 //! [1]: https://git.sr.ht/~taiite/ellidri/tree/master/doc/ellidri.conf
 
 use ellidri_tokens::mode;
+use gethostname::gethostname;
 use scfg::Scfg;
 use std::convert::TryFrom;
 use std::{fmt, fs, io, net, path};
@@ -129,7 +130,7 @@ pub struct State {
 impl Default for State {
     fn default() -> State {
         State {
-            domain: String::from("ellidri.localdomain"),
+            domain: String::from(gethostname().to_string_lossy()),
             org_name: String::from("unspecified"),
             org_location: String::from("unspecified"),
             org_mail: String::from("unspecified"),
