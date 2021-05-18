@@ -3,7 +3,10 @@
 //! <https://tools.ietf.org/html/rfc2812.html>
 //! <https://modern.ircdocs.horse/>
 
-use super::{find_channel, find_member, find_nick, CommandContext, HandlerResult as Result};
+use super::{
+    find_channel, find_channel_quiet, find_member, find_nick, CommandContext,
+    HandlerResult as Result,
+};
 use crate::channel::{MemberModes, Topic};
 use crate::client::MessageQueueItem;
 use crate::{data, lines, util, Channel, Client};
@@ -1393,22 +1396,30 @@ impl super::StateInner {
         mut ctx: CommandContext<'_>,
         args: data::req::MessageChannel<'_>,
     ) -> Result {
-        let channel = find_channel(ctx.id, &mut ctx.rb, &self.channels, args.to)?;
+        let channel = if args.feedback {
+            find_channel(ctx.id, &mut ctx.rb, &self.channels, args.to)?
+        } else {
+            find_channel_quiet(ctx.id, &self.channels, args.to)?
+        };
 
         if channel.is_banned(self.clients[ctx.id].full_name()) {
             log::debug!("{}:     banned from channel", ctx.id);
-            ctx.rb
-                .reply(rpl::ERR_CANNOTSENDTOCHAN)
-                .param(args.to.get())
-                .trailing_param(lines::BANNED_FROM_CHAN);
+            if args.feedback {
+                ctx.rb
+                    .reply(rpl::ERR_CANNOTSENDTOCHAN)
+                    .param(args.to.get())
+                    .trailing_param(lines::BANNED_FROM_CHAN);
+            }
             return Err(());
         }
         if !channel.can_talk(ctx.id) {
             log::debug!("{}:     can't send to channel", ctx.id);
-            ctx.rb
-                .reply(rpl::ERR_CANNOTSENDTOCHAN)
-                .param(args.to.get())
-                .trailing_param(lines::CANNOT_SEND_TO_CHAN);
+            if args.feedback {
+                ctx.rb
+                    .reply(rpl::ERR_CANNOTSENDTOCHAN)
+                    .param(args.to.get())
+                    .trailing_param(lines::CANNOT_SEND_TO_CHAN);
+            }
             return Err(());
         }
 

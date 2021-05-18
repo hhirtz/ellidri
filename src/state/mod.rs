@@ -462,6 +462,21 @@ impl StateInner {
     }
 }
 
+/// Returns `Ok(channel)` when `name` is an existing channel name.  Otherwise returns `Err(())`.
+fn find_channel_quiet<'a>(
+    id: usize,
+    channels: &'a ChannelMap,
+    channel_name: data::ChannelName<'_>,
+) -> Result<&'a Channel, ()> {
+    match channels.get(channel_name.u()) {
+        Some(channel) => Ok(channel),
+        None => {
+            log::debug!("{}:         no such channel", id);
+            Err(())
+        }
+    }
+}
+
 /// Returns `Ok(channel)` when `name` is an existing channel name.  Otherwise returns `Err(())` and
 /// send an error to the client.
 fn find_channel<'a>(
@@ -470,10 +485,9 @@ fn find_channel<'a>(
     channels: &'a ChannelMap,
     channel_name: data::ChannelName<'_>,
 ) -> Result<&'a Channel, ()> {
-    match channels.get(channel_name.u()) {
-        Some(channel) => Ok(channel),
-        None => {
-            log::debug!("{}:         no such channel", id);
+    match find_channel_quiet(id, channels, channel_name) {
+        Ok(channel) => Ok(channel),
+        Err(()) => {
             rb.reply(rpl::ERR_NOSUCHCHANNEL).param(channel_name.get()).trailing_param(lines::NO_SUCH_CHANNEL);
             Err(())
         }
